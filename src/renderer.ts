@@ -9,6 +9,10 @@ export interface RenderFrame {
   blobCount: number;
   /** vec4 per blob: x, y, radius, tint. */
   blobs: Float32Array;
+  /** vec4 per blob: stretch, axis cos, axis sin, phase. */
+  blobDef: Float32Array;
+  /** Smooth-union radius, recomputed per frame from the largest blob. */
+  smoothK: number;
   primCount: number;
   /** vec4 per primitive: cx, cy, hw, hh. */
   prims: Float32Array;
@@ -210,13 +214,15 @@ export class Renderer {
     gl.uniform1f(s.u('uViewH'), f.viewH);
     gl.uniform1f(s.u('uChanHalf'), CFG.channelHalfW);
     gl.uniform1f(s.u('uBevel'), CFG.render.bevel);
-    gl.uniform1f(s.u('uSmoothK'), CFG.render.smoothK);
+    gl.uniform1f(s.u('uSmoothK'), f.smoothK);
+    gl.uniform1f(s.u('uWobble'), CFG.goo.wobble);
     gl.uniform1f(s.u('uSpeedN'), f.speedN);
     gl.uniform1f(s.u('uPulse'), f.pulse);
     gl.uniform2f(s.u('uPulsePos'), f.pulseX, f.pulseY);
     gl.uniform1i(s.u('uBlobCount'), Math.min(f.blobCount, MAX_BLOBS));
     gl.uniform1i(s.u('uPrimCount'), Math.min(f.primCount, MAX_PRIMS));
     gl.uniform4fv(s.u('uBlobs'), f.blobs);
+    gl.uniform4fv(s.u('uBlobDef'), f.blobDef);
     gl.uniform4fv(s.u('uPrims'), f.prims);
     gl.uniform2fv(s.u('uPrimMeta'), f.primMeta);
     this.drawQuad();

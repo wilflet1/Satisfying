@@ -1,4 +1,4 @@
-export const MAX_BLOBS = 24;
+export const MAX_BLOBS = 40;
 export const MAX_PRIMS = 28;
 
 /** Fullscreen triangle generated from gl_VertexID — no vertex buffers needed. */
@@ -34,7 +34,9 @@ uniform float uPulse;      // merge shockwave, 1 -> 0
 uniform vec2  uPulsePos;
 uniform int   uBlobCount;
 uniform int   uPrimCount;
+uniform float uWobble;     // domain-warp amplitude, world units
 uniform vec4  uBlobs[${MAX_BLOBS}];      // xy = centre, z = radius, w = tint (0 chrome, 1 gold)
+uniform vec4  uBlobDef[${MAX_BLOBS}];    // x = stretch, yz = stretch axis (cos,sin), w = phase
 uniform vec4  uPrims[${MAX_PRIMS}];      // xy = centre, zw = half-extents (saw: z = radius, w = rotation)
 uniform vec2  uPrimMeta[${MAX_PRIMS}];   // x = kind (0 wall, 1 door, 2 saw), y = flash
 
@@ -79,12 +81,40 @@ float sdSaw(vec2 p, float r, float rot){
   return length(p) - (r + cos(a * 8.0) * r * 0.20);
 }
 
+/**
+ * Low-frequency domain warp. Displacing the sample point before measuring
+ * distance is what turns perfect circles into something with surface tension:
+ * silhouettes ripple, and because the warp is evaluated per sample the finite
+ * -difference normals inherit it too, so the *shading* crawls as well as the
+ * outline. Sine-based rather than value noise — this runs three times per
+ * shaded pixel, and four sines beat eight hashes.
+ */
+vec2 gooWarp(vec2 p){
+  float t = uTime * 0.7;
+  return vec2(
+    sin(p.y * 0.21 + t) + 0.5 * sin(p.y * 0.37 - t * 1.3 + p.x * 0.11),
+    sin(p.x * 0.19 - t * 1.1) + 0.5 * sin(p.x * 0.33 + t * 0.9 + p.y * 0.13)
+  ) * uWobble;
+}
+
 float blobDist(vec2 p){
+  vec2 w = p + gooWarp(p);
   float d = 1e9;
   for (int i = 0; i < ${MAX_BLOBS}; i++){
     if (i >= uBlobCount) break;
     vec4 B = uBlobs[i];
-    d = smin(d, length(p - B.xy) - B.z, uSmoothK);
+    vec4 D = uBlobDef[i];
+
+    // Rotate into the stretch frame, then scale x by (1+k) and y by 1/(1+k).
+    // Area is exactly preserved, so squash and stretch never changes how much
+    // metal the player appears to have.
+    vec2 q = w - B.xy;
+    vec2 e = vec2(D.y * q.x + D.z * q.y, -D.z * q.x + D.y * q.y);
+    float k = 1.0 + D.x;
+    e.x /= k;
+    e.y *= k;
+
+    d = smin(d, length(e) - B.z, uSmoothK);
   }
   return d;
 }
@@ -228,18 +258,26 @@ void main(){
     // Forward differences, not central: half the field evaluations, and the
     // half-texel bias it introduces is invisible against a 3-unit bevel.
     float e = 0.35;
-    vec2 g = normalize(vec2(
+    vec2 gRaw = vec2(
       blobDist(p + vec2(e, 0.0)) - d,
       blobDist(p + vec2(0.0, e)) - d
-    ) + vec2(1e-6));
+    ) / e;
+    float glen = max(length(gRaw), 1e-3);
+    vec2 g = gRaw / glen;
 
     vec2 tr = blobTintRadius(p);
     float tint = tr.x;
-    // Bevel never exceeds the blob it is rounding, so small blobs still dome.
-    float bevel = clamp(tr.y * 0.85, 0.5, uBevel);
+    // Bevel is a fraction of the blob's own radius, so a droplet and a merged
+    // mass both curve across their full width.
+    float bevel = max(0.6, tr.y * uBevel);
 
     // Map the interior distance onto a dome so the 2D field shades as 3D metal.
-    float t = clamp(-d / bevel, 0.0, 1.0);
+    // The domain warp, the anisotropic squash and a wide smooth-union all break
+    // the metric, so the raw field value is no longer a distance — it grows far
+    // faster than one unit per unit. Dividing by the gradient length restores a
+    // distance-like quantity. Without it the dome saturates a pixel inside the
+    // edge and every blob shades as a flat white disc.
+    float t = clamp(-d / (glen * bevel), 0.0, 1.0);
     float z = sqrt(max(0.0, 1.0 - (1.0 - t) * (1.0 - t)));
     vec3 N = normalize(vec3(-g * (1.0 - z * 0.90), max(z, 0.03)));
 
@@ -255,10 +293,13 @@ void main(){
     vec2 roff = N.xy * 0.05 * (1.0 - z);
     metal = mix(background(worldFromUv(uv + roff), 0.0) * 1.35, metal, 0.70 + 0.30 * fres);
 
-    // Bright core so the middle of a mass reads as polished metal facing you,
-    // plus a specular pop right at the crown.
-    metal += vec3(0.34, 0.60, 1.00) * smoothstep(0.45, 1.0, z) * 0.22;
-    metal += vec3(1.0) * pow(smoothstep(0.86, 1.0, z), 2.0) * 0.5;
+    // Depth-driven internal light. Thick parts of the mass glow from within,
+    // thin necks and the edges of droplets stay translucent — the read that
+    // separates a body of liquid from a painted circle.
+    metal += vec3(0.30, 0.56, 1.00) * smoothstep(0.35, 1.0, z) * 0.30;
+    metal += vec3(1.00, 0.86, 0.62) * pow(smoothstep(0.55, 1.0, z), 3.0) * 0.10;
+    // Wet highlight, offset from the crown so it slides as the surface moves.
+    metal += vec3(1.0) * pow(smoothstep(0.90, 1.0, z), 2.0) * 0.30;
 
     col = mix(col, metal, mask);
   }

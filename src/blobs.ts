@@ -10,7 +10,32 @@ export interface Blob {
   r: number;
   /** Seconds of damage immunity remaining. */
   grace: number;
+
+  // --- soft-body state, visual only; collision stays circular ---
+  /** Deformation vector: direction and magnitude of the current stretch. */
+  defX: number;
+  defY: number;
+  /** Velocity of the deformation spring — this is what makes it wobble. */
+  dvX: number;
+  dvY: number;
+  /** Per-blob phase so surfaces don't all ripple in lockstep. */
+  phase: number;
 }
+
+const newBlob = (x: number, y: number, vol: number, r: number): Blob => ({
+  x,
+  y,
+  vx: 0,
+  vy: 0,
+  vol,
+  r,
+  grace: 0,
+  defX: 0,
+  defY: 0,
+  dvX: 0,
+  dvY: 0,
+  phase: Math.random() * 6.283,
+});
 
 /**
  * The player: a cluster of liquid-metal blobs that conserve total volume across
@@ -35,15 +60,17 @@ export class BlobSystem {
   /** Events drained by the game each frame, so juice stays out of physics. */
   fusedThisFrame = 0;
   splitThisFrame = false;
+  /** Where the last split tore, for spraying satellite droplets. */
+  splitPos: { x: number; y: number } | null = null;
+  /** Where fusions happened this frame. */
+  fusePos: Array<{ x: number; y: number }> = [];
 
   constructor() {
     this.reset();
   }
 
   reset() {
-    this.blobs = [
-      { x: 0, y: 0, vx: 0, vy: 0, vol: CFG.mass.start, r: volumeToRadius(CFG.mass.start), grace: 0 },
-    ];
+    this.blobs = [newBlob(0, 0, CFG.mass.start, volumeToRadius(CFG.mass.start))];
     this.targetX = 0;
     this.targetCount = 1;
   }
@@ -92,16 +119,19 @@ export class BlobSystem {
     big.r = volumeToRadius(half);
     big.vx -= CFG.split.kick;
 
-    this.blobs.push({
-      x: big.x + big.r * 0.5,
-      y: big.y,
-      vx: big.vx + CFG.split.kick * 2,
-      vy: big.vy,
-      vol: half,
-      r: big.r,
-      grace: big.grace,
-    });
+    const twin = newBlob(big.x + big.r * 0.5, big.y, half, big.r);
+    twin.vx = big.vx + CFG.split.kick * 2;
+    twin.vy = big.vy;
+    twin.grace = big.grace;
+    this.blobs.push(twin);
 
+    // Both halves are stretched along the tear as they pull apart, so the
+    // separation reads as something pinching off rather than one circle
+    // becoming two. The smooth-union does the necking; this does the strain.
+    const k = CFG.goo.splitKick;
+    big.defX -= k;
+    twin.defX += k;
+    this.splitPos = { x: big.x, y: big.y };
     this.splitThisFrame = true;
     this.sortBySlot();
     return true;
@@ -119,13 +149,20 @@ export class BlobSystem {
     this.blobs.sort((a, b) => a.x - b.x);
   }
 
-  /** Apply damage to one blob; returns the volume actually lost. */
-  damage(b: Blob, fraction: number): number {
+  /**
+   * Apply damage to one blob; returns the volume actually lost.
+   * @param kx,ky Impact direction, used to splat the blob against the hit.
+   */
+  damage(b: Blob, fraction: number, kx = 0, ky = 1): number {
     if (b.grace > 0) return 0;
     const lost = Math.min(b.vol, b.vol * fraction + CFG.mass.start * CFG.damage.flat);
     b.vol -= lost;
     b.r = volumeToRadius(b.vol);
     b.grace = CFG.saw.invuln;
+
+    const len = Math.hypot(kx, ky) || 1;
+    b.defX += (kx / len) * CFG.goo.hitKick;
+    b.defY += (ky / len) * CFG.goo.hitKick;
     return lost;
   }
 
@@ -186,6 +223,25 @@ export class BlobSystem {
         b.vx += Math.sign(slotX - b.x) * CFG.merge.pull * dt;
       }
 
+      // --- soft body ---------------------------------------------------
+      // Target stretch follows motion relative to the channel. The spring is
+      // underdamped, so the surface overshoots and settles with a wobble
+      // instead of tracking the centre rigidly.
+      const g = CFG.goo;
+      const tx = b.vx * g.stretchPerSpeed;
+      const ty = (b.vy - lineVel) * g.stretchPerSpeed;
+      b.dvX += ((tx - b.defX) * g.spring - b.dvX * g.damp) * dt;
+      b.dvY += ((ty - b.defY) * g.spring - b.dvY * g.damp) * dt;
+      b.defX += b.dvX * dt;
+      b.defY += b.dvY * dt;
+
+      const dmag = Math.hypot(b.defX, b.defY);
+      if (dmag > g.maxStretch) {
+        const sc = g.maxStretch / dmag;
+        b.defX *= sc;
+        b.defY *= sc;
+      }
+
       b.x += b.vx * dt;
       b.y += b.vy * dt;
 
@@ -223,6 +279,11 @@ export class BlobSystem {
           a.vol = w;
           a.r = volumeToRadius(w);
           a.grace = Math.max(a.grace, b.grace);
+          // The merged mass bulges along the axis the two came together on.
+          const sep = Math.hypot(dx, dy) || 1;
+          a.defX += (dx / sep) * CFG.goo.fuseKick;
+          a.defY += (dy / sep) * CFG.goo.fuseKick;
+          this.fusePos.push({ x: a.x, y: a.y });
           this.blobs.splice(j, 1);
           this.fusedThisFrame++;
           j--;

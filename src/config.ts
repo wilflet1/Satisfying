@@ -40,8 +40,8 @@ export const CFG = {
 
   /** Spring constants for the liquid-lag steering. Higher spring = tighter. */
   steer: {
-    springX: 210,
-    dampX: 25,
+    springX: 185,
+    dampX: 19,
     springY: 150,
     dampY: 22,
     /** Extra lag applied per blob so the formation ripples rather than snaps. */
@@ -157,14 +157,62 @@ export const CFG = {
     shakeDecay: 5.5,
   },
 
+  /**
+   * The goo layer: everything that makes the metal read as a *liquid* rather
+   * than a set of circles. All of it is visual — collision stays circular, so
+   * deformation can never make a gate unfair.
+   */
+  goo: {
+    /** Stretch produced per unit of speed, and its ceiling. */
+    stretchPerSpeed: 0.0032,
+    maxStretch: 0.4,
+    /**
+     * The deformation spring is deliberately underdamped (ζ ≈ 0.38). The blob's
+     * *centre* stays responsive so the game is still playable; only its surface
+     * lags and overshoots. Responsive core plus laggy skin is what reads as goo.
+     */
+    spring: 95,
+    damp: 7.4,
+    /** Deformation kicks, in stretch units. */
+    hitKick: 0.6,
+    splitKick: 0.45,
+    fuseKick: 0.5,
+    /** Domain-warp amplitude in world units — the living-surface wobble. */
+    wobble: 0.9,
+    /**
+     * Smooth-union radius as a multiple of the largest blob's radius, so heavy
+     * masses neck and bridge dramatically while small ones stay distinct.
+     */
+    smoothScale: 1.15,
+    smoothMin: 2.6,
+    smoothMax: 11,
+    /** Droplets thrown off on split, fusion and impact. Purely decorative. */
+    splash: {
+      onSplit: 4,
+      onFuse: 6,
+      onHit: 7,
+      speed: 38,
+      radius: 1.55,
+      life: 0.6,
+      drag: 2.2,
+    },
+    /** Brief slow-motion on a fusion, so the coalescence is actually seen. */
+    fuseSlowmo: 0.13,
+  },
+
   render: {
     /** Scene buffer scale. Dropped automatically if the frame budget is missed. */
     sceneScale: 1,
     minSceneScale: 0.6,
     bloomScale: 0.25,
     bloomStrength: 0.7,
-    /** Rounded-edge depth of the metaball dome, in world units. */
-    bevel: 3.2,
+    /**
+     * Depth of the shading dome, as a fraction of the blob's own radius. This
+     * has to be relative: as an absolute world distance it capped well below
+     * the radius of a merged mass, so only a narrow rim curved and the entire
+     * middle saturated into a flat white disc.
+     */
+    bevel: 0.95,
     /** Smooth-min radius — how eagerly blobs flow into each other. */
     smoothK: 4.4,
   },

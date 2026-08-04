@@ -2,6 +2,7 @@ import { BlobSystem } from './blobs';
 import { CFG } from './config';
 import { Renderer, type RenderFrame } from './renderer';
 import { MAX_BLOBS, MAX_PRIMS } from './shaders';
+import { Splash } from './splash';
 import { World, type Prim } from './world';
 
 export type GameState = 'title' | 'playing' | 'dead';
@@ -37,6 +38,7 @@ const BEST_KEY = 'quicksilver.best';
 export class Game {
   readonly blobs = new BlobSystem();
   readonly world = new World();
+  readonly splash = new Splash();
 
   state: GameState = 'title';
   camY = 0;
@@ -61,6 +63,7 @@ export class Game {
 
   // --- preallocated GPU upload buffers ---
   private blobBuf = new Float32Array(MAX_BLOBS * 4);
+  private blobDefBuf = new Float32Array(MAX_BLOBS * 4);
   private primBuf = new Float32Array(MAX_PRIMS * 4);
   private primMetaBuf = new Float32Array(MAX_PRIMS * 2);
   private prims: Prim[] = [];
@@ -112,6 +115,7 @@ export class Game {
     this.chroma = 0;
     this.pulse = 0;
     this.stats = emptyStats();
+    this.splash.clear();
     this.blobs.lineY = this.lineY;
     for (const b of this.blobs.blobs) b.y = this.lineY;
     this.state = 'playing';
@@ -164,6 +168,8 @@ export class Game {
       this.blobs.update(dt, 10);
       this.world.generateTo(this.camY + this.viewH + 300, 0, CFG.speed.start);
       this.world.update(dt, this.camY);
+      this.splash.update(dt, 10);
+      this.drainBlobEvents();
       return;
     }
 
@@ -176,6 +182,7 @@ export class Game {
 
     this.world.generateTo(this.camY + this.viewH + 300, this.camY - this.startY, this.speed);
     this.world.update(dt, this.camY);
+    this.splash.update(dt, this.speed);
 
     this.collide();
     this.drainBlobEvents();
@@ -191,15 +198,32 @@ export class Game {
   }
 
   private drainBlobEvents() {
+    const sp = CFG.goo.splash;
+
     if (this.blobs.fusedThisFrame > 0) {
-      const c = this.blobs.blobs[0];
-      this.pulse = 1;
-      this.pulseX = c?.x ?? 0;
-      this.pulseY = c?.y ?? this.lineY;
+      for (const f of this.blobs.fusePos) {
+        // Coalescence throws a crown of satellites, which is most of what makes
+        // two things becoming one read as liquid rather than as an animation.
+        this.splash.burst(f.x, f.y, sp.onFuse, 0);
+        this.pulse = 1;
+        this.pulseX = f.x;
+        this.pulseY = f.y;
+      }
       this.chroma = Math.max(this.chroma, 1);
       this.trauma = Math.min(1, this.trauma + 0.12 * this.blobs.fusedThisFrame);
+      // A beat of slow motion so the merge is actually watched, not glimpsed.
+      this.slowmo = Math.max(this.slowmo, CFG.goo.fuseSlowmo);
       this.blobs.fusedThisFrame = 0;
       haptic(10);
+    }
+    this.blobs.fusePos.length = 0;
+
+    if (this.blobs.splitPos) {
+      const { x, y } = this.blobs.splitPos;
+      // Spray sideways along the tear.
+      this.splash.burst(x, y, sp.onSplit, 0, 0, 0.7);
+      this.splash.burst(x, y, sp.onSplit, 0, Math.PI, 0.7);
+      this.blobs.splitPos = null;
     }
     this.blobs.splitThisFrame = false;
   }
@@ -215,9 +239,11 @@ export class Game {
           const dy = b.y - o.y;
           const reach = CFG.saw.radius * 0.92 + b.r;
           if (dx * dx + dy * dy < reach * reach && b.grace <= 0) {
-            if (this.blobs.damage(b, CFG.damage.saw) > 0) {
+            const len = Math.hypot(dx, dy) || 1;
+            if (this.blobs.damage(b, CFG.damage.saw, dx / len, dy / len) > 0) {
               this.stats.sawHit++;
               o.flash = 1;
+              this.splash.burst(b.x, b.y, CFG.goo.splash.onHit, 0, Math.atan2(dy, dx), 1.1);
               this.onHit(0.55, [1, 0.25, 0.3]);
             }
           }
@@ -233,8 +259,10 @@ export class Game {
             // Fits only if the whole blob clears one slit.
             const fits = o.slits.some((s) => Math.abs(b.x - s) + b.r <= CFG.gate.slitHalfW);
             if (!fits && b.grace <= 0) {
-              if (this.blobs.damage(b, CFG.damage.wall) > 0) {
+              // Splatted downward against the wall it failed to fit through.
+              if (this.blobs.damage(b, CFG.damage.wall, 0, 1) > 0) {
                 this.stats.gateHit++;
+                this.splash.burst(b.x, o.y, CFG.goo.splash.onHit, 0, -Math.PI / 2, 1.2);
                 o.state = 'hit';
                 o.flash = 1;
                 this.onHit(0.7, [0.4, 0.9, 1]);
@@ -254,10 +282,12 @@ export class Game {
               o.broken = true;
               o.state = 'passed';
               o.flash = 1;
+              this.splash.burst(b.x, o.y, CFG.goo.splash.onHit + 6, 0, -Math.PI / 2, Math.PI);
               this.onDoorBreak();
             } else if (b.grace <= 0) {
-              this.blobs.damage(b, CFG.damage.doorFail);
+              this.blobs.damage(b, CFG.damage.doorFail, 0, 1);
               this.stats.doorFail++;
+              this.splash.burst(b.x, o.y, CFG.goo.splash.onHit + 4, 0, -Math.PI / 2, 1.4);
               o.broken = true;
               o.state = 'hit';
               o.flash = 1;
@@ -353,20 +383,44 @@ export class Game {
     };
   }
 
+  /** Writes one metaball into the upload buffers. */
+  private putBlob(
+    n: number,
+    x: number,
+    y: number,
+    r: number,
+    tint: number,
+    defX = 0,
+    defY = 0,
+    phase = 0,
+  ) {
+    const o = n * 4;
+    this.blobBuf[o] = x;
+    this.blobBuf[o + 1] = y;
+    this.blobBuf[o + 2] = r;
+    this.blobBuf[o + 3] = tint;
+
+    const mag = Math.hypot(defX, defY);
+    this.blobDefBuf[o] = mag;
+    // Axis as cos/sin so the shader never pays for a trig call per blob.
+    this.blobDefBuf[o + 1] = mag > 1e-4 ? defX / mag : 1;
+    this.blobDefBuf[o + 2] = mag > 1e-4 ? defY / mag : 0;
+    this.blobDefBuf[o + 3] = phase;
+  }
+
   buildFrame(): RenderFrame {
     const view = this.viewH;
     this.blobBuf.fill(0);
+    this.blobDefBuf.fill(0);
 
     let n = 0;
+    let maxR = 0;
     for (const b of this.blobs.blobs) {
       if (n >= MAX_BLOBS) break;
-      const o = n * 4;
-      this.blobBuf[o] = b.x;
-      this.blobBuf[o + 1] = b.y;
       // Blobs on grace flicker thinner, which reads as "hurt" without a HUD.
-      this.blobBuf[o + 2] = b.r * (b.grace > 0 ? 0.9 + 0.1 * Math.sin(this.time * 45) : 1);
-      this.blobBuf[o + 3] = 0;
-      n++;
+      const r = b.r * (b.grace > 0 ? 0.9 + 0.1 * Math.sin(this.time * 45) : 1);
+      maxR = Math.max(maxR, r);
+      this.putBlob(n++, b.x, b.y, r, 0, b.defX, b.defY, b.phase);
     }
 
     // Droplets ride in the same field so absorbing one is a real fluid merge.
@@ -375,12 +429,15 @@ export class Game {
     for (const d of this.world.droplets) {
       if (n >= MAX_BLOBS) break;
       if (d.y < top || d.y > bot) continue;
-      const o = n * 4;
-      this.blobBuf[o] = d.x;
-      this.blobBuf[o + 1] = d.y;
-      this.blobBuf[o + 2] = CFG.droplet.radius * (1 - d.fade);
-      this.blobBuf[o + 3] = 1;
-      n++;
+      this.putBlob(n++, d.x, d.y, CFG.droplet.radius * (1 - d.fade), 1);
+    }
+
+    // Satellite spray shares the field, so droplets thrown off a split flow
+    // back into the mass instead of popping out of existence.
+    for (const d of this.splash.drops) {
+      if (n >= MAX_BLOBS) break;
+      if (d.y < top || d.y > bot || d.r < 0.05) continue;
+      this.putBlob(n++, d.x, d.y, d.r, d.tint);
     }
 
     this.world.collectPrims(this.camY, view, this.prims, MAX_PRIMS);
@@ -407,6 +464,13 @@ export class Game {
       speedN: this.speedN,
       blobCount: n,
       blobs: this.blobBuf,
+      blobDef: this.blobDefBuf,
+      // Surface tension scales with the mass: a heavy blob bridges and necks
+      // across a wide gap, six small ones stay crisply separate.
+      smoothK: Math.max(
+        CFG.goo.smoothMin,
+        Math.min(CFG.goo.smoothMax, maxR * CFG.goo.smoothScale),
+      ),
       primCount: this.prims.length,
       prims: this.primBuf,
       primMeta: this.primMetaBuf,

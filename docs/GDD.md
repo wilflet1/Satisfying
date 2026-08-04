@@ -40,6 +40,34 @@ Every 1.5–3 seconds the channel presents an obstacle that demands a topology d
 
 **Spacing rule:** obstacles are spaced in *seconds of channel*, not world units (the run triples in speed), with extra runway proportional to how much the next obstacle changes the required blob count. A door followed immediately by a 4-slit gate isn't hard, it's unplayable.
 
+## The goo layer (what makes it *satisfying*, not just readable)
+
+The reference is the "oddly satisfying" genre — slime, ferrofluid, kinetic sand —
+where the pleasure comes from **surface tension**: things necking, stretching,
+wobbling and resolving. A first pass got this wrong by rendering rigid circles
+that snapped to formation slots; it was legible and completely inert. Four
+things carry the liquid read, and all of them are visual only — collision stays
+circular, so deformation can never make a gate unfair:
+
+1. **Domain warp.** The sample point is displaced by a slow sine field before
+   distance is measured, so silhouettes ripple and — because it is evaluated per
+   sample — the shading normals crawl with them.
+2. **Soft-body deformation.** Each blob carries a stretch vector driven by its
+   motion through an *underdamped* spring (ζ ≈ 0.38). The centre stays
+   responsive so the game is still playable; only the surface lags and
+   overshoots. Responsive core plus laggy skin is the whole trick. Stretch is
+   area-preserving, so squashing never appears to change your mass.
+3. **Mass-scaled surface tension.** The smooth-union radius tracks the largest
+   blob, so a heavy mass bridges and necks across a wide gap while six small
+   ones stay crisply separate.
+4. **Satellite spray.** Splits, fusions and impacts throw droplets that share
+   the same metaball field, so they flow back into the mass rather than popping
+   out. Real liquid never separates cleanly; without these a split reads as one
+   shape becoming two shapes rather than something tearing.
+
+Plus a beat of slow motion on every fusion, so the coalescence is watched rather
+than glimpsed.
+
 ## Art direction
 
 Liquid chrome and iridescent oil-slick against a near-black tunnel. Everything is one raymarched 2D SDF field: blobs union with a polynomial smooth-min so merging is literally the renderer's native operation, shaded with a procedural studio env-map, Fresnel iridescence, and screen-space refraction of the parallax background. Obstacles are matte obsidian with emissive danger edges (cyan = slit, amber = door, red = saw).
