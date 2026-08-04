@@ -69,8 +69,7 @@ export class Game {
   private readonly fixedSeed: number | null;
 
   constructor(readonly renderer: Renderer) {
-    const stored = Number(localStorage.getItem(BEST_KEY) ?? 0);
-    this.best = Number.isFinite(stored) ? stored : 0;
+    this.best = loadBest();
     const s = Number(new URLSearchParams(location.search).get('seed'));
     this.fixedSeed = Number.isFinite(s) && s !== 0 ? s : null;
   }
@@ -420,6 +419,19 @@ export class Game {
       shakeX: Math.sin(a * 1.7) * sh * 0.012,
       shakeY: Math.cos(a * 2.3) * sh * 0.012,
     };
+  }
+}
+
+/**
+ * Reading localStorage *throws* in a sandboxed iframe, not just returns null,
+ * so an unguarded read takes the whole game down before the first frame.
+ */
+function loadBest(): number {
+  try {
+    const stored = Number(localStorage.getItem(BEST_KEY) ?? 0);
+    return Number.isFinite(stored) ? stored : 0;
+  } catch {
+    return 0;
   }
 }
 

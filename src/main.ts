@@ -3,6 +3,15 @@ import { attachInput } from './input';
 import { Renderer } from './renderer';
 import { Ui } from './ui';
 
+// When embedded, the host owns <head> and there may be no viewport meta — an
+// unscaled phone would render this at desktop width. Ensure one exists.
+if (!document.querySelector('meta[name="viewport"]')) {
+  const m = document.createElement('meta');
+  m.name = 'viewport';
+  m.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+  document.head.appendChild(m);
+}
+
 const canvas = document.getElementById('gl') as HTMLCanvasElement;
 
 let renderer: Renderer;

@@ -7,7 +7,8 @@
     "build": "vite build",
     "preview": "vite preview --port 4173",
     "typecheck": "tsc --noEmit",
-    "playtest": "node scripts/playtest.mjs"
+    "playtest": "node scripts/playtest.mjs",
+    "artifact": "npm run build && node scripts/bundle-artifact.mjs"
   },
   "repository": {
     "type": "git",
