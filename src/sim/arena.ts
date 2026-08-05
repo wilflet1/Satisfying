@@ -1,4 +1,4 @@
-import { ARENA, massToRadius, speedFor } from './config.ts';
+import { ARENA, MASS_UNIT, massToRadius, speedFor } from './config.ts';
 
 export type Phase = 'lobby' | 'countdown' | 'live' | 'over';
 
@@ -502,8 +502,11 @@ export class Arena {
 
   private tryDash(p: Player) {
     if (p.cooldown > 0) return;
-    const spend = Math.min(p.mass * ARENA.dash.massFraction, ARENA.dash.maxMass);
-    if (spend < ARENA.dash.minMass || p.mass - spend < ARENA.blob.minMass) return;
+    // Flat price in size points: one normally, two once you are big enough to
+    // throw the heavier shot.
+    const big = p.mass / MASS_UNIT >= ARENA.dash.bigAtSize;
+    const spend = big ? ARENA.dash.bigCost : ARENA.dash.cost;
+    if (p.mass - spend < ARENA.blob.minMass) return;
 
     p.mass -= spend;
     p.r = massToRadius(p.mass);

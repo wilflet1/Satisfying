@@ -15,7 +15,7 @@
  */
 import { Arena } from '../src/sim/arena.ts';
 import { assignSkills, driveBot } from '../src/sim/bots.ts';
-import { ARENA } from '../src/sim/config.ts';
+import { ARENA, MASS_UNIT, massToSize } from '../src/sim/config.ts';
 
 const dt = 1 / ARENA.tickRate;
 
@@ -151,7 +151,7 @@ function checkOwnerLock() {
   a.chunks.push({
     id: 9999, owner: 'thief', hue: thief.hue,
     x: 0, y: 0, vx: 0, vy: 0,
-    mass: ARENA.blob.startMass * ARENA.dash.massFraction,
+    mass: ARENA.dash.cost,
     r: 3, life: 1, armed: -1,
   });
   a.step(dt);
@@ -162,6 +162,18 @@ function checkOwnerLock() {
   const lost = thief.damage;
   const mine = a.pellets.filter((g) => g.from === 'victim');
   const spilled = mine.reduce((t, g) => t + g.mass, 0);
+  // Guard the setup itself. This check quietly passed against a NaN chunk mass
+  // after a config rename: with no pellets produced, "every pellet is locked"
+  // is vacuously true and every NaN comparison is false, so a broken test
+  // reported success. Assertions about an event that never happened are worse
+  // than no assertions at all.
+  if (!Number.isFinite(lost) || lost <= 0) {
+    return { setupFailed: `no damage was dealt (lost=${lost})` };
+  }
+  if (mine.length === 0) {
+    return { setupFailed: 'the hit produced no spilled goo at all' };
+  }
+
   const out = {
     lost: Math.round(lost),
     spilled: Math.round(spilled),
@@ -193,6 +205,33 @@ function checkOwnerLock() {
 const lock = checkOwnerLock();
 console.log(`owner lock: ${JSON.stringify(lock)}`);
 
+/** A shot costs one point of size, or two once you are big. */
+function checkShotCost() {
+  const a = new Arena(7);
+  const p = a.addPlayer('p', 'P', false);
+  a.addPlayer('q', 'Q', true);
+  a.startRound();
+  while (a.phase !== 'live') a.step(dt);
+
+  const fire = (mass) => {
+    p.mass = mass;
+    p.cooldown = 0;
+    p.input.dash = true;
+    const before = massToSize(p.mass);
+    a.step(dt);
+    p.input.dash = false;
+    return before - massToSize(p.mass);
+  };
+
+  return {
+    normal: fire(MASS_UNIT * 40),
+    big: fire(MASS_UNIT * (ARENA.dash.bigAtSize + 5)),
+  };
+}
+
+const shot = checkShotCost();
+console.log(`shot cost: ${JSON.stringify(shot)}`);
+
 // --- bots only: does the fight work at all? --------------------------------
 const brawls = [1, 2, 3].map((seed) => playRound(seed, 6));
 console.log('bots only:');
@@ -217,7 +256,12 @@ const totalKills = brawls.reduce((a, r) => a + r.kills, 0);
 
 for (const r of [...brawls, ...novices]) if (r.nan) fails.push('NaN leaked into the simulation');
 
-if (!lock.locked) fails.push('spilled goo was not locked to the player it came from');
+if (lock.setupFailed) fails.push(`owner-lock check could not run: ${lock.setupFailed}`);
+if (shot.normal !== 1) fails.push(`a normal shot cost ${shot.normal} size, expected 1`);
+if (shot.big !== 2) fails.push(`a big blob's shot cost ${shot.big} size, expected 2`);
+if (!lock.setupFailed && !lock.locked) {
+  fails.push('spilled goo was not locked to the player it came from');
+}
 if (lock.victimTookItImmediately) fails.push('victim re-absorbed their own spill instantly');
 if (lock.thiefCouldTakeIt === false) fails.push('nobody else could take the spill either — lock is too broad');
 // Half of what the victim loses should be lying on the floor.

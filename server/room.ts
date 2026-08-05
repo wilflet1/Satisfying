@@ -1,6 +1,6 @@
 import { Arena } from '../src/sim/arena.ts';
 import { assignSkills, driveBot } from '../src/sim/bots.ts';
-import { ARENA } from '../src/sim/config.ts';
+import { ARENA, massToSize } from '../src/sim/config.ts';
 import {
   PROTOCOL_VERSION,
   round1,
@@ -193,7 +193,9 @@ export class Room {
         Math.round(p.aimY * 100),
         p.alive ? 1 : 0,
         p.kills,
-        Math.round(p.mass),
+        // Sent as displayed size, not raw area: it is what the HUD shows and
+        // it is a smaller number on the wire.
+        massToSize(p.mass),
       ]);
     }
     const C: ChunkWire[] = a.chunks.map((c) => [

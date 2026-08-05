@@ -27,6 +27,7 @@ export interface View {
   /** Your own blob, locally predicted. Null when dead or not yet spawned. */
   me: ViewBlob | null;
   alive: boolean;
+  /** Size as shown to the player, not internal mass. */
   mass: number;
   kills: number;
   /** Seconds of spawn protection left, and seconds until respawn when dead. */

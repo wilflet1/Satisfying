@@ -7,6 +7,22 @@
 
 const area = (r: number) => Math.PI * r * r;
 
+const START_MASS = area(11);
+
+/**
+ * Mass per displayed point of size, chosen so a fresh blob reads as 40.
+ *
+ * The internal quantity is an area, which is what the physics and the radius
+ * need, but showing it raw meant the HUD said "380" and a shot took 42 off it.
+ * That looks ruinous even when it isn't. Size is the number the player actually
+ * reasons about, so it is the number the costs are denominated in: a shot costs
+ * exactly one point, and two once you are big.
+ */
+export const MASS_UNIT = START_MASS / 40;
+
+/** Internal mass to the number shown on screen. */
+export const massToSize = (m: number) => Math.max(0, Math.round(m / MASS_UNIT));
+
 export const ARENA = {
   /** Server ticks per second. Clients render at their own rate and interpolate. */
   tickRate: 20,
@@ -34,7 +50,7 @@ export const ARENA = {
   },
 
   blob: {
-    startMass: area(11),
+    startMass: START_MASS,
     /** Eliminated below this. */
     minMass: area(3.4),
     maxMass: area(30),
@@ -74,15 +90,17 @@ export const ARENA = {
   /** The attack: fire a chunk of yourself. */
   dash: {
     /**
-     * Share of your mass spent per shot. Low, because the aim stick auto-fires
-     * while held: at 20% a held trigger melted you in three shots and shooting
-     * felt like self-harm. Damage is kept meaningful by raising `steal` rather
-     * than by making the shot expensive.
+     * A shot costs a flat one point of size, or two once you are big — not a
+     * share of your mass. A percentage punishes exactly the players who are
+     * already losing: the smaller you got, the less each shot did, so falling
+     * behind was self-reinforcing and firing felt like bleeding out. A flat
+     * cost means a small blob and a large one both pay something they can
+     * afford, and shooting stops being a resource you agonise over.
      */
-    massFraction: 0.11,
-    maxMass: area(7),
-    /** A shot needs at least this much mass available to fire. */
-    minMass: area(2.6),
+    cost: MASS_UNIT,
+    bigCost: MASS_UNIT * 2,
+    /** Size at which shots become the bigger, harder-hitting kind. */
+    bigAtSize: 60,
     speed: 300,
     /** Backward recoil applied to the shooter. */
     recoil: 62,
@@ -93,11 +111,15 @@ export const ARENA = {
     armTime: 0.22,
     drag: 1.5,
     /**
-     * Mass torn off the victim, as a multiple of the chunk's own mass. Raised
-     * to compensate for the smaller shot, so a hit still lands hard while
-     * firing stays cheap.
+     * Mass torn off the victim, as a multiple of the chunk's own mass.
+     *
+     * Damage had to be decoupled from cost for a flat price to work at all:
+     * with cost and damage both proportional to the chunk, making shots cheap
+     * made them harmless, and a kill needed twenty hits. At 4x, a normal shot
+     * takes four points off someone and a big one takes eight — so roughly ten
+     * clean hits finish a full-size blob, and being big genuinely hits harder.
      */
-    steal: 2.2,
+    steal: 4,
     /**
      * Share of stolen mass credited straight to the shooter; the rest scatters.
      * This is not a detail — with everything scattered, the victim is standing

@@ -1,6 +1,6 @@
 import { Arena } from '../sim/arena.ts';
 import { assignSkills, driveBot } from '../sim/bots.ts';
-import { ARENA } from '../sim/config.ts';
+import { ARENA, massToSize } from '../sim/config.ts';
 import type { Roster, View, ViewBlob, ViewEvent } from './client.ts';
 
 /**
@@ -135,7 +135,7 @@ export class LocalGame {
       pellets: this.arena.pellets.map((g) => blob(String(g.id), g.x, g.y, g.r, g.hue)),
       me: me && me.alive ? blob(me.id, me.x, me.y, me.r, me.hue) : null,
       alive: !!me?.alive,
-      mass: me?.mass ?? 0,
+      mass: massToSize(me?.mass ?? 0),
       kills: me?.kills ?? 0,
       protect: me?.protect ?? 0,
       respawnIn: me?.respawnIn ?? 0,
