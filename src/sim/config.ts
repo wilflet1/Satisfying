@@ -69,17 +69,17 @@ export const ARENA = {
     /** Seconds dead before respawning, and the share of a full blob you return with. */
     respawnDelay: 2.5,
     respawnMass: 0.75,
-    /**
-     * Seconds after being hit during which you cannot absorb pellets. Stops the
-     * victim from instantly vacuuming the goo that was just knocked out of them.
-     */
-    absorbLock: 0.75,
   },
 
   /** The attack: fire a chunk of yourself. */
   dash: {
-    /** Share of your mass spent per shot, and its hard ceiling. */
-    massFraction: 0.2,
+    /**
+     * Share of your mass spent per shot. Low, because the aim stick auto-fires
+     * while held: at 20% a held trigger melted you in three shots and shooting
+     * felt like self-harm. Damage is kept meaningful by raising `steal` rather
+     * than by making the shot expensive.
+     */
+    massFraction: 0.11,
     maxMass: area(7),
     /** A shot needs at least this much mass available to fire. */
     minMass: area(2.6),
@@ -92,15 +92,19 @@ export const ARENA = {
     /** Chunks can't hit their owner for this long after firing. */
     armTime: 0.22,
     drag: 1.5,
-    /** Mass torn off the victim, as a multiple of the chunk's own mass. */
-    steal: 1.5,
+    /**
+     * Mass torn off the victim, as a multiple of the chunk's own mass. Raised
+     * to compensate for the smaller shot, so a hit still lands hard while
+     * firing stays cheap.
+     */
+    steal: 2.2,
     /**
      * Share of stolen mass credited straight to the shooter; the rest scatters.
      * This is not a detail — with everything scattered, the victim is standing
      * at the impact point and simply re-eats what was torn off them, so a clean
      * hit nets zero and rounds stalemate with nobody able to finish anyone.
      */
-    directShare: 0.6,
+    directShare: 0.5,
   },
 
   /** Free goo lying in the arena — the currency everything converts into. */
@@ -121,6 +125,15 @@ export const ARENA = {
     ambientMass: area(2.4),
     /** A blob must be this much bigger than a pellet to absorb it. */
     absorbRatio: 1.05,
+    /**
+     * Seconds during which goo knocked out of a player cannot be re-absorbed by
+     * that same player. Anyone else may take it immediately.
+     *
+     * This is what turns a hit into a contested moment: the mass is lying there
+     * in the victim's own colour, they can see it, and they have to survive
+     * three seconds — or drive the attacker off — before they can have it back.
+     */
+    ownerLock: 3,
   },
 
   /** Swipe up: briefly drag nearby free goo toward you. */

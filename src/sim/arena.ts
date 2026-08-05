@@ -44,8 +44,6 @@ export interface Player {
   grace: number;
   pullTimer: number;
   pullCooldown: number;
-  /** Seconds left where this blob cannot pick pellets up. */
-  absorbLock: number;
   /** Seconds of total invulnerability remaining (spawn protection). */
   protect: number;
   /** Seconds until this blob respawns. Only meaningful while dead. */
@@ -87,6 +85,10 @@ export interface Pellet {
   mass: number;
   r: number;
   hue: number;
+  /** Player this was torn out of, if any. Empty for ambient and spent shots. */
+  from: string;
+  /** Seconds `from` must wait before they may re-absorb it. */
+  lock: number;
 }
 
 /** Things that happened this tick, drained by the server to notify clients. */
@@ -174,7 +176,6 @@ export class Arena {
       grace: 0,
       pullTimer: 0,
       pullCooldown: 0,
-      absorbLock: 0,
       protect: 0,
       respawnIn: 0,
       attackers: 0,
@@ -253,7 +254,6 @@ export class Arena {
     p.cooldown = 0;
     p.pullTimer = 0;
     p.pullCooldown = 0;
-    p.absorbLock = 0;
   }
 
   startRound() {
@@ -312,11 +312,26 @@ export class Arena {
       mass: ARENA.goo.ambientMass,
       r: massToRadius(ARENA.goo.ambientMass),
       hue: -1,
+      from: '',
+      lock: 0,
     });
   }
 
-  /** Break a quantity of mass into pellets — the universal "mass leaves a body". */
-  private scatter(x: number, y: number, mass: number, hue: number, shards?: number) {
+  /**
+   * Break a quantity of mass into pellets — the universal "mass leaves a body".
+   *
+   * @param from  Player the mass came out of. They can't re-absorb it for a
+   *   few seconds; everyone else can take it at once. Pass '' for mass that
+   *   isn't torn out of anyone (ambient goo, a shot that simply missed).
+   */
+  private scatter(
+    x: number,
+    y: number,
+    mass: number,
+    hue: number,
+    shards?: number,
+    from = '',
+  ) {
     const n = Math.max(1, shards ?? ARENA.goo.shardsPerHit);
     const each = mass / n;
     if (each <= 0) return;
@@ -333,6 +348,8 @@ export class Arena {
         mass: each,
         r: massToRadius(each),
         hue,
+        from,
+        lock: from ? ARENA.goo.ownerLock : 0,
       });
     }
   }
@@ -426,7 +443,6 @@ export class Arena {
       if (p.cooldown > 0) p.cooldown -= dt;
       if (p.pullCooldown > 0) p.pullCooldown -= dt;
       if (p.pullTimer > 0) p.pullTimer -= dt;
-      if (p.absorbLock > 0) p.absorbLock -= dt;
 
       const inp = p.input;
       const aim = Math.hypot(inp.aimX, inp.aimY);
@@ -536,6 +552,7 @@ export class Arena {
     const k = Math.exp(-ARENA.goo.drag * dt);
     const pullers = [...this.players.values()].filter((p) => p.alive && p.pullTimer > 0);
     for (const g of this.pellets) {
+      if (g.lock > 0) g.lock -= dt;
       for (const p of pullers) {
         const dx = p.x - g.x;
         const dy = p.y - g.y;
@@ -581,7 +598,6 @@ export class Arena {
           p.r = massToRadius(p.mass);
           p.grace = ARENA.blob.grace;
 
-          p.absorbLock = ARENA.blob.absorbLock;
 
           const shooter = this.players.get(c.owner);
           const direct = stolen * ARENA.dash.directShare;
@@ -591,10 +607,12 @@ export class Arena {
             shooter.r = massToRadius(shooter.mass);
           }
 
-          // The rest sprays free, so a hit still starts a scramble — but the
-          // shooter is paid immediately, which is what makes landing one feel
-          // like an accomplishment rather than a coin flip.
-          this.scatter(c.x, c.y, c.mass + stolen - (shooter ? direct : 0), c.hue);
+          // Half the torn mass lands on the floor in the victim's colour and is
+          // locked to them for a few seconds — visible, claimable by anyone
+          // else, and out of reach for the person it came from. The chunk that
+          // delivered the hit drops with it, unlocked.
+          this.scatter(c.x, c.y, stolen - (shooter ? direct : 0), p.hue, undefined, p.id);
+          this.scatter(c.x, c.y, c.mass, c.hue, 2);
           this.events.hits.push({
             x: c.x,
             y: c.y,
@@ -616,7 +634,9 @@ export class Arena {
       const g = this.pellets[i];
       for (const p of this.players.values()) {
         if (!p.alive) continue;
-        if (p.absorbLock > 0) continue;
+        // Your own spilled goo is off limits until its lock expires; anyone
+        // else may take it the instant it lands.
+        if (g.from === p.id && g.lock > 0) continue;
         if (p.r < g.r * ARENA.goo.absorbRatio) continue;
         const dx = p.x - g.x;
         const dy = p.y - g.y;
@@ -647,8 +667,9 @@ export class Arena {
   private kill(p: Player, by: string) {
     p.alive = false;
     p.respawnIn = ARENA.blob.respawnDelay;
-    // Everything they were carrying bursts into the arena.
-    this.scatter(p.x, p.y, Math.max(p.mass, ARENA.blob.minMass), p.hue, 7);
+    // Everything they were carrying bursts into the arena, locked to them so
+    // they can't respawn straight onto their own corpse and undo the kill.
+    this.scatter(p.x, p.y, Math.max(p.mass, ARENA.blob.minMass), p.hue, 7, p.id);
     this.events.deaths.push({ x: p.x, y: p.y, hue: p.hue, id: p.id, by });
     const killer = this.players.get(by);
     if (killer && killer !== p) killer.kills++;

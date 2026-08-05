@@ -132,6 +132,67 @@ function playRound(seed, botCount, { novice = false } = {}) {
   return s;
 }
 
+// --- mechanics: spilled goo belongs to nobody except its former owner ------
+// Directly asserted rather than inferred from aggregate balance, because the
+// rule is invisible in the totals: mass still moves, hits still land, and the
+// numbers look identical whether or not the lock is honoured.
+function checkOwnerLock() {
+  const a = new Arena(99);
+  const victim = a.addPlayer('victim', 'V', false);
+  const thief = a.addPlayer('thief', 'T', false);
+  a.startRound();
+  while (a.phase !== 'live') a.step(dt);
+  victim.protect = 0;
+  thief.protect = 0;
+
+  // Park them apart, then land one chunk squarely on the victim.
+  victim.x = 0; victim.y = 0; victim.vx = 0; victim.vy = 0;
+  thief.x = -60; thief.y = 0;
+  a.chunks.push({
+    id: 9999, owner: 'thief', hue: thief.hue,
+    x: 0, y: 0, vx: 0, vy: 0,
+    mass: ARENA.blob.startMass * ARENA.dash.massFraction,
+    r: 3, life: 1, armed: -1,
+  });
+  a.step(dt);
+
+  // Read the loss off the shooter's damage tally rather than differencing the
+  // victim's mass: the victim can absorb pellets in the very same tick, which
+  // masks part of what was taken and makes the difference read low.
+  const lost = thief.damage;
+  const mine = a.pellets.filter((g) => g.from === 'victim');
+  const spilled = mine.reduce((t, g) => t + g.mass, 0);
+  const out = {
+    lost: Math.round(lost),
+    spilled: Math.round(spilled),
+    halfOfLoss: Math.round(lost / 2),
+    locked: mine.every((g) => g.lock > 0),
+    lockSeconds: mine[0] ? +mine[0].lock.toFixed(1) : 0,
+  };
+
+  // The victim standing on their own spill must not be able to take it back...
+  const target = mine[0];
+  if (target) {
+    victim.x = target.x; victim.y = target.y;
+    const massAt = victim.mass;
+    a.step(dt);
+    out.victimTookItImmediately = victim.mass > massAt + 0.01;
+
+    // ...but anyone else may, the instant it lands.
+    const survivor = a.pellets.find((g) => g.from === 'victim');
+    if (survivor) {
+      thief.x = survivor.x; thief.y = survivor.y;
+      const tMass = thief.mass;
+      a.step(dt);
+      out.thiefCouldTakeIt = thief.mass > tMass + 0.01;
+    }
+  }
+  return out;
+}
+
+const lock = checkOwnerLock();
+console.log(`owner lock: ${JSON.stringify(lock)}`);
+
 // --- bots only: does the fight work at all? --------------------------------
 const brawls = [1, 2, 3].map((seed) => playRound(seed, 6));
 console.log('bots only:');
@@ -155,6 +216,14 @@ const totalHits = brawls.reduce((a, r) => a + r.hits, 0);
 const totalKills = brawls.reduce((a, r) => a + r.kills, 0);
 
 for (const r of [...brawls, ...novices]) if (r.nan) fails.push('NaN leaked into the simulation');
+
+if (!lock.locked) fails.push('spilled goo was not locked to the player it came from');
+if (lock.victimTookItImmediately) fails.push('victim re-absorbed their own spill instantly');
+if (lock.thiefCouldTakeIt === false) fails.push('nobody else could take the spill either — lock is too broad');
+// Half of what the victim loses should be lying on the floor.
+if (Math.abs(lock.spilled - lock.halfOfLoss) > Math.max(2, lock.halfOfLoss * 0.15)) {
+  fails.push(`${lock.spilled} of ${lock.lost} lost mass hit the floor; expected about half (${lock.halfOfLoss})`);
+}
 if (totalDashes < 60) fails.push(`bots barely attacked (${totalDashes} dashes)`);
 if (totalHits < 25) fails.push(`almost nothing connected (${totalHits} hits)`);
 if (totalKills < 6) fails.push(`only ${totalKills} kills — no stakes`);
