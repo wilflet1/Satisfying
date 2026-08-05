@@ -25,9 +25,10 @@ npm run server          # http://localhost:8787
 Open the URL in two tabs (or two phones on the same network) to fight someone
 real. Add `?offline=1` to play the same game against bots with no server.
 
-Controls: **left thumb** moves, **right thumb** aims and fires on release, and
-the **PULL** button drags nearby goo toward you. On desktop: WASD, mouse to aim,
-click to fire, `E` to pull.
+Controls: twin analog sticks. **Left stick** moves, **right stick** aims — and
+pushing the right stick *past the dashed ring* fires. **PULL** drags nearby
+loose goo toward you so you can grow back after a fight. On desktop: WASD, mouse
+aims, click fires, `E` pulls.
 
 ## Deploy it
 

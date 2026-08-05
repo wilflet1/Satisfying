@@ -1,13 +1,17 @@
 /**
- * Twin floating sticks.
+ * Twin analog sticks. Left moves, right aims — and pushing the right stick past
+ * the outer ring fires.
  *
- * Left half of the screen moves, right half aims and fires. Both sticks appear
- * wherever the thumb lands rather than sitting in a fixed corner — fixed sticks
- * demand the player look down to find them, and in a game decided by half a
- * second of positioning that is the difference between playing and fumbling.
+ * The previous scheme had the right thumb hold-to-aim and release-to-fire,
+ * which is self-contradictory: holding and tapping are the same gesture at
+ * different speeds, so there was no way to line a shot up without taking it,
+ * and no way to fire without aiming first.
  *
- * Firing happens on *release* of the aim stick, so you can line a shot up and
- * hold it. A quick tap fires immediately along your existing aim.
+ * Distance solves it, because it is a second axis the thumb already controls:
+ * nudge the stick and you are only turning, push it to the edge and you are
+ * shooting. There is no mode to remember and nothing to reach for, and the
+ * transition is continuous, so a player discovers firing by pushing harder —
+ * which is what everyone tries first anyway.
  */
 
 export interface Sticks {
@@ -15,6 +19,10 @@ export interface Sticks {
   moveY: number;
   aimX: number;
   aimY: number;
+  /** How far the aim stick is pushed, 0..1. */
+  aimPower: number;
+  /** True while the aim stick is past the fire threshold. */
+  firing: boolean;
   /** Screen-space state for drawing the stick overlays. */
   visual: {
     move: { active: boolean; ox: number; oy: number; x: number; y: number };
@@ -31,7 +39,14 @@ export interface InputHandlers {
 
 const DEAD_ZONE = 6;
 const MAX_RADIUS = 62;
-const TAP_MS = 220;
+/**
+ * Fraction of the stick's travel at which it starts shooting. Set well short of
+ * the rim: a thumb cannot reliably reach an exact edge, and a threshold you can
+ * only hit by accident is worse than no threshold.
+ */
+const FIRE_AT = 0.7;
+
+export const FIRE_THRESHOLD = FIRE_AT;
 
 export function attachInput(target: HTMLElement, h: InputHandlers) {
   const state: Sticks = {
@@ -39,6 +54,8 @@ export function attachInput(target: HTMLElement, h: InputHandlers) {
     moveY: 0,
     aimX: 1,
     aimY: 0,
+    aimPower: 0,
+    firing: false,
     visual: {
       move: { active: false, ox: 0, oy: 0, x: 0, y: 0 },
       aim: { active: false, ox: 0, oy: 0, x: 0, y: 0 },
@@ -47,14 +64,21 @@ export function attachInput(target: HTMLElement, h: InputHandlers) {
 
   let movePointer: number | null = null;
   let aimPointer: number | null = null;
-  let aimDownAt = 0;
-  let aimMoved = false;
+  /** True once the player has used the aim stick at all. */
+  let everAimed = false;
 
   const half = () => target.clientWidth / 2;
 
   const onDown = (e: PointerEvent) => {
     if (h.confirm()) return;
-    target.setPointerCapture?.(e.pointerId);
+    try {
+      // Throws for synthetic or already-released pointers; capture is a nicety
+      // that keeps a drag alive off the edge of the element, never a
+      // requirement, so failing to get it must not break input entirely.
+      target.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* not capturable */
+    }
     const left = e.clientX < half();
     if (left && movePointer === null) {
       movePointer = e.pointerId;
@@ -64,8 +88,6 @@ export function attachInput(target: HTMLElement, h: InputHandlers) {
       v.oy = v.y = e.clientY;
     } else if (!left && aimPointer === null) {
       aimPointer = e.pointerId;
-      aimDownAt = performance.now();
-      aimMoved = false;
       const v = state.visual.aim;
       v.active = true;
       v.ox = v.x = e.clientX;
@@ -86,11 +108,12 @@ export function attachInput(target: HTMLElement, h: InputHandlers) {
       v.x = e.clientX;
       v.y = e.clientY;
       const [x, y, len] = vector(v.ox, v.oy, e.clientX, e.clientY);
+      state.aimPower = Math.min(1, len / MAX_RADIUS);
       if (len > DEAD_ZONE) {
-        aimMoved = true;
         const m = Math.hypot(x, y) || 1;
         state.aimX = x / m;
         state.aimY = y / m;
+        everAimed = true;
       }
     }
   };
@@ -104,9 +127,9 @@ export function attachInput(target: HTMLElement, h: InputHandlers) {
     } else if (e.pointerId === aimPointer) {
       aimPointer = null;
       state.visual.aim.active = false;
-      const quick = performance.now() - aimDownAt < TAP_MS;
-      // Either a deliberate aimed shot or a snap tap along the current aim.
-      if (aimMoved || quick) h.dash();
+      // Aim direction persists on release — you keep pointing where you left
+      // off, so letting go stops the shooting without losing the aim.
+      state.aimPower = 0;
     }
   };
 
@@ -147,7 +170,7 @@ export function attachInput(target: HTMLElement, h: InputHandlers) {
   });
 
   /** Folds keyboard/mouse into the same stick state, once per frame. */
-  function sample(): Sticks {
+  function sample(dt = 0): Sticks {
     const kx = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
     const ky = (keys.has('s') || keys.has('arrowdown') ? 1 : 0) - (keys.has('w') || keys.has('arrowup') ? 1 : 0);
     if (kx || ky) {
@@ -168,7 +191,21 @@ export function attachInput(target: HTMLElement, h: InputHandlers) {
         state.aimX = dx / m;
         state.aimY = -dy / m;
       }
+    } else if (!everAimed && aimPointer === null) {
+      // Until the aim stick is touched for the first time, point where you are
+      // going. A brand new player is never left aiming at nothing.
+      const mv = Math.hypot(state.moveX, state.moveY);
+      if (mv > 0.15) {
+        const k = Math.min(1, dt * 9);
+        state.aimX += (state.moveX / mv - state.aimX) * k;
+        state.aimY += (state.moveY / mv - state.aimY) * k;
+        const am = Math.hypot(state.aimX, state.aimY) || 1;
+        state.aimX /= am;
+        state.aimY /= am;
+      }
     }
+
+    state.firing = state.aimPower >= FIRE_AT;
     return state;
   }
 

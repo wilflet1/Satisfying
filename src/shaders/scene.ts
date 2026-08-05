@@ -29,9 +29,16 @@ uniform int   uBlobCount;
 uniform vec4  uBlobs[${MAX_BLOBS}];    // xy = centre, z = radius, w = hue index (-1 = neutral)
 uniform vec4  uBlobDef[${MAX_BLOBS}];  // x = stretch, yz = axis (cos,sin), w = unused
 
+/**
+ * Screen to world. vUv.y is 0 at the *bottom* of the framebuffer and 1 at the
+ * top, and world y grows upward, so the two agree and y must not be flipped
+ * here. Negating it renders the whole arena upside down, which shows up as
+ * "movement is inverted" — the blob really does move up, the view just draws
+ * it going down.
+ */
 vec2 worldFromUv(vec2 uv){
   float viewH = uViewW * uRes.y / uRes.x;
-  return uCam + vec2((uv.x - 0.5) * uViewW, (0.5 - uv.y) * viewH);
+  return uCam + vec2((uv.x - 0.5) * uViewW, (uv.y - 0.5) * viewH);
 }
 
 float hash21(vec2 p){
@@ -210,7 +217,9 @@ void main(){
   // A shooter you cannot aim is not a game. This draws where the shot will go:
   // a dotted line, because a solid one reads as a laser that already fired.
   if (dot(uAim.zw, uAim.zw) > 0.0001){
-    vec2 q = p - uAim.xy;
+    // Start the guide just outside the blob, so the dashes read as a
+    // trajectory leaving you rather than a line drawn across you.
+    vec2 q = p - (uAim.xy + uAim.zw * (uShield.z + 2.0));
     float along = dot(q, uAim.zw);
     float side = abs(q.x * uAim.w - q.y * uAim.z);
     float len = 78.0;

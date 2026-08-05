@@ -188,7 +188,14 @@ export class Renderer {
    * performance on mobile — so tests sample the offscreen scene target, which
    * persists, rather than making every player pay for the check.
    */
-  debugSampleScene(step = 6): { lit: number; peak: number; samples: number } {
+  debugSampleScene(step = 6): {
+    lit: number;
+    peak: number;
+    samples: number;
+    /** Brightness-weighted centroid in 0..1 buffer coords, y measured from the bottom. */
+    cx: number;
+    cy: number;
+  } {
     const gl = this.gl;
     const { w, h } = this.sceneTarget;
     // The scene target is half-float when the device supports it, and reading a
@@ -206,16 +213,31 @@ export class Renderer {
     let lit = 0;
     let peak = 0;
     let samples = 0;
+    let sx = 0;
+    let sy = 0;
+    let sw = 0;
     for (let y = 0; y < h; y += step) {
       for (let x = 0; x < w; x += step) {
         const i = (y * w + x) * 4;
         const l = (buf[i] + buf[i + 1] + buf[i + 2]) * scale;
         if (l > 0.09) lit++;
         if (l > peak) peak = l;
+        // Weight the centroid by brightness above the floor level, so it tracks
+        // the bright bodies rather than the dim background.
+        const wgt = Math.max(0, l - 0.2);
+        sx += (x / w) * wgt;
+        sy += (y / h) * wgt;
+        sw += wgt;
         samples++;
       }
     }
-    return { lit, peak: +peak.toFixed(3), samples };
+    return {
+      lit,
+      peak: +peak.toFixed(3),
+      samples,
+      cx: sw > 0 ? +(sx / sw).toFixed(3) : 0.5,
+      cy: sw > 0 ? +(sy / sw).toFixed(3) : 0.5,
+    };
   }
 
   private drawQuad() {

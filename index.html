@@ -175,23 +175,46 @@
         text-transform: uppercase;
       }
 
-      #pull-btn {
+      #actions {
         position: absolute;
-        right: calc(env(safe-area-inset-right) + 22px);
-        bottom: calc(env(safe-area-inset-bottom) + 26px);
-        width: 62px;
-        height: 62px;
-        border-radius: 99px;
-        border: 2px solid rgba(41, 224, 255, 0.5);
-        background: rgba(41, 224, 255, 0.1);
-        color: var(--ink);
-        font-size: 10px;
-        letter-spacing: 0.14em;
+        right: calc(env(safe-area-inset-right) + 16px);
+        top: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+      }
+      #actions button {
         pointer-events: auto;
         touch-action: none;
+        border-radius: 99px;
+        color: var(--ink);
+        font-family: inherit;
+        display: grid;
+        place-items: center;
+      }
+      #pull-btn {
+        width: 64px;
+        height: 64px;
+        border: 2px solid rgba(41, 224, 255, 0.55);
+        background: rgba(41, 224, 255, 0.12);
+        gap: 1px;
+      }
+      #pull-btn .glyph {
+        font-size: 17px;
+        line-height: 1;
+        color: var(--cyan);
+      }
+      #pull-btn .label {
+        font-size: 8px;
+        letter-spacing: 0.14em;
+        color: var(--dim);
       }
       #pull-btn:active {
-        background: rgba(41, 224, 255, 0.3);
+        background: rgba(41, 224, 255, 0.34);
+      }
+      #pull-btn.cooling {
+        opacity: 0.35;
       }
 
       .stick {
@@ -215,6 +238,23 @@
         height: 52px;
         margin: -26px 0 0 -26px;
         background: rgba(223, 241, 255, 0.24);
+      }
+      /* The fire threshold, drawn as the ring you push past. */
+      #s-aim-base::after {
+        content: "";
+        position: absolute;
+        inset: 15%;
+        border-radius: 99px;
+        border: 1.5px dashed rgba(255, 160, 43, 0.5);
+      }
+      #s-aim-base.armed,
+      #s-aim-base.armed::after {
+        border-color: rgba(255, 176, 60, 0.95);
+        box-shadow: 0 0 22px rgba(255, 150, 40, 0.55);
+      }
+      #s-aim-nub.armed {
+        background: rgba(255, 176, 60, 0.85);
+        box-shadow: 0 0 22px rgba(255, 150, 40, 0.7);
       }
 
       #menu {
@@ -288,6 +328,11 @@
       .keys b {
         color: var(--ink);
       }
+      .keys .sub {
+        margin-top: 4px;
+        opacity: 0.65;
+        font-size: 11px;
+      }
 
       #boot {
         position: fixed;
@@ -340,11 +385,16 @@
       <div id="status">connecting…</div>
       <div id="banner"></div>
       <div id="coach">
-        <div><b>Left</b> thumb moves</div>
-        <div><b>Right</b> thumb aims — let go to fire</div>
+        <div><b>Left stick</b> moves &nbsp;·&nbsp; <b>right stick</b> aims</div>
+        <div>Push the right stick <b>past the ring</b> to shoot</div>
+        <div><b>PULL</b> sucks loose goo in and grows you</div>
         <div class="safe">shielded — you can't be hurt yet</div>
       </div>
-      <button id="pull-btn" type="button">PULL</button>
+      <div id="actions">
+        <button id="pull-btn" type="button">
+          <span class="glyph">◎</span><span class="label">PULL</span>
+        </button>
+      </div>
     </div>
 
     <div class="stick base" id="s-move-base"></div>
@@ -359,8 +409,11 @@
         <input id="name" maxlength="14" placeholder="your name" autocomplete="off" spellcheck="false" />
         <button id="play" type="button">Play</button>
         <div class="keys">
-          <div><b>Left thumb</b> move &nbsp;·&nbsp; <b>right thumb</b> aim, release to fire</div>
-          <div><b>Desktop:</b> WASD, mouse to aim, click to fire, E to pull</div>
+          <div><b>Left stick</b> moves &nbsp;·&nbsp; <b>right stick</b> aims</div>
+          <div>Push the right stick <b>past the dashed ring</b> to shoot</div>
+          <div>A shot is a chunk of you — it hurts them and costs you mass</div>
+          <div><b>PULL</b> sucks loose goo in, to grow back fast</div>
+          <div class="sub">Desktop: WASD, mouse aims, click fires, E pulls</div>
         </div>
       </div>
     </div>

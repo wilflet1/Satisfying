@@ -128,11 +128,17 @@ const input = attachInput(canvas, {
   confirm: () => !playing,
 });
 
-$('pull-btn').addEventListener('pointerdown', (e) => {
-  e.preventDefault();
-  e.stopPropagation();
-  net.pull();
-});
+/** Buttons swallow the event so they never also drive the aim stick beneath. */
+function actionButton(id: string, fn: () => void) {
+  const el = $(id);
+  el.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    fn();
+  });
+  return el;
+}
+const pullBtn = actionButton('pull-btn', () => net.pull());
 
 // --- camera + presentation --------------------------------------------------
 
@@ -274,6 +280,10 @@ function updateHud(view: View | null) {
   // window where the player is safe enough to read it.
   const coach = $('coach');
   coach.classList.toggle('show', view.protect > 0.2 && view.alive);
+
+  // Buttons dim while unusable, so a dead press is explained rather than
+  // feeling like the game ignored you.
+  pullBtn.classList.toggle('cooling', !view.alive);
   $('mass').textContent = view.alive ? `${Math.round(view.mass)}` : '—';
   $('kills').textContent = `${view.kills}`;
 
@@ -319,10 +329,14 @@ function frame(now: number) {
   last = now;
   time += dt;
 
-  const sticks = input.sample();
+  const sticks = input.sample(dt);
   const view = playing ? net.view() : null;
 
   if (playing && net.status === 'live') {
+    // Auto-fire while the aim stick is held past the threshold. The dash
+    // cooldown in the simulation is what actually paces the shots, so this can
+    // be set every frame without becoming a machine gun.
+    if (sticks.firing) net.dash();
     net.predict(dt, sticks.moveX, sticks.moveY);
     // Input goes out at the server tick rate, not the frame rate: sending at
     // 120 Hz would triple upstream traffic for no extra authority.
@@ -339,6 +353,8 @@ function frame(now: number) {
     if (view.me && view.phase !== 'over') {
       const m = Math.hypot(sticks.aimX, sticks.aimY) || 1;
       aimGuide = [view.me.x, view.me.y, sticks.aimX / m, sticks.aimY / m];
+      // z carries the player's radius for both the shield ring and the aim
+      // guide's start offset; w alone decides whether the ring is drawn.
       shield = [view.me.x, view.me.y, view.me.r + 5, view.protect > 0 ? 1 : 0];
     } else {
       aimGuide = [0, 0, 0, 0];
@@ -399,6 +415,10 @@ const stickEls = {
 function drawSticks(s: ReturnType<typeof input.sample>) {
   place(stickEls.moveBase, stickEls.moveNub, s.visual.move);
   place(stickEls.aimBase, stickEls.aimNub, s.visual.aim);
+  // The aim ring lights up the moment pushing further would shoot. Without
+  // this the threshold is invisible and firing feels random.
+  stickEls.aimBase.classList.toggle('armed', s.firing);
+  stickEls.aimNub.classList.toggle('armed', s.firing);
 }
 
 function place(
