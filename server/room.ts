@@ -1,5 +1,5 @@
 import { Arena } from '../src/sim/arena.ts';
-import { driveBot } from '../src/sim/bots.ts';
+import { assignSkills, driveBot } from '../src/sim/bots.ts';
 import { ARENA } from '../src/sim/config.ts';
 import {
   PROTOCOL_VERSION,
@@ -137,10 +137,12 @@ export class Room {
       this.botIds.push(id);
       this.rosterDirty = true;
     }
+    assignSkills(this.arena);
   }
 
   /** Advance one server tick and broadcast. Call at ARENA.tickRate. */
   step(dt: number, now: number) {
+    this.arena.beginTick();
     for (const p of this.arena.players.values()) {
       if (p.bot) driveBot(this.arena, p, dt);
     }
@@ -226,11 +228,19 @@ export class Room {
       es: a.events.dashes.map((d) => [round1(d.x), round1(d.y), d.hue] as [number, number, number]),
     };
 
-    // Only the ack differs per client, so the shared body is built once.
+    // Most of the snapshot is identical for everyone, so the shared body is
+    // built once and only the few genuinely per-player fields are added.
     for (const [id, c] of this.conns) {
       if (!c.joined) continue;
-      const ack = this.arena.players.get(id)?.ack ?? 0;
-      c.sender.send(JSON.stringify({ ...base, ack }));
+      const me = this.arena.players.get(id);
+      c.sender.send(
+        JSON.stringify({
+          ...base,
+          ack: me?.ack ?? 0,
+          pr: Math.round((me?.protect ?? 0) * 10) / 10,
+          rs: Math.round((me?.respawnIn ?? 0) * 10) / 10,
+        }),
+      );
     }
   }
 

@@ -1,5 +1,5 @@
 import { Arena } from '../sim/arena.ts';
-import { driveBot } from '../sim/bots.ts';
+import { assignSkills, driveBot } from '../sim/bots.ts';
 import { ARENA } from '../sim/config.ts';
 import type { Roster, View, ViewBlob, ViewEvent } from './client.ts';
 
@@ -38,6 +38,7 @@ export class LocalGame {
     for (let i = 0; i < ARENA.match.fillTo - 1; i++) {
       this.arena.addPlayer(`bot${i}`, BOT_NAMES[i % BOT_NAMES.length], true);
     }
+    assignSkills(this.arena);
     this.syncRoster();
   }
 
@@ -89,6 +90,7 @@ export class LocalGame {
       this.pendingDash = false;
       this.pendingPull = false;
 
+      this.arena.beginTick();
       for (const p of this.arena.players.values()) if (p.bot) driveBot(this.arena, p, step);
       this.arena.step(step);
 
@@ -135,6 +137,8 @@ export class LocalGame {
       alive: !!me?.alive,
       mass: me?.mass ?? 0,
       kills: me?.kills ?? 0,
+      protect: me?.protect ?? 0,
+      respawnIn: me?.respawnIn ?? 0,
       hits: events.hits,
       deaths: events.deaths,
       dashes: events.dashes,

@@ -29,6 +29,9 @@ export interface View {
   alive: boolean;
   mass: number;
   kills: number;
+  /** Seconds of spawn protection left, and seconds until respawn when dead. */
+  protect: number;
+  respawnIn: number;
   /** Drained once per frame. */
   hits: ViewEvent[];
   deaths: ViewEvent[];
@@ -300,6 +303,8 @@ export class NetClient {
       alive,
       mass: mineWire ? mineWire[8] : 0,
       kills: mineWire ? mineWire[7] : 0,
+      protect: latest.pr ?? 0,
+      respawnIn: latest.rs ?? 0,
       hits,
       deaths,
       dashes,

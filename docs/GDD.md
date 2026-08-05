@@ -68,6 +68,40 @@ circular, so deformation can never make a gate unfair:
 Plus a beat of slow motion on every fusion, so the coalescence is watched rather
 than glimpsed.
 
+## Onboarding, and the mistake that made it necessary
+
+The first playable build was unplayable for a beginner: bots locked on and
+killed a new player within a second, with no chance to work out the controls.
+Five separate causes, all of which passed a bot-vs-bot balance suite:
+
+1. Every bot independently picked the *nearest* target, so all five converged on
+   whoever moved least — reliably the newest player. Bots now ignore anyone
+   already engaged by two others.
+2. Bots reacted in 160ms, faster than human reaction before you add a thumb
+   travelling across glass, and led moving targets perfectly. Reaction and lead
+   error now scale with a per-bot skill spread, so a lobby contains people you
+   can beat as well as people you can't.
+3. Fire range covered two thirds of the arena. There was no safe distance.
+4. Spawn protection was one second — and was ticking down during the countdown,
+   when nothing could hurt you anyway, so it was mostly spent before the round
+   began. Protection now only burns during live play, and at round start
+   deliberately outlasts the bots' opening truce.
+5. Death was permanent. Being eliminated three seconds into a ninety-second
+   round and made to watch is the worst possible first impression. Blobs now
+   respawn smaller after a short delay, and the winner is the biggest blob at
+   the final whistle rather than the last one standing.
+
+Readability mattered as much as difficulty: there was no aim indicator, so the
+player could not see where a shot would go. A dotted trajectory with an
+arrowhead, a visible shield ring while protected, and control hints shown during
+that protected window fixed the "I can't even figure out how to play" half of
+the problem.
+
+**The process lesson:** balancing expert bots against expert bots proved nothing
+about a real person's first thirty seconds. `sim-test` now models a *novice* —
+slow to react, wandering, firing badly, never fleeing — and gates on their
+survival. That test is the one that would have caught this.
+
 ## Art direction
 
 Liquid chrome and iridescent oil-slick against a near-black tunnel. Everything is one raymarched 2D SDF field: blobs union with a polynomial smooth-min so merging is literally the renderer's native operation, shaded with a procedural studio env-map, Fresnel iridescence, and screen-space refraction of the parallax background. Obstacles are matte obsidian with emissive danger edges (cyan = slit, amber = door, red = saw).

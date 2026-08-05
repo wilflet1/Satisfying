@@ -78,6 +78,9 @@ export interface SnapshotMsg {
   tm: number;
   /** Ring radius. */
   rr: number;
+  /** Your spawn protection remaining, and your respawn countdown. */
+  pr: number;
+  rs: number;
   /** Winner id, when the round is over. */
   w: string | null;
   P: PlayerWire[];

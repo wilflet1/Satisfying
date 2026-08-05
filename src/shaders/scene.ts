@@ -23,6 +23,8 @@ uniform float uSmoothK;
 uniform float uWobble;
 uniform float uPulse;
 uniform vec2  uPulsePos;
+uniform vec4  uAim;        // xy = origin, zw = direction (zero = hidden)
+uniform vec4  uShield;     // xyz = centre + radius, w = strength (0 = hidden)
 uniform int   uBlobCount;
 uniform vec4  uBlobs[${MAX_BLOBS}];    // xy = centre, z = radius, w = hue index (-1 = neutral)
 uniform vec4  uBlobDef[${MAX_BLOBS}];  // x = stretch, yz = axis (cos,sin), w = unused
@@ -202,6 +204,33 @@ void main(){
     metal += vec3(1.0) * pow(smoothstep(0.90, 1.0, z), 2.0) * 0.30;
 
     col = mix(col, metal, mask);
+  }
+
+  // ---- Aim trajectory ---------------------------------------------------
+  // A shooter you cannot aim is not a game. This draws where the shot will go:
+  // a dotted line, because a solid one reads as a laser that already fired.
+  if (dot(uAim.zw, uAim.zw) > 0.0001){
+    vec2 q = p - uAim.xy;
+    float along = dot(q, uAim.zw);
+    float side = abs(q.x * uAim.w - q.y * uAim.z);
+    float len = 78.0;
+    if (along > 0.0 && along < len){
+      float dash = step(0.40, fract(along * 0.10 - uTime * 1.6));
+      float fade = 1.0 - along / len;
+      col += vec3(0.90, 0.97, 1.0) * dash * fade * smoothstep(2.4, 0.0, side) * 1.5;
+    }
+    // Arrowhead, so the direction is unambiguous at a glance.
+    vec2 tip = uAim.xy + uAim.zw * len;
+    col += vec3(0.9, 0.97, 1.0) * smoothstep(4.2, 0.0, length(p - tip)) * 1.2;
+  }
+
+  // ---- Spawn shield -----------------------------------------------------
+  // Invulnerability that isn't visible is indistinguishable from luck.
+  if (uShield.w > 0.0){
+    float sd = abs(length(p - uShield.xy) - uShield.z);
+    float ring = smoothstep(2.6, 0.0, sd);
+    float shimmer = 0.6 + 0.4 * sin(uTime * 7.0 - length(p - uShield.xy) * 0.4);
+    col += vec3(0.55, 0.9, 1.0) * ring * shimmer * uShield.w * 0.9;
   }
 
   // Contact glow, so every body lights the floor around it.

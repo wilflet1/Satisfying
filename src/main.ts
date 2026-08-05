@@ -147,6 +147,8 @@ let pulse = 0;
 let pulseX = 0;
 let pulseY = 0;
 let time = 0;
+let aimGuide: [number, number, number, number] = [0, 0, 0, 0];
+let shield: [number, number, number, number] = [0, 0, 0, 0];
 
 const blobBuf = new Float32Array(MAX_BLOBS * 4);
 const defBuf = new Float32Array(MAX_BLOBS * 4);
@@ -240,6 +242,8 @@ function buildFrame(view: View | null, dt: number): RenderFrame {
     blobs: blobBuf,
     blobDef: defBuf,
     smoothK: Math.max(CFG.goo.smoothMin, Math.min(CFG.goo.smoothMax, maxR * CFG.goo.smoothScale)),
+    aim: aimGuide,
+    shield,
     pulse,
     pulseX,
     pulseY,
@@ -265,6 +269,11 @@ function updateHud(view: View | null) {
   if (!view) return;
 
   $('timer').textContent = view.phase === 'live' ? `${Math.max(0, Math.ceil(view.timer))}` : '';
+
+  // First-run coaching: shown while spawn-protected, which is exactly the
+  // window where the player is safe enough to read it.
+  const coach = $('coach');
+  coach.classList.toggle('show', view.protect > 0.2 && view.alive);
   $('mass').textContent = view.alive ? `${Math.round(view.mass)}` : '—';
   $('kills').textContent = `${view.kills}`;
 
@@ -287,7 +296,9 @@ function updateHud(view: View | null) {
     banner.textContent = view.winner === net.id ? 'YOU WIN' : w ? `${w.name} wins` : 'round over';
     banner.classList.add('show');
   } else if (!view.alive && view.phase === 'live') {
-    banner.textContent = 'eliminated';
+    // Death is temporary now, so the banner counts you back in rather than
+    // telling you it's over.
+    banner.textContent = `back in ${Math.max(1, Math.ceil(view.respawnIn))}`;
     banner.classList.add('show');
   } else {
     banner.classList.remove('show');
@@ -323,6 +334,17 @@ function frame(now: number) {
   }
 
   if (view) {
+    // Aim guide, so the player can see where a shot will actually go. Hidden
+    // while dead or during the results screen.
+    if (view.me && view.phase !== 'over') {
+      const m = Math.hypot(sticks.aimX, sticks.aimY) || 1;
+      aimGuide = [view.me.x, view.me.y, sticks.aimX / m, sticks.aimY / m];
+      shield = [view.me.x, view.me.y, view.me.r + 5, view.protect > 0 ? 1 : 0];
+    } else {
+      aimGuide = [0, 0, 0, 0];
+      shield = [0, 0, 0, 0];
+    }
+
     // Camera follows the player, zooming out as they grow so a big blob can
     // still see what is about to hit it.
     const target = view.me ?? { x: camX, y: camY, r: 10 };

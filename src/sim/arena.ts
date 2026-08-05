@@ -46,6 +46,14 @@ export interface Player {
   pullCooldown: number;
   /** Seconds left where this blob cannot pick pellets up. */
   absorbLock: number;
+  /** Seconds of total invulnerability remaining (spawn protection). */
+  protect: number;
+  /** Seconds until this blob respawns. Only meaningful while dead. */
+  respawnIn: number;
+  /** Bots aiming at this player right now, so they don't all pile on one. */
+  attackers: number;
+  /** 0..1 difficulty for bots; unused for humans. */
+  skill: number;
   /** Running totals for the scoreboard. */
   kills: number;
   damage: number;
@@ -167,6 +175,10 @@ export class Arena {
       pullTimer: 0,
       pullCooldown: 0,
       absorbLock: 0,
+      protect: 0,
+      respawnIn: 0,
+      attackers: 0,
+      skill: 0.5,
       kills: 0,
       damage: 0,
       ack: 0,
@@ -213,7 +225,7 @@ export class Arena {
 
   // --- round flow ---------------------------------------------------------
 
-  private spawn(p: Player) {
+  private spawn(p: Player, massScale = 1, protect: number = ARENA.blob.spawnProtect) {
     // Spawn on a ring inset from the wall, spread away from everyone else.
     let best = { x: 0, y: 0, d: -1 };
     for (let i = 0; i < 12; i++) {
@@ -232,10 +244,12 @@ export class Arena {
     p.y = best.y;
     p.vx = 0;
     p.vy = 0;
-    p.mass = ARENA.blob.startMass;
+    p.mass = ARENA.blob.startMass * massScale;
     p.r = massToRadius(p.mass);
     p.alive = true;
-    p.grace = 1;
+    p.grace = 0;
+    p.protect = protect;
+    p.respawnIn = 0;
     p.cooldown = 0;
     p.pullTimer = 0;
     p.pullCooldown = 0;
@@ -252,7 +266,7 @@ export class Arena {
     for (const p of this.players.values()) {
       p.kills = 0;
       p.damage = 0;
-      this.spawn(p);
+      this.spawn(p, 1, ARENA.blob.openingProtect);
     }
     this.phase = 'countdown';
     this.timer = ARENA.match.countdown;
@@ -261,10 +275,16 @@ export class Arena {
   private endRound() {
     this.phase = 'over';
     this.timer = ARENA.match.intermission;
+    // Biggest blob takes it; kills break a tie.
     let best: Player | null = null;
     for (const p of this.players.values()) {
-      if (!p.alive) continue;
-      if (!best || p.mass > best.mass) best = p;
+      if (!best) {
+        best = p;
+        continue;
+      }
+      const a = p.alive ? p.mass : 0;
+      const b = best.alive ? best.mass : 0;
+      if (a > b || (a === b && p.kills > best.kills)) best = p;
     }
     this.winner = best?.id ?? null;
   }
@@ -319,6 +339,11 @@ export class Arena {
 
   // --- tick ---------------------------------------------------------------
 
+  /** Clears per-tick bookkeeping. Call before driving bots. */
+  beginTick() {
+    for (const p of this.players.values()) p.attackers = 0;
+  }
+
   step(dt: number) {
     this.events = emptyEvents();
 
@@ -351,6 +376,7 @@ export class Arena {
     this.timer -= dt;
     this.elapsed += dt;
     this.shrinkRing();
+    this.respawnDead(dt);
     this.movePlayers(dt, true);
     this.moveChunks(dt);
     this.movePellets(dt);
@@ -360,7 +386,22 @@ export class Arena {
 
     while (this.pellets.length < this.ambientTarget()) this.spawnAmbient();
 
-    if (this.timer <= 0 || this.aliveCount <= (this.players.size > 1 ? 1 : 0)) this.endRound();
+    // Rounds run the full clock now that death is temporary — ending early on
+    // "last one standing" would put everyone back to watching.
+    if (this.timer <= 0 || this.players.size === 0) this.endRound();
+  }
+
+  /**
+   * Death is a setback, not the end of your round. Being eliminated three
+   * seconds into a ninety-second match and made to watch is the worst possible
+   * experience for a new player, so blobs come back smaller and keep playing.
+   */
+  private respawnDead(dt: number) {
+    for (const p of this.players.values()) {
+      if (p.alive) continue;
+      p.respawnIn -= dt;
+      if (p.respawnIn <= 0) this.spawn(p, ARENA.blob.respawnMass);
+    }
   }
 
   private shrinkRing() {
@@ -373,7 +414,15 @@ export class Arena {
   private movePlayers(dt: number, live: boolean) {
     for (const p of this.players.values()) {
       if (!p.alive) continue;
-      if (p.grace > 0) p.grace -= dt;
+      // Only burn protection while the round is actually live. Ticking it down
+      // through the countdown spends the whole window at a time when nothing
+      // can hurt you, so a player reached their first real second already
+      // exposed — which is exactly how a "3.5 second" shield produced deaths at
+      // 6 seconds.
+      if (live) {
+        if (p.grace > 0) p.grace -= dt;
+        if (p.protect > 0) p.protect -= dt;
+      }
       if (p.cooldown > 0) p.cooldown -= dt;
       if (p.pullCooldown > 0) p.pullCooldown -= dt;
       if (p.pullTimer > 0) p.pullTimer -= dt;
@@ -518,7 +567,10 @@ export class Arena {
           // Your own chunk coming home is simply reabsorbed.
           p.mass = Math.min(ARENA.blob.maxMass, p.mass + c.mass);
           p.r = massToRadius(p.mass);
-        } else if (p.grace > 0) {
+        } else if (p.grace > 0 || p.protect > 0) {
+          // Spawn-protected and just-hit blobs cannot be damaged. The chunk
+          // passes through rather than being consumed, so protection can't be
+          // farmed to soak someone's whole magazine.
           continue;
         } else {
           const stolen = Math.min(
@@ -594,6 +646,7 @@ export class Arena {
 
   private kill(p: Player, by: string) {
     p.alive = false;
+    p.respawnIn = ARENA.blob.respawnDelay;
     // Everything they were carrying bursts into the arena.
     this.scatter(p.x, p.y, Math.max(p.mass, ARENA.blob.minMass), p.hue, 7);
     this.events.deaths.push({ x: p.x, y: p.y, hue: p.hue, id: p.id, by });

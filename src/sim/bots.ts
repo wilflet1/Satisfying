@@ -12,16 +12,34 @@ import { ARENA } from './config.ts';
  * them feel robotic; this reads as a nervous opportunist, which is funnier and
  * much closer to how people actually play.
  */
+const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/** Assigns a spread of skills across the bots so a lobby isn't uniformly hard. */
+export function assignSkills(arena: Arena) {
+  const bots = [...arena.players.values()].filter((p) => p.bot);
+  const { skillMin, skillMax } = ARENA.bot;
+  bots.forEach((b, i) => {
+    const t = bots.length > 1 ? i / (bots.length - 1) : 0.5;
+    b.skill = lerp(skillMin, skillMax, t);
+  });
+}
+
 export function driveBot(arena: Arena, p: Player, dt: number) {
   if (!p.alive) return;
 
+  const skill = p.skill;
   p.think -= dt;
   const reacting = p.think <= 0;
-  if (reacting) p.think = ARENA.bot.reaction;
+  if (reacting) p.think = lerp(ARENA.bot.reactionEasy, ARENA.bot.reactionHard, skill);
 
   const inp = p.input;
   inp.dash = false;
   inp.pull = false;
+
+  // Nobody fights for the first few seconds. It gives a new player a moment to
+  // find the sticks, and it stops the whole lobby opening on whoever spawned
+  // closest to the middle.
+  const truce = arena.phase === 'live' && arena.elapsed < ARENA.bot.openingTruce;
 
   const dist = Math.hypot(p.x, p.y);
   const edge = arena.ringRadius - p.r * 2 - 12;
@@ -49,10 +67,23 @@ export function driveBot(arena: Arena, p: Player, dt: number) {
         threatD = d;
         threat = o;
       }
-    } else if (d < preyD) {
+      continue;
+    }
+    // Don't join a dogpile. Without this every bot independently picks the
+    // nearest target, which is reliably the newest player — the one least able
+    // to escape it and least likely to come back.
+    if (o.attackers >= ARENA.bot.maxAttackersPerTarget) continue;
+    // Shooting someone who cannot be hurt is wasted mass and reads as bullying.
+    if (o.protect > 0) continue;
+    if (d < preyD) {
       preyD = d;
       prey = o;
     }
+  }
+
+  if (truce) {
+    threat = null;
+    prey = null;
   }
 
   // 2. Run from anything meaningfully bigger, but stay inside the ring while
@@ -83,6 +114,7 @@ export function driveBot(arena: Arena, p: Player, dt: number) {
 
   // 3. Shoot something smaller.
   if (prey && preyD < ARENA.bot.fireRange) {
+    prey.attackers++;
     if (reacting) aimAt(p, prey, arena);
     const facing = p.aimX * (prey.x - p.x) + p.aimY * (prey.y - p.y);
     const cos = facing / Math.max(preyD, 1e-3);
@@ -141,13 +173,17 @@ function aimAt(p: Player, o: Player, arena: Arena) {
   const dy = o.y - p.y;
   const d = Math.max(Math.hypot(dx, dy), 1e-3);
   const travel = d / ARENA.dash.speed;
-  let ax = dx + o.vx * travel;
-  let ay = dy + o.vy * travel;
+  // Leading a moving target perfectly is the thing humans cannot do. Weak bots
+  // barely lead at all; only the best ones predict where you'll be.
+  const leadErr = lerp(ARENA.bot.leadErrorEasy, ARENA.bot.leadErrorHard, p.skill);
+  const lead = 1 - leadErr * (arena.random() * 2 - 1) - leadErr * 0.5;
+  let ax = dx + o.vx * travel * lead;
+  let ay = dy + o.vy * travel * lead;
   const m = Math.max(Math.hypot(ax, ay), 1e-3);
   ax /= m;
   ay /= m;
 
-  const jitter = (arena.random() * 2 - 1) * ARENA.bot.aimJitter;
+  const jitter = (arena.random() * 2 - 1) * lerp(ARENA.bot.aimJitterEasy, ARENA.bot.aimJitterHard, p.skill);
   const c = Math.cos(jitter);
   const s = Math.sin(jitter);
   p.aimX = ax * c - ay * s;

@@ -18,6 +18,10 @@ export interface RenderFrame {
   blobDef: Float32Array;
   /** Smooth-union radius, recomputed per frame from the largest blob. */
   smoothK: number;
+  /** Aim guide: origin xy, unit direction zw. Zero direction hides it. */
+  aim: [number, number, number, number];
+  /** Spawn shield: centre xy, radius z, strength w. */
+  shield: [number, number, number, number];
   pulse: number;
   pulseX: number;
   pulseY: number;
@@ -246,6 +250,8 @@ export class Renderer {
     gl.uniform1f(s.u('uBevel'), CFG.render.bevel);
     gl.uniform1f(s.u('uSmoothK'), f.smoothK);
     gl.uniform1f(s.u('uWobble'), CFG.goo.wobble);
+    gl.uniform4f(s.u('uAim'), f.aim[0], f.aim[1], f.aim[2], f.aim[3]);
+    gl.uniform4f(s.u('uShield'), f.shield[0], f.shield[1], f.shield[2], f.shield[3]);
     gl.uniform1f(s.u('uPulse'), f.pulse);
     gl.uniform2f(s.u('uPulsePos'), f.pulseX, f.pulseY);
     gl.uniform1i(s.u('uBlobCount'), Math.min(f.blobCount, MAX_BLOBS));
