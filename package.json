@@ -11,7 +11,9 @@
     "artifact": "npm run build && node scripts/bundle-artifact.mjs",
     "sim-test": "node --experimental-strip-types scripts/sim-test.mjs",
     "net-test": "node --experimental-strip-types scripts/net-test.mjs",
-    "server": "node --experimental-strip-types server/node.ts"
+    "server": "node --experimental-strip-types server/node.ts",
+    "browser-test": "node --experimental-strip-types scripts/browser-test.mjs",
+    "deploy": "npm run build && wrangler deploy"
   },
   "repository": {
     "type": "git",

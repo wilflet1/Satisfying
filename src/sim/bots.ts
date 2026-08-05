@@ -147,14 +147,13 @@ function aimAt(p: Player, o: Player, arena: Arena) {
   ax /= m;
   ay /= m;
 
-  const jitter = (Math.random() * 2 - 1) * ARENA.bot.aimJitter;
+  const jitter = (arena.random() * 2 - 1) * ARENA.bot.aimJitter;
   const c = Math.cos(jitter);
   const s = Math.sin(jitter);
   p.aimX = ax * c - ay * s;
   p.aimY = ax * s + ay * c;
   p.input.aimX = p.aimX;
   p.input.aimY = p.aimY;
-  void arena;
 }
 
 function aimAtNearestTarget(arena: Arena, p: Player) {

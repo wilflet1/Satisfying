@@ -1,0 +1,22 @@
+# Cloudflare deployment. One Durable Object per match room; the built client is
+# served as static assets from the same Worker, so client and server share an
+# origin and there is no CORS or mixed-content configuration to get wrong.
+#
+#   npm run build && npx wrangler deploy
+#
+name = "blob-brawl"
+main = "server/worker.ts"
+compatibility_date = "2026-01-01"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+[[durable_objects.bindings]]
+name = "ARENA_ROOM"
+class_name = "ArenaRoom"
+
+# SQLite-backed Durable Objects are the class available on the free plan.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["ArenaRoom"]

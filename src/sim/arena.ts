@@ -129,6 +129,16 @@ export class Arena {
   private nextId = 1;
   private rand: () => number;
 
+  /**
+   * The simulation's seeded random source. Bots draw from this rather than
+   * Math.random so a seed reproduces a round exactly — without it the balance
+   * soak returns different numbers every run and can neither be trusted nor
+   * bisected.
+   */
+  random(): number {
+    return this.rand();
+  }
+
   constructor(seed = 1) {
     this.rand = mulberry32(seed);
     this.seedAmbient();

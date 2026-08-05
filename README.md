@@ -1,69 +1,82 @@
-# QUICKSILVER
+# BLOB BRAWL
 
-> Split to fit, merge to smash.
+> Fire yourself. Eat what's left.
 
-A one-thumb endless faller. You are a mass of liquid chrome dropping down a
-channel: **tap** to split into more, smaller blobs to thread a multi-slit gate,
-**swipe up** to merge back into one heavy sphere to break through a blast door,
-and weave the formation through spinning blades in between. Score is depth in
-metres; your mass is your health bar.
+An online arena brawl for up to 8 players. You are a blob of liquid metal. Your
+attack is to **fire a chunk of yourself** at someone — it costs real mass, and
+if it lands it tears mass off them. Everything the loser drops is loose goo that
+anyone can eat, so every exchange is a visible transfer: the score isn't a
+number going up, it's material flowing from one body into another.
 
-The whole game — tunnel, obstacles, and player — is a single screen-space signed
-distance field. Blobs union with a polynomial smooth-min, so merging is the
-renderer's native operation rather than an effect layered on top.
+Rounds are 90 seconds in a ring that closes in. Biggest blob standing wins.
 
-## Run it
+The whole scene is one screen-space signed-distance field. Players, chunks in
+flight, free pellets and splash all union with a polynomial smooth-min, so mass
+moving between them reads as liquid rather than as sprites being swapped.
+
+## Play it
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+npm run build
+npm run server          # http://localhost:8787
 ```
+
+Open the URL in two tabs (or two phones on the same network) to fight someone
+real. Add `?offline=1` to play the same game against bots with no server.
+
+Controls: **left thumb** moves, **right thumb** aims and fires on release, and
+the **PULL** button drags nearby goo toward you. On desktop: WASD, mouse to aim,
+click to fire, `E` to pull.
+
+## Deploy it
+
+The server is one Durable Object per match, with the built client served as
+static assets from the same Worker — one origin, no CORS.
 
 ```bash
-npm run build      # → dist/, ~35 kB JS (13 kB gzipped), no runtime dependencies
-npm run preview    # serve the build on :4173
+npx wrangler login
+npm run deploy
 ```
 
-Controls: **drag** to steer, **tap** to split, **swipe up** to merge. On desktop,
-the mouse steers, <kbd>Space</kbd> splits and <kbd>S</kbd> merges.
-
-`?seed=N` pins world generation so a run reproduces exactly.
+Cloudflare's free plan covers roughly **29 concurrently-running matches**
+(~230 players) before it costs anything: the free allowance is 313,000 GB-s/day
+and a live match ticks 20 times a second, so it never hibernates while it's
+being played.
 
 ## Test it
 
 ```bash
-npm run build && npm run preview &
-npm run playtest
+npm run sim-test        # balance soak, no browser, ~2s
+npm run net-test        # 8 real WebSocket clients against the real server
+npm run browser-test    # two real browsers in one arena, end to end
 ```
 
-The harness runs two passes, because they answer different questions:
+The simulation is fully deterministic — bots draw from the arena's seeded RNG,
+not `Math.random` — so a seed reproduces a round exactly and the balance numbers
+can be trusted and bisected.
 
-1. **Logic soak** — steps the simulation at a fixed `dt` with rendering out of
-   the loop, so frame rate can't distort the result. A scripted "good player" bot
-   must survive; a do-nothing bot must die. That pair is the difficulty curve
-   having teeth in both directions. It reports per-run funnel stats (gates
-   cleared vs hit, saw hits, door breaks vs fails).
-2. **Render smoke** — real GPU frames to catch shader compile failures, GL
-   errors and a black screen, plus reference screenshots to `playtest/`.
-
-Frame rate reported by the harness comes from SwiftShader (software
-rasterisation) and is **not** a device estimate.
+| Test | What only it can catch |
+|---|---|
+| `sim-test` | Stalemates, bloodbaths, a leaking mass economy, bots that won't fight |
+| `net-test` | Invisible players, ack regressions, bandwidth blowouts |
+| `browser-test` | Shader compile failures, black frames, broken input, dead HUD |
 
 ## Layout
 
 | Path | What's in it |
 |---|---|
-| `src/config.ts` | Every tuning knob. Nothing else hard-codes a balance number. |
-| `src/blobs.ts` | Player physics: split, merge, volume conservation, formation slots. |
-| `src/world.ts` | Endless channel: obstacle planning, spacing, generation. |
-| `src/game.ts` | State machine, collision, scoring, juice, instrumentation. |
+| `src/sim/` | The authoritative simulation and bot brains. Pure logic, no I/O. |
+| `src/net/` | Wire protocol, the networked client, and the offline stand-in. |
 | `src/shaders/` | The SDF scene pass, bloom, and final grade. |
-| `src/renderer.ts` | WebGL2 setup, render targets, adaptive resolution. |
-| `docs/GDD.md` | One-page design doc. |
-| `docs/LATER.md` | Deliberately unbuilt ideas. |
+| `server/room.ts` | Transport-agnostic match logic — runs on Node *and* Cloudflare. |
+| `server/node.ts` | Local server: matchmaking plus static hosting. |
+| `server/worker.ts` | Cloudflare Worker + Durable Object adapter. |
+| `docs/GDD.md` | Design doc. `docs/LATER.md` — what was consciously cut. |
 
 ## Status
 
-Vertical slice. The core loop, all three obstacle types, the full material pass
-and the difficulty ramp are in and verified. **There is no audio yet** — see
-`docs/LATER.md`, which also lists what was consciously cut.
+Vertical slice, verified end to end. **No audio yet**, and nothing has been
+played by a human against another human — every number here comes from bots and
+scripted clients, which is enough to prove the systems work and not enough to
+prove the game is fun.

@@ -1,11 +1,16 @@
-import { CFG } from './config';
-import { BLUR_FRAG, COMPOSITE_FRAG, MAX_BLOBS, MAX_PRIMS, SCENE_FRAG, VERT } from './shaders';
+import { CFG } from './config.ts';
+import { BLUR_FRAG, COMPOSITE_FRAG, MAX_BLOBS, SCENE_FRAG, VERT } from './shaders/index.ts';
 
 export interface RenderFrame {
   time: number;
+  /** World-space camera centre. */
+  camX: number;
   camY: number;
-  viewH: number;
-  speedN: number;
+  /** World units across the screen width. */
+  viewW: number;
+  /** Arena boundary radius, and how urgent it is (0..1). */
+  ring: number;
+  ringWarn: number;
   blobCount: number;
   /** vec4 per blob: x, y, radius, tint. */
   blobs: Float32Array;
@@ -13,11 +18,6 @@ export interface RenderFrame {
   blobDef: Float32Array;
   /** Smooth-union radius, recomputed per frame from the largest blob. */
   smoothK: number;
-  primCount: number;
-  /** vec4 per primitive: cx, cy, hw, hh. */
-  prims: Float32Array;
-  /** vec2 per primitive: kind, flash. */
-  primMeta: Float32Array;
   pulse: number;
   pulseX: number;
   pulseY: number;
@@ -173,16 +173,45 @@ export class Renderer {
     gl.viewport(0, 0, w, h);
   }
 
-  /** World-units of channel height visible, derived from the canvas aspect. */
-  get viewH(): number {
-    return CFG.channelHalfW * 2 * (this.canvas.height / Math.max(1, this.canvas.width));
+  /** Aspect ratio (height / width), for deriving the visible world height. */
+  get aspect(): number {
+    return this.canvas.height / Math.max(1, this.canvas.width);
   }
 
-  /** Converts a client-space x into a world x. */
-  clientToWorldX(clientX: number): number {
-    const rect = this.canvas.getBoundingClientRect();
-    const t = (clientX - rect.left) / Math.max(1, rect.width);
-    return (t - 0.5) * CFG.channelHalfW * 2;
+  /**
+   * Reads back the scene buffer for tests. The default framebuffer is blank
+   * after compositing unless `preserveDrawingBuffer` is set, which costs real
+   * performance on mobile — so tests sample the offscreen scene target, which
+   * persists, rather than making every player pay for the check.
+   */
+  debugSampleScene(step = 6): { lit: number; peak: number; samples: number } {
+    const gl = this.gl;
+    const { w, h } = this.sceneTarget;
+    // The scene target is half-float when the device supports it, and reading a
+    // float buffer as bytes is an INVALID_OPERATION — so the read type has to
+    // follow the buffer's actual format.
+    const float = this.texType !== gl.UNSIGNED_BYTE;
+    const buf = float ? new Float32Array(w * h * 4) : new Uint8Array(w * h * 4);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.sceneTarget.fbo);
+    gl.readPixels(0, 0, w, h, gl.RGBA, float ? gl.FLOAT : gl.UNSIGNED_BYTE, buf as never);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+    // Normalise both paths to 0..1 per channel so the thresholds mean the same
+    // thing regardless of which buffer format the device gave us.
+    const scale = float ? 1 : 1 / 255;
+    let lit = 0;
+    let peak = 0;
+    let samples = 0;
+    for (let y = 0; y < h; y += step) {
+      for (let x = 0; x < w; x += step) {
+        const i = (y * w + x) * 4;
+        const l = (buf[i] + buf[i + 1] + buf[i + 2]) * scale;
+        if (l > 0.09) lit++;
+        if (l > peak) peak = l;
+        samples++;
+      }
+    }
+    return { lit, peak: +peak.toFixed(3), samples };
   }
 
   private drawQuad() {
@@ -210,21 +239,18 @@ export class Renderer {
     const s = this.scene;
     gl.uniform2f(s.u('uRes'), this.sceneTarget.w, this.sceneTarget.h);
     gl.uniform1f(s.u('uTime'), f.time);
-    gl.uniform1f(s.u('uCamY'), f.camY);
-    gl.uniform1f(s.u('uViewH'), f.viewH);
-    gl.uniform1f(s.u('uChanHalf'), CFG.channelHalfW);
+    gl.uniform2f(s.u('uCam'), f.camX, f.camY);
+    gl.uniform1f(s.u('uViewW'), f.viewW);
+    gl.uniform1f(s.u('uRing'), f.ring);
+    gl.uniform1f(s.u('uRingWarn'), f.ringWarn);
     gl.uniform1f(s.u('uBevel'), CFG.render.bevel);
     gl.uniform1f(s.u('uSmoothK'), f.smoothK);
     gl.uniform1f(s.u('uWobble'), CFG.goo.wobble);
-    gl.uniform1f(s.u('uSpeedN'), f.speedN);
     gl.uniform1f(s.u('uPulse'), f.pulse);
     gl.uniform2f(s.u('uPulsePos'), f.pulseX, f.pulseY);
     gl.uniform1i(s.u('uBlobCount'), Math.min(f.blobCount, MAX_BLOBS));
-    gl.uniform1i(s.u('uPrimCount'), Math.min(f.primCount, MAX_PRIMS));
     gl.uniform4fv(s.u('uBlobs'), f.blobs);
     gl.uniform4fv(s.u('uBlobDef'), f.blobDef);
-    gl.uniform4fv(s.u('uPrims'), f.prims);
-    gl.uniform2fv(s.u('uPrimMeta'), f.primMeta);
     this.drawQuad();
 
     // ---- Bloom: bright-pass + separable blur ---------------------------

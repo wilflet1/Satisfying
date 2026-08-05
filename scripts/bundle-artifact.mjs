@@ -12,7 +12,7 @@
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { argv } from 'node:process';
 
-const OUT = argv[2] ?? 'dist/quicksilver-artifact.html';
+const OUT = argv[2] ?? 'dist/blob-brawl.html';
 const html = readFileSync('dist/index.html', 'utf8');
 
 const pick = (re, what) => {

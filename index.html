@@ -8,15 +8,11 @@
     />
     <meta name="theme-color" content="#05060c" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta
-      name="description"
-      content="Split to fit, merge to smash. A liquid-metal one-thumb runner."
-    />
-    <title>QUICKSILVER</title>
+    <meta name="description" content="Online blob brawl. Fire pieces of yourself and eat what's left." />
+    <title>BLOB BRAWL</title>
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.35' cy='.3'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='.5' stop-color='%2329e0ff'/%3E%3Cstop offset='1' stop-color='%232f7dff'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='12' cy='13' r='9' fill='url(%23g)'/%3E%3Ccircle cx='24' cy='23' r='5' fill='url(%23g)'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3CradialGradient id='g' cx='.35' cy='.3'%3E%3Cstop offset='0' stop-color='%23fff'/%3E%3Cstop offset='.5' stop-color='%2329e0ff'/%3E%3Cstop offset='1' stop-color='%232f7dff'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='13' cy='14' r='9' fill='url(%23g)'/%3E%3Ccircle cx='25' cy='24' r='5' fill='%23ffb43c'/%3E%3C/svg%3E"
     />
     <style>
       :root {
@@ -58,186 +54,212 @@
         position: fixed;
         inset: 0;
         pointer-events: none;
-        padding: calc(env(safe-area-inset-top) + 14px) calc(env(safe-area-inset-right) + 16px)
-          calc(env(safe-area-inset-bottom) + 14px) calc(env(safe-area-inset-left) + 16px);
-        display: flex;
-        flex-direction: column;
+        padding: calc(env(safe-area-inset-top) + 12px) calc(env(safe-area-inset-right) + 14px)
+          calc(env(safe-area-inset-bottom) + 12px) calc(env(safe-area-inset-left) + 14px);
       }
 
-      /* ---- top bar: depth + multiplier ---- */
       .top {
         display: flex;
-        align-items: baseline;
-        gap: 10px;
+        align-items: flex-start;
+        gap: 12px;
       }
-      #score {
-        font: 700 clamp(30px, 9vw, 46px) / 1 ui-monospace, "SF Mono", Menlo, monospace;
-        letter-spacing: -0.02em;
-        text-shadow: 0 0 22px rgba(41, 224, 255, 0.45);
-        font-variant-numeric: tabular-nums;
-      }
-      .unit {
-        font-size: 13px;
-        color: var(--dim);
-        letter-spacing: 0.18em;
-        text-transform: uppercase;
-      }
-      #mult {
-        margin-left: auto;
-        font: 700 clamp(16px, 5vw, 22px) / 1 ui-monospace, Menlo, monospace;
-        color: var(--cyan);
-        text-shadow: 0 0 18px rgba(41, 224, 255, 0.6);
-      }
-      #mult.hot {
-        color: var(--amber);
-        text-shadow: 0 0 22px rgba(255, 160, 43, 0.7);
-      }
-      #mult.bump {
-        animation: bump 0.28s cubic-bezier(0.2, 1.7, 0.4, 1);
-      }
-      @keyframes bump {
-        0% {
-          transform: scale(1.5);
-        }
-        100% {
-          transform: scale(1);
-        }
-      }
-
-      /* ---- mass bar + split pips ---- */
-      .bottom {
-        margin-top: auto;
+      .stat {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        line-height: 1;
       }
-      #mass {
-        height: 6px;
-        border-radius: 99px;
-        background: rgba(120, 160, 220, 0.16);
-        overflow: hidden;
+      .stat b {
+        font: 700 clamp(20px, 6vw, 30px) / 1 ui-monospace, Menlo, monospace;
+        font-variant-numeric: tabular-nums;
+        text-shadow: 0 0 18px rgba(41, 224, 255, 0.45);
       }
-      #mass-fill {
-        height: 100%;
-        width: 100%;
-        transform-origin: left;
-        border-radius: 99px;
-        background: linear-gradient(90deg, #2f7dff, #29e0ff 60%, #b6f6ff);
-        box-shadow: 0 0 16px rgba(41, 224, 255, 0.65);
-        transition: background 0.25s;
+      .stat span {
+        font-size: 10px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin-top: 4px;
       }
-      #mass-fill.low {
-        background: linear-gradient(90deg, #ff2d3f, #ff7a3c);
-        box-shadow: 0 0 18px rgba(255, 60, 78, 0.8);
-        animation: pulse 0.65s infinite;
-      }
-      @keyframes pulse {
-        50% {
-          opacity: 0.45;
-        }
-      }
-      #pips {
-        display: flex;
-        gap: 6px;
-        justify-content: center;
-      }
-      .pip {
-        width: 20px;
-        height: 3px;
-        border-radius: 99px;
-        background: rgba(120, 160, 220, 0.2);
-        transition:
-          background 0.14s,
-          box-shadow 0.14s;
-      }
-      .pip.on {
-        background: var(--cyan);
-        box-shadow: 0 0 10px rgba(41, 224, 255, 0.85);
+      #timer {
+        margin-left: auto;
+        font: 700 clamp(26px, 8vw, 40px) / 1 ui-monospace, Menlo, monospace;
+        font-variant-numeric: tabular-nums;
       }
 
-      /* ---- overlays ---- */
-      .overlay {
+      #board {
+        position: absolute;
+        right: calc(env(safe-area-inset-right) + 14px);
+        top: 84px;
+        list-style: none;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        font-size: 12px;
+        text-align: right;
+      }
+      #board li {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 6px;
+        opacity: 0.95;
+      }
+      #board li.out {
+        opacity: 0.28;
+        text-decoration: line-through;
+      }
+      #board i {
+        width: 9px;
+        height: 9px;
+        border-radius: 99px;
+        /* Matches hueColor() in the scene shader. */
+        background: hsl(calc(var(--h) * 45deg) 85% 62%);
+        box-shadow: 0 0 8px hsl(calc(var(--h) * 45deg) 85% 62% / 0.8);
+      }
+      #board small {
+        color: var(--dim);
+        font-size: 10px;
+      }
+
+      #status {
+        position: absolute;
+        left: calc(env(safe-area-inset-left) + 14px);
+        bottom: calc(env(safe-area-inset-bottom) + 12px);
+        font-size: 11px;
+        color: var(--dim);
+        font-variant-numeric: tabular-nums;
+      }
+
+      #banner {
         position: absolute;
         inset: 0;
+        display: grid;
+        place-items: center;
+        font: 800 clamp(34px, 12vw, 74px) / 1 ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        opacity: 0;
+        transition: opacity 0.2s;
+        text-shadow: 0 0 40px rgba(41, 224, 255, 0.5);
+      }
+      #banner.show {
+        opacity: 1;
+      }
+
+      #pull-btn {
+        position: absolute;
+        right: calc(env(safe-area-inset-right) + 22px);
+        bottom: calc(env(safe-area-inset-bottom) + 26px);
+        width: 62px;
+        height: 62px;
+        border-radius: 99px;
+        border: 2px solid rgba(41, 224, 255, 0.5);
+        background: rgba(41, 224, 255, 0.1);
+        color: var(--ink);
+        font-size: 10px;
+        letter-spacing: 0.14em;
+        pointer-events: auto;
+        touch-action: none;
+      }
+      #pull-btn:active {
+        background: rgba(41, 224, 255, 0.3);
+      }
+
+      .stick {
+        position: fixed;
+        left: 0;
+        top: 0;
+        border-radius: 99px;
+        pointer-events: none;
+        opacity: 0;
+        transition: opacity 0.12s;
+        will-change: transform;
+      }
+      .stick.base {
+        width: 124px;
+        height: 124px;
+        margin: -62px 0 0 -62px;
+        border: 2px solid rgba(223, 241, 255, 0.18);
+      }
+      .stick.nub {
+        width: 52px;
+        height: 52px;
+        margin: -26px 0 0 -26px;
+        background: rgba(223, 241, 255, 0.24);
+      }
+
+      #menu {
+        position: fixed;
+        inset: 0;
+        display: none;
+        place-items: center;
+        background: radial-gradient(ellipse at center, rgba(5, 6, 12, 0.5), rgba(5, 6, 12, 0.92));
+        z-index: 5;
+      }
+      #menu.show {
+        display: grid;
+      }
+      .card {
         display: flex;
         flex-direction: column;
         align-items: center;
-        justify-content: center;
-        gap: 14px;
+        gap: 16px;
         text-align: center;
-        padding: 24px;
-        opacity: 0;
-        visibility: hidden;
-        transition:
-          opacity 0.3s,
-          visibility 0.3s;
-        background: radial-gradient(ellipse at center, rgba(5, 6, 12, 0.35), rgba(5, 6, 12, 0.85));
-      }
-      .overlay.show {
-        opacity: 1;
-        visibility: visible;
+        padding: 28px;
       }
       h1 {
-        font: 800 clamp(38px, 13vw, 76px) / 0.95 ui-sans-serif, system-ui, sans-serif;
-        letter-spacing: 0.14em;
+        font: 800 clamp(38px, 13vw, 70px) / 0.95 ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: 0.1em;
         background: linear-gradient(180deg, #ffffff, #7fd8ff 55%, #2f7dff);
         -webkit-background-clip: text;
         background-clip: text;
         color: transparent;
-        filter: drop-shadow(0 0 30px rgba(41, 224, 255, 0.45));
+        filter: drop-shadow(0 0 28px rgba(41, 224, 255, 0.45));
       }
       .tag {
         color: var(--dim);
-        letter-spacing: 0.22em;
-        font-size: clamp(10px, 3vw, 13px);
+        letter-spacing: 0.2em;
+        font-size: clamp(10px, 3vw, 12px);
         text-transform: uppercase;
+      }
+      #name {
+        width: min(300px, 78vw);
+        padding: 12px 14px;
+        border-radius: 10px;
+        border: 1px solid rgba(127, 216, 255, 0.3);
+        background: rgba(10, 18, 32, 0.9);
+        color: var(--ink);
+        font: 600 16px ui-sans-serif, system-ui, sans-serif;
+        text-align: center;
+      }
+      #name:focus {
+        outline: 2px solid var(--cyan);
+        outline-offset: 1px;
+      }
+      #play {
+        padding: 13px 40px;
+        border-radius: 99px;
+        border: 0;
+        background: linear-gradient(180deg, #4fe3ff, #2f7dff);
+        color: #04121f;
+        font: 800 15px ui-sans-serif, system-ui, sans-serif;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+      #play:active {
+        transform: scale(0.97);
       }
       .keys {
         display: grid;
-        gap: 8px;
-        margin-top: 10px;
-        font-size: clamp(12px, 3.4vw, 15px);
+        gap: 6px;
+        font-size: 12px;
         color: var(--dim);
+        margin-top: 4px;
       }
       .keys b {
         color: var(--ink);
-        font-weight: 700;
       }
-      .cta {
-        margin-top: 18px;
-        font-size: clamp(13px, 4vw, 17px);
-        letter-spacing: 0.2em;
-        text-transform: uppercase;
-        color: var(--ink);
-        animation: blink 1.6s ease-in-out infinite;
-      }
-      @keyframes blink {
-        50% {
-          opacity: 0.35;
-        }
-      }
-      #final-score {
-        font: 800 clamp(56px, 20vw, 110px) / 1 ui-monospace, Menlo, monospace;
-        font-variant-numeric: tabular-nums;
-        text-shadow: 0 0 36px rgba(41, 224, 255, 0.5);
-      }
-      #new-best {
-        display: none;
-        color: var(--amber);
-        letter-spacing: 0.2em;
-        font-weight: 700;
-        font-size: 13px;
-        text-transform: uppercase;
-      }
-      #new-best.show {
-        display: block;
-      }
-      #title-best,
-      #final-best {
-        color: var(--dim);
-        letter-spacing: 0.16em;
-        font-size: 13px;
-      }
+
       #boot {
         position: fixed;
         inset: 0;
@@ -248,6 +270,7 @@
         letter-spacing: 0.25em;
         font-size: 12px;
         transition: opacity 0.4s;
+        z-index: 9;
       }
       #boot.gone {
         opacity: 0;
@@ -280,34 +303,31 @@
 
     <div id="ui">
       <div class="top">
-        <div id="score">0</div>
-        <div class="unit">m</div>
-        <div id="mult"></div>
+        <div class="stat"><b id="mass">—</b><span>mass</span></div>
+        <div class="stat"><b id="kills">0</b><span>kills</span></div>
+        <div id="timer"></div>
       </div>
+      <ul id="board"></ul>
+      <div id="status">connecting…</div>
+      <div id="banner"></div>
+      <button id="pull-btn" type="button">PULL</button>
+    </div>
 
-      <div class="bottom">
-        <div id="pips"></div>
-        <div id="mass"><div id="mass-fill"></div></div>
-      </div>
+    <div class="stick base" id="s-move-base"></div>
+    <div class="stick nub" id="s-move-nub"></div>
+    <div class="stick base" id="s-aim-base"></div>
+    <div class="stick nub" id="s-aim-nub"></div>
 
-      <div id="title" class="overlay">
-        <h1>QUICKSILVER</h1>
-        <div class="tag">split to fit &nbsp;·&nbsp; merge to smash</div>
+    <div id="menu">
+      <div class="card">
+        <h1>BLOB BRAWL</h1>
+        <div class="tag">fire yourself &nbsp;·&nbsp; eat what's left</div>
+        <input id="name" maxlength="14" placeholder="your name" autocomplete="off" spellcheck="false" />
+        <button id="play" type="button">Play</button>
         <div class="keys">
-          <div><b>Drag</b> to steer</div>
-          <div><b>Tap</b> to split</div>
-          <div><b>Swipe up</b> to merge</div>
+          <div><b>Left thumb</b> move &nbsp;·&nbsp; <b>right thumb</b> aim, release to fire</div>
+          <div><b>Desktop:</b> WASD, mouse to aim, click to fire, E to pull</div>
         </div>
-        <div id="title-best"></div>
-        <div class="cta">Tap to drop</div>
-      </div>
-
-      <div id="over" class="overlay">
-        <div class="tag">depth reached</div>
-        <div id="final-score">0</div>
-        <div id="new-best">new best</div>
-        <div id="final-best"></div>
-        <div class="cta">Tap to retry</div>
       </div>
     </div>
 
