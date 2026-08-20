@@ -45,8 +45,11 @@ namespace Satisfying.Game
         public Transform Root;
         public int PlayerLayer;
 
-        public NetConditions HostConditions = new NetConditions();
-        public NetConditions ClientConditions = new NetConditions();
+        /// <summary>
+        /// One set of conditions per machine, applied to everything it sends - server and client alike.
+        /// Two ends each running 75ms gives the 150ms round trip you would actually feel.
+        /// </summary>
+        public NetConditions Conditions = new NetConditions();
 
         public NetServer Server;
         public NetClient Client;
@@ -91,7 +94,7 @@ namespace Satisfying.Game
             if (_serverSocket == null) { Status = error; return false; }
 
             _serverTransport = new ConditionedTransport(_serverSocket);
-            _serverTransport.Conditions = HostConditions;
+            _serverTransport.Conditions = Conditions;
             Server = new NetServer(_serverTransport, World, Spawns, Tuning);
             Server.ServerName = playerName + "'s duel";
 
@@ -122,7 +125,7 @@ namespace Satisfying.Game
             }
 
             _clientTransport = new ConditionedTransport(_clientSocket);
-            _clientTransport.Conditions = ClientConditions;
+            _clientTransport.Conditions = Conditions;
 
             Client = new NetClient(_clientTransport, World);
             // The host edits the authoritative tuning directly; a client gets it pushed over the wire.
@@ -191,10 +194,13 @@ namespace Satisfying.Game
                     }
                 }
 
-                Phase = Client.Phase;
-                TrackDamage();
-                RenderRemotes(dt);
-                RenderLocal(dt);
+                if (Client.Connected)
+                {
+                    Phase = Client.Phase;
+                    TrackDamage();
+                    RenderRemotes(dt);
+                    RenderLocal(dt);
+                }
             }
 
             if (Fx != null) Fx.Update();

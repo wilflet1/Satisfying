@@ -20,7 +20,6 @@ namespace Satisfying.Game
 
         readonly Dictionary<int, IPEndPoint> _peerById = new Dictionary<int, IPEndPoint>();
         readonly Dictionary<string, int> _idByPeer = new Dictionary<string, int>();
-        int _nextPeerId = 1;
 
         IPEndPoint _serverEndPoint;
         EndPoint _from = new IPEndPoint(IPAddress.Any, 0);
@@ -139,6 +138,7 @@ namespace Satisfying.Game
                 if (_isServer)
                 {
                     peerId = ResolvePeer(endPoint);
+                    if (peerId < 0) continue;
                 }
                 else
                 {
@@ -158,8 +158,16 @@ namespace Satisfying.Game
             int id;
             if (_idByPeer.TryGetValue(key, out id)) return id;
 
-            id = _nextPeerId++;
-            if (_nextPeerId > Protocol.MaxPlayers) _nextPeerId = 1;   // wrap; stale ids are dropped on disconnect
+            // Lowest free id, never a wrap: reusing a live peer's id would hand them someone else's player.
+            id = -1;
+            for (int candidate = 1; candidate <= Protocol.MaxPlayers; candidate++)
+            {
+                if (_peerById.ContainsKey(candidate)) continue;
+                id = candidate;
+                break;
+            }
+            if (id < 0) return -1;      // server full; the connect request is simply dropped
+
             _idByPeer[key] = id;
             _peerById[id] = new IPEndPoint(endPoint.Address, endPoint.Port);
             return id;

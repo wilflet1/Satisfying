@@ -104,6 +104,10 @@ namespace Satisfying.Game
                 Character.Body.localRotation = Quaternion.Euler(Mathf.Lerp(0f, 88f, _deathTimer), 0f, 0f);
                 Character.Body.localPosition = new Vector3(0f, Mathf.Lerp(0f, -0.85f, _deathTimer), Mathf.Lerp(0f, 0.35f, _deathTimer));
                 Character.Body.localScale = Vector3.one;
+                Character.Head.localPosition = Vector3.Lerp(new Vector3(0f, 1.69f, 0f), new Vector3(0f, 0.28f, 0.62f), _deathTimer);
+                Character.Head.localRotation = Quaternion.Euler(Mathf.Lerp(0f, 80f, _deathTimer), 0f, 0f);
+                Character.Chest.localPosition = Vector3.Lerp(new Vector3(0f, 1.34f, 0f), new Vector3(0f, 0.30f, 0.28f), _deathTimer);
+                Character.Chest.localRotation = Quaternion.Euler(Mathf.Lerp(0f, 80f, _deathTimer), 0f, 0f);
                 SolveArms();
                 return;
             }
@@ -133,7 +137,22 @@ namespace Satisfying.Game
                 Character.RightLeg.localScale = new Vector3(1f, heightFactor, 1f);
             }
 
-            Character.Head.localRotation = Quaternion.Euler(state.Pitch * 0.75f, 0f, 0f);
+            // The head is placed to land exactly where PlayerHitbox puts it, so the thing you aim at and
+            // the thing the server tests are the same object. Lean really does move the head.
+            float eyeHeight = state.Height + _move.eyeDrop;
+            Vector3 leanShift = new Vector3(lean * _move.leanOffset, -Mathf.Abs(lean) * _move.leanDrop, 0f);
+
+            if (state.Stance == Stance.Prone)
+            {
+                Character.Head.localPosition = new Vector3(0f, eyeHeight + 0.02f, 0.5f) + leanShift;
+                Character.Chest.localPosition = new Vector3(0f, eyeHeight * 0.85f, 0.24f) + leanShift * 0.9f;
+            }
+            else
+            {
+                Character.Head.localPosition = new Vector3(0f, eyeHeight + 0.05f, 0f) + leanShift;
+                Character.Chest.localPosition = new Vector3(0f, eyeHeight * 0.78f, 0f) + leanShift * 0.9f;
+            }
+            Character.Head.localRotation = Quaternion.Euler(state.Pitch * 0.75f, 0f, -lean * _move.leanAngle * 0.5f);
 
             // Chest pitches with the aim so the weapon points where they are actually shooting.
             float chestPitch = state.Pitch * 0.85f;
@@ -152,7 +171,7 @@ namespace Satisfying.Game
                 holderPosition = Vector3.Lerp(holderPosition, new Vector3(0f, -0.02f, 0.24f), state.Ads);
             }
 
-            Character.Chest.localRotation = Quaternion.Euler(chestPitch, 0f, 0f);
+            Character.Chest.localRotation = Quaternion.Euler(chestPitch, 0f, -lean * _move.leanAngle);
             _weaponHolder.localPosition = holderPosition;
             _weaponHolder.localRotation = Quaternion.Euler(holderEuler);
 

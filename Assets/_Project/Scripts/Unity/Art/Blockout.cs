@@ -80,15 +80,17 @@ namespace Satisfying.Game
             Box(c.Body, "chest rig", new Vector3(0f, 1.22f, 0.09f), new Vector3(0.36f, 0.34f, 0.12f), palette.WallDark, false, layer);
             Box(c.Body, "hips", new Vector3(0f, 0.82f, 0f), new Vector3(0.36f, 0.24f, 0.24f), palette.WallDark, false, layer);
 
+            // Chest and head hang off the root, NOT the body: the body gets scaled for crouch and prone,
+            // and a squashed head would stop matching the hitbox you are actually shooting at.
             GameObject chest = new GameObject("chest");
-            chest.transform.SetParent(c.Body, false);
+            chest.transform.SetParent(c.Root.transform, false);
             chest.transform.localPosition = new Vector3(0f, 1.34f, 0f);
             chest.layer = layer;
             c.Chest = chest.transform;
 
             GameObject head = new GameObject("head");
-            head.transform.SetParent(c.Body, false);
-            head.transform.localPosition = new Vector3(0f, 1.60f, 0f);
+            head.transform.SetParent(c.Root.transform, false);
+            head.transform.localPosition = new Vector3(0f, 1.69f, 0f);
             head.layer = layer;
             c.Head = head.transform;
             Box(c.Head, "skull", Vector3.zero, new Vector3(0.21f, 0.24f, 0.23f), skin, false, layer);

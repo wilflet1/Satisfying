@@ -176,8 +176,10 @@ namespace Satisfying.Game
             _input.Tuning = _game.Tuning;
 
             _view = new PlayerView(transform, _feel, _palette, LayerViewmodel);
-            _view.Camera.transform.position = new Vector3(0f, 6f, -18f);
-            _view.Camera.transform.rotation = Quaternion.Euler(12f, 0f, 0f);
+            // Menu backdrop. Pose the rig, not the camera: the camera sits at the rig's origin and the
+            // view code drives the rig, so moving the camera itself would leave a permanent offset.
+            _view.Rig.position = new Vector3(0f, 6f, -18f);
+            _view.Rig.rotation = Quaternion.Euler(12f, 0f, 0f);
 
             _game.Feel = _feel;
             _game.Input = _input;

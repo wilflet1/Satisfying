@@ -21,6 +21,13 @@ namespace Satisfying.Game
         public bool ShowControls;
 
         UiSkin _skin;
+        GUIStyle _centreSmall;
+        GUIStyle _centreHeader;
+        GUIStyle _centreDim;
+        GUIStyle _score;
+        GUIStyle _feed;
+        GUIStyle _ammo;
+        GUIStyle _weaponName;
         LanDiscovery _browser;
         string _name = "duellist";
         string _address = "127.0.0.1";
@@ -40,6 +47,7 @@ namespace Satisfying.Game
             _port = PlayerPrefs.GetString("satisfying.port", Protocol.DefaultPort.ToString());
             Tuning.Skin = _skin;
             Controls.Skin = _skin;
+            BuildDerivedStyles();
             StartBrowsing();
         }
 
@@ -75,6 +83,7 @@ namespace Satisfying.Game
                 if (ShowControls) ShowControls = false;
                 else if (ShowTuning) ShowTuning = false;
                 else if (Game.InGame) ShowMenu = !ShowMenu;
+                else if (Game.CurrentMode != NetGame.Mode.Offline) Game.Leave();   // give up on a connection
             }
 
             if (!Game.InGame && Game.CurrentMode == NetGame.Mode.Offline)
@@ -97,8 +106,10 @@ namespace Satisfying.Game
             _width = Screen.width / _scale;
             _height = Screen.height / _scale;
 
+            bool connecting = !Game.InGame && Game.CurrentMode != NetGame.Mode.Offline;
             if (Game.InGame) DrawHud();
-            if (ShowMenu || !Game.InGame) DrawMenu();
+            if (connecting && !ShowMenu) DrawConnecting();
+            else if (ShowMenu || !Game.InGame) DrawMenu();
             if (ShowTuning) Tuning.Draw(new Rect(_width - 470f, 20f, 450f, _height - 40f));
             if (ShowControls) Controls.Draw(new Rect(20f, 20f, 520f, _height - 40f));
         }
@@ -111,7 +122,8 @@ namespace Satisfying.Game
             MovementTuning move = client.Tuning.move;
             WeaponTuning weapon = client.Tuning.Weapon(state.Weapon.Index);
 
-            DrawCrosshair(in state, move, weapon);
+            if (state.BlindFire > 0.5f) DrawBlindFireDial(in state, move);
+            else DrawCrosshair(in state, move, weapon);
             DrawHitMarker();
             DrawVitals(in state, move, weapon);
             DrawMatchBanner();
@@ -128,7 +140,7 @@ namespace Satisfying.Game
                 string text = Game.RespawnCountdown > 0.05f
                     ? "respawning in " + Game.RespawnCountdown.ToString("0.0")
                     : "respawning...";
-                _skin.Text(new Rect(0f, _height * 0.44f, _width, 40f), text, Centered(_skin.Header), UiSkin.Bad);
+                _skin.Text(new Rect(0f, _height * 0.44f, _width, 40f), text, _centreHeader, UiSkin.Bad);
             }
 
             if (Feel.showNetGraph > 0.5f) DrawNetGraph();
@@ -136,7 +148,30 @@ namespace Satisfying.Game
             if (Bindings.Held(GameAction.Scoreboard)) DrawScoreboard();
         }
 
-        GUIStyle Centered(GUIStyle style)
+        /// <summary>OnGUI runs twice a frame; building styles there would allocate for no reason.</summary>
+        void BuildDerivedStyles()
+        {
+            _centreSmall = Centered(_skin.Small);
+            _centreHeader = Centered(_skin.Header);
+            _centreDim = Centered(_skin.SmallDim);
+
+            _score = new GUIStyle(_skin.Label);
+            _score.alignment = TextAnchor.MiddleCenter;
+            _score.fontSize = 30;
+            _score.fontStyle = FontStyle.Bold;
+
+            _feed = new GUIStyle(_skin.Small);
+            _feed.alignment = TextAnchor.MiddleRight;
+
+            _ammo = new GUIStyle(_skin.Label);
+            _ammo.alignment = TextAnchor.MiddleRight;
+            _ammo.fontSize = 26;
+
+            _weaponName = new GUIStyle(_skin.Small);
+            _weaponName.alignment = TextAnchor.MiddleRight;
+        }
+
+        static GUIStyle Centered(GUIStyle style)
         {
             GUIStyle copy = new GUIStyle(style);
             copy.alignment = TextAnchor.MiddleCenter;
@@ -167,6 +202,29 @@ namespace Satisfying.Game
             _skin.Fill(new Rect(cx - thickness * 0.5f, cy - gap - length, thickness, length), color);
             _skin.Fill(new Rect(cx - thickness * 0.5f, cy + gap, thickness, length), color);
             _skin.Fill(new Rect(cx - 1f, cy - 1f, 2f, 2f), new Color(1f, 1f, 1f, 0.5f));
+        }
+
+        /// <summary>
+        /// Blind firing has no crosshair on purpose - you cannot see what you are shooting at. What you
+        /// get instead is the elevation you dialled in, which is the only aim you have.
+        /// </summary>
+        void DrawBlindFireDial(in PlayerSimState state, MovementTuning move)
+        {
+            float cx = _width * 0.5f;
+            float cy = _height * 0.5f;
+            float height = 150f;
+
+            _skin.Fill(new Rect(cx - 2f, cy - height * 0.5f, 4f, height), new Color(0f, 0f, 0f, 0.45f));
+
+            float dial = Mathf.Clamp(state.BlindAngle, -1f, 1f);
+            float y = cy - dial * height * 0.5f;
+            _skin.Fill(new Rect(cx - 26f, y - 2f, 52f, 4f), UiSkin.Accent);
+            _skin.Fill(new Rect(cx - 60f, cy - 1f, 24f, 2f), new Color(1f, 1f, 1f, 0.35f));
+            _skin.Fill(new Rect(cx + 36f, cy - 1f, 24f, 2f), new Color(1f, 1f, 1f, 0.35f));
+
+            float elevation = dial >= 0f ? dial * move.blindFirePitchMax : -dial * move.blindFirePitchMin;
+            _skin.Text(new Rect(cx + 34f, y - 12f, 90f, 22f), elevation.ToString("0") + "\u00b0", _skin.Small, UiSkin.Accent);
+            _skin.Text(new Rect(cx - 90f, cy + height * 0.5f + 6f, 180f, 20f), "BLIND FIRE - wheel aims", _centreDim, UiSkin.InkDim);
         }
 
         void DrawHitMarker()
@@ -215,7 +273,8 @@ namespace Satisfying.Game
             float sx = x;
             float sy = y + 62f;
             string stance = state.Stance == Stance.Prone ? "PRONE" : (state.Stance == Stance.Crouch ? "CROUCH" : "STAND");
-            _skin.Text(new Rect(sx, sy, 120f, 20f), stance, _skin.Label, UiSkin.Accent);
+            if (state.BlindFire > 0.5f) stance += "  BLIND";
+            _skin.Text(new Rect(sx, sy, 160f, 20f), stance, _skin.Label, UiSkin.Accent);
 
             _skin.Text(new Rect(sx + 92f, sy + 2f, 60f, 16f), "LEAN", _skin.SmallDim, UiSkin.InkDim);
             _skin.SignedBar(new Rect(sx + 130f, sy + 6f, 90f, 8f), state.Lean,
@@ -227,15 +286,9 @@ namespace Satisfying.Game
 
             // ---------------------------------------------------------- bottom right
             string ammo = state.Weapon.Reloading ? "RELOADING" : state.Weapon.Ammo + " / " + weapon.MagSizeInt;
-            GUIStyle right = new GUIStyle(_skin.Label);
-            right.alignment = TextAnchor.MiddleRight;
-            right.fontSize = 26;
-            _skin.Text(new Rect(_width - 250f, _height - 84f, 220f, 34f), ammo, right,
+            _skin.Text(new Rect(_width - 250f, _height - 84f, 220f, 34f), ammo, _ammo,
                 state.Weapon.Reloading ? UiSkin.Accent : UiSkin.Ink);
-
-            GUIStyle rightSmall = new GUIStyle(_skin.Small);
-            rightSmall.alignment = TextAnchor.MiddleRight;
-            _skin.Text(new Rect(_width - 250f, _height - 52f, 220f, 20f), weapon.name.ToUpperInvariant(), rightSmall, UiSkin.InkDim);
+            _skin.Text(new Rect(_width - 250f, _height - 52f, 220f, 20f), weapon.name.ToUpperInvariant(), _weaponName, UiSkin.InkDim);
         }
 
         void DrawMatchBanner()
@@ -258,13 +311,8 @@ namespace Satisfying.Game
                 default: phase = "first to " + Mathf.RoundToInt(Game.Client.Tuning.match.killsToWin); break;
             }
 
-            GUIStyle score = new GUIStyle(_skin.Label);
-            score.alignment = TextAnchor.MiddleCenter;
-            score.fontSize = 30;
-            score.fontStyle = FontStyle.Bold;
-
-            _skin.Text(new Rect(_width * 0.5f - 150f, 14f, 300f, 36f), mine + "   -   " + theirs, score, UiSkin.Ink);
-            _skin.Text(new Rect(_width * 0.5f - 200f, 50f, 400f, 20f), phase, Centered(_skin.Small), UiSkin.InkDim);
+            _skin.Text(new Rect(_width * 0.5f - 150f, 14f, 300f, 36f), mine + "   -   " + theirs, _score, UiSkin.Ink);
+            _skin.Text(new Rect(_width * 0.5f - 200f, 50f, 400f, 20f), phase, _centreSmall, UiSkin.InkDim);
         }
 
         void DrawKillFeed()
@@ -276,10 +324,8 @@ namespace Satisfying.Game
                 float age = Time.time - entry.Time;
                 float alpha = Mathf.Clamp01(2f - age * 0.35f);
                 string zone = entry.Zone == HitZone.Head ? "  [head]" : "";
-                GUIStyle style = new GUIStyle(_skin.Small);
-                style.alignment = TextAnchor.MiddleRight;
                 _skin.Text(new Rect(_width - 330f, y, 300f, 18f),
-                    entry.Killer + "  killed  " + entry.Victim + zone, style,
+                    entry.Killer + "  killed  " + entry.Victim + zone, _feed,
                     new Color(UiSkin.Ink.r, UiSkin.Ink.g, UiSkin.Ink.b, alpha));
                 y += 19f;
             }
@@ -341,6 +387,13 @@ namespace Satisfying.Game
             GUILayout.EndArea();
         }
 
+        void DrawConnecting()
+        {
+            _skin.Fill(new Rect(0f, 0f, _width, _height), new Color(0.03f, 0.035f, 0.05f, 0.85f));
+            _skin.Text(new Rect(0f, _height * 0.46f, _width, 40f), "connecting...", _centreHeader, UiSkin.Accent);
+            _skin.Text(new Rect(0f, _height * 0.52f, _width, 24f), "Esc to give up", _centreDim, UiSkin.InkDim);
+        }
+
         // ------------------------------------------------------------------ menu
         void DrawMenu()
         {
@@ -352,7 +405,7 @@ namespace Satisfying.Game
 
             GUILayout.BeginArea(area, _skin.Panel);
             GUILayout.Label("SATISFYING", _skin.Title);
-            GUILayout.Label("a 1v1 movement duel - lean, slow lean, prone lean, side step", Centered(_skin.SmallDim));
+            GUILayout.Label("a 1v1 movement duel - lean, slow lean, prone lean, side step, blind fire", _centreDim);
             GUILayout.Space(10f);
 
             _menuScroll = GUILayout.BeginScrollView(_menuScroll);
@@ -414,14 +467,15 @@ namespace Satisfying.Game
             GUILayout.Space(12f);
             GUILayout.Label("NETWORK SIMULATOR", _skin.Header);
             GUILayout.Label("Adds delay and loss to what THIS machine sends. Run it on both ends to feel a real connection.", _skin.SmallDim);
-            DrawConditions(Game.ClientConditions);
+            DrawConditions(Game.Conditions);
 
             GUILayout.Space(12f);
             GUILayout.Label("CONTROLS", _skin.Header);
             GUILayout.Label(
                 "WASD move   Space jump/mantle   Shift sprint   C crouch   X prone\n" +
                 "Q / E lean   Alt+Q / Alt+E slow lean (move the mouse for a fine lean)\n" +
-                "Alt+A / Alt+D side step   Ctrl walk   wheel speed dial   1-3 weapons\n" +
+                "Alt+A / Alt+D side step   Ctrl walk   wheel speed dial\n" +
+                "V blind fire (wheel aims it)   1 M4A1   2 MP5   3 USP45\n" +
                 "F1 tuning   F2 controls   F3 net graph   Tab scoreboard   Esc menu",
                 _skin.Small);
 
