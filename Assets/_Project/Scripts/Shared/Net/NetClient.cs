@@ -110,6 +110,8 @@ namespace Satisfying.Shared
         public ClientNetTuning NetTuning = new ClientNetTuning();
         public IInputSource InputSource;
         public IEventSink Sink;
+        /// <summary>Fired after every predicted tick so the presentation layer can react immediately.</summary>
+        public System.Action<InputCommand, SimEvents> OnPredictedTick;
 
         public Status State = Status.Disconnected;
         public DisconnectReason LastDisconnectReason = DisconnectReason.Unknown;
@@ -124,6 +126,8 @@ namespace Satisfying.Shared
         public float Jitter;
         public int BufferHealth;
         public MatchPhase Phase = MatchPhase.Warmup;
+        public float Health = 100f;
+        public bool Alive = true;
 
         // diagnostics for the net graph
         public int Corrections;
@@ -263,6 +267,8 @@ namespace Satisfying.Shared
 
             SendInput();
             ClientTick++;
+
+            if (OnPredictedTick != null) OnPredictedTick(cmd, ev);
         }
 
         public SimEvents LastEvents;
@@ -358,6 +364,8 @@ namespace Satisfying.Shared
 
                 if (state.PeerId == PeerId)
                 {
+                    Health = state.Health;
+                    Alive = state.Alive;
                     Reconcile(ackTick, state);
                     continue;
                 }

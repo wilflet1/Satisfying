@@ -17,6 +17,8 @@ namespace Satisfying.Shared
         public float Lean;
         public float SideStep;
         public float Ads;
+        public float BlindFire;
+        public float BlindAngle;
         public float Height;
         public float Stamina;
         public Stance Stance;
@@ -41,6 +43,8 @@ namespace Satisfying.Shared
             n.Lean = s.Lean;
             n.SideStep = s.SideStep;
             n.Ads = s.Ads;
+            n.BlindFire = s.BlindFire;
+            n.BlindAngle = s.BlindAngle;
             n.Height = s.Height;
             n.Stamina = s.Stamina;
             n.Stance = s.Stance;
@@ -63,6 +67,8 @@ namespace Satisfying.Shared
             s.Lean = Lean;
             s.SideStep = SideStep;
             s.Ads = Ads;
+            s.BlindFire = BlindFire;
+            s.BlindAngle = BlindAngle;
             s.Height = Height;
             s.Stamina = Stamina;
             s.Stance = Stance;
@@ -85,6 +91,8 @@ namespace Satisfying.Shared
             s.Lean = Lean;
             s.SideStep = SideStep;
             s.Ads = Ads;
+            s.BlindFire = BlindFire;
+            s.BlindAngle = BlindAngle;
             s.Height = Height;
             s.Stamina = Stamina;
             s.Stance = Stance;
@@ -112,6 +120,8 @@ namespace Satisfying.Shared
             b.WriteQ(Lean, -1f, 1f, 9);
             b.WriteQ(SideStep, -1f, 1f, 8);
             b.WriteQ(Ads, 0f, 1f, 6);
+            b.WriteQ(BlindFire, 0f, 1f, 5);
+            b.WriteQ(BlindAngle, -1f, 1f, 6);
             b.WriteQ(Height, 0.2f, 2.4f, 9);
             b.WriteQ(Stamina, 0f, 300f, 9);
             b.WriteBits((uint)Stance, 2);
@@ -140,6 +150,8 @@ namespace Satisfying.Shared
             n.Lean = b.ReadQ(-1f, 1f, 9);
             n.SideStep = b.ReadQ(-1f, 1f, 8);
             n.Ads = b.ReadQ(0f, 1f, 6);
+            n.BlindFire = b.ReadQ(0f, 1f, 5);
+            n.BlindAngle = b.ReadQ(-1f, 1f, 6);
             n.Height = b.ReadQ(0.2f, 2.4f, 9);
             n.Stamina = b.ReadQ(0f, 300f, 9);
             n.Stance = (Stance)b.ReadBits(2);
@@ -163,6 +175,8 @@ namespace Satisfying.Shared
             r.Lean = MathK.Lerp(a.Lean, b.Lean, t);
             r.SideStep = MathK.Lerp(a.SideStep, b.SideStep, t);
             r.Ads = MathK.Lerp(a.Ads, b.Ads, t);
+            r.BlindFire = MathK.Lerp(a.BlindFire, b.BlindFire, t);
+            r.BlindAngle = MathK.Lerp(a.BlindAngle, b.BlindAngle, t);
             r.Height = MathK.Lerp(a.Height, b.Height, t);
             r.Stamina = MathK.Lerp(a.Stamina, b.Stamina, t);
             r.Spread = MathK.Lerp(a.Spread, b.Spread, t);

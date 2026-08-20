@@ -180,8 +180,9 @@ namespace Satisfying.Shared
         void ResolveShots(ServerPlayer shooter, InputCommand cmd, WeaponTuning weapon, SimEvents ev)
         {
             float spread = MovementCore.CurrentSpread(in shooter.Sim, Tuning.move, weapon);
-            Vec3 origin = shooter.Sim.EyePosition(Tuning.move);
-            Vec3 aim = shooter.Sim.LookDirection();
+            // Blind fire lifts the muzzle over cover and swings it round the corner; the head stays put.
+            Vec3 origin = shooter.Sim.WeaponOrigin(Tuning.move);
+            Vec3 aim = shooter.Sim.WeaponDirection(Tuning.move);
 
             for (int shot = 0; shot < ev.ShotsFired; shot++)
             {

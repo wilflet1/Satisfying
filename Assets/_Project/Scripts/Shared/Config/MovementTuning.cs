@@ -187,6 +187,34 @@ namespace Satisfying.Shared
         [Tune("SideStep", 0f, 20f, Tip = "Extra camera roll (deg) at full side step.")]
         public float sideStepRoll = 4.5f;
 
+        // ---------------------------------------------------------------- blind fire
+        [Tune("Blind fire", 0.02f, 1f, Tip = "Seconds to raise the weapon over cover.")]
+        public float blindFireBlendTime = 0.18f;
+
+        [Tune("Blind fire", 1f, 20f, Tip = "Spread multiplier while blind firing - you cannot see what you are shooting at.")]
+        public float blindFireSpreadMul = 7f;
+
+        [Tune("Blind fire", 0f, 1.2f, Tip = "How far the muzzle is lifted above the eye line so you clear the cover.")]
+        public float blindFireRaise = 0.42f;
+
+        [Tune("Blind fire", -90f, 0f, Tip = "Lowest weapon elevation on the blind fire dial.")]
+        public float blindFirePitchMin = -25f;
+
+        [Tune("Blind fire", 0f, 90f, Tip = "Highest weapon elevation on the blind fire dial.")]
+        public float blindFirePitchMax = 45f;
+
+        [Tune("Blind fire", 0f, 90f, Tip = "Sideways swing added when you blind fire while leaning around a corner.")]
+        public float blindFireYaw = 32f;
+
+        [Tune("Blind fire", 0.02f, 0.5f, Tip = "How much one wheel notch moves the blind fire dial.")]
+        public float blindFireAngleStep = 0.08f;
+
+        [Tune("Blind fire", 0.1f, 1f, Tip = "Movement speed multiplier while blind firing - you can keep walking.")]
+        public float blindFireSpeedMul = 0.85f;
+
+        [Tune("Blind fire", 0f, 30f, Tip = "Stamina drained per second while holding the weapon up.")]
+        public float blindFireStaminaDrain = 4f;
+
         // ---------------------------------------------------------------- stamina
         [Tune("Stamina", 10f, 300f)]
         public float staminaMax = 100f;

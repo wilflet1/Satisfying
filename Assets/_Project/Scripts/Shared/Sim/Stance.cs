@@ -23,6 +23,7 @@ namespace Satisfying.Shared
         StepRight = 1 << 8,
         Mantle = 1 << 9,
         Interact = 1 << 10,
-        WalkToggle = 1 << 11    // forces the analog speed dial to its minimum
+        WalkToggle = 1 << 11,   // forces the analog speed dial to its minimum
+        BlindFire = 1 << 12     // gun over/around cover, head stays hidden
     }
 }

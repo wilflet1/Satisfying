@@ -32,6 +32,8 @@ namespace Satisfying.Shared
         public float SideStep;          // -1..1 signed lateral step offset
         public float SideStepCooldown;
         public float Ads;               // 0..1 aim blend
+        public float BlindFire;         // 0..1 blend of holding the weapon over cover
+        public float BlindAngle;        // -1..1 elevation dial while blind firing
         public float Stamina;
 
         public bool Grounded;
@@ -92,6 +94,36 @@ namespace Satisfying.Shared
         }
 
         public Vec3 LookDirection() { return ViewMath.Forward(Yaw, Pitch); }
+
+        /// <summary>
+        /// Where the weapon is actually pointing. Normally that is where you are looking; while blind
+        /// firing the gun is elevated (and swung around the corner if you are leaning) while your head
+        /// stays exactly where it was. Both the shooting client and the server call this.
+        /// </summary>
+        public Vec3 WeaponDirection(MovementTuning t)
+        {
+            if (BlindFire <= 0.001f) return LookDirection();
+
+            float dial = MathK.Clamp(BlindAngle, -1f, 1f);
+            float pitchOffset = dial >= 0f
+                ? dial * t.blindFirePitchMax
+                : -dial * t.blindFirePitchMin;
+            float yawOffset = EffectiveLean(t) * t.blindFireYaw;
+
+            float pitch = MathK.Clamp(Pitch - pitchOffset * BlindFire, -89f, 89f);
+            float yaw = Yaw + yawOffset * BlindFire;
+            return ViewMath.Forward(yaw, pitch);
+        }
+
+        /// <summary>Muzzle position: lifted above the eye line while blind firing so the round clears the cover.</summary>
+        public Vec3 WeaponOrigin(MovementTuning t)
+        {
+            Vec3 origin = EyePosition(t);
+            if (BlindFire > 0.001f) origin += Vec3.Up * (t.blindFireRaise * BlindFire);
+            return origin;
+        }
+
+        public bool IsBlindFiring { get { return BlindFire > 0.5f; } }
     }
 
     /// <summary>One-frame outputs from a simulation step, used for effects and for server-side shot handling.</summary>

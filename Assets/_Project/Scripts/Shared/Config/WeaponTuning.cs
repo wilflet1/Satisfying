@@ -95,46 +95,73 @@ namespace Satisfying.Shared
 
         public static WeaponTuning[] DefaultLoadout()
         {
-            WeaponTuning ar = new WeaponTuning();
-            ar.name = "AR-15";
+            // Three familiar shapes with clearly different jobs: a rifle you can hold an angle with,
+            // a submachine gun for the blockhouse, and a pistol that rewards a steady hand.
+            WeaponTuning m4 = new WeaponTuning();
+            m4.name = "M4A1";
+            m4.rpm = 760f;
+            m4.damage = 25f;
+            m4.headMultiplier = 2.5f;
+            m4.limbMultiplier = 0.8f;
+            m4.falloffStart = 32f;
+            m4.falloffEnd = 100f;
+            m4.falloffMinMul = 0.62f;
+            m4.range = 240f;
+            m4.spreadBase = 1.05f;
+            m4.spreadAdsMul = 0.07f;
+            m4.spreadPerShot = 0.30f;
+            m4.spreadRecovery = 4.6f;
+            m4.recoilVertical = 1.25f;
+            m4.recoilHorizontal = 0.4f;
+            m4.recoilRecoverFraction = 0.74f;
+            m4.magSize = 30f;
+            m4.reloadTime = 2.15f;
+            m4.adsTime = 0.21f;
 
-            WeaponTuning smg = new WeaponTuning();
-            smg.name = "SMG-9";
-            smg.rpm = 900f;
-            smg.damage = 17f;
-            smg.headMultiplier = 2.2f;
-            smg.falloffStart = 14f;
-            smg.falloffEnd = 45f;
-            smg.falloffMinMul = 0.4f;
-            smg.spreadBase = 1.5f;
-            smg.spreadPerShot = 0.26f;
-            smg.recoilVertical = 0.85f;
-            smg.recoilHorizontal = 0.5f;
-            smg.magSize = 35f;
-            smg.reloadTime = 1.8f;
-            smg.adsTime = 0.15f;
-            smg.range = 120f;
+            WeaponTuning mp5 = new WeaponTuning();
+            mp5.name = "MP5";
+            mp5.rpm = 800f;
+            mp5.damage = 18f;
+            mp5.headMultiplier = 2.2f;
+            mp5.limbMultiplier = 0.85f;
+            mp5.falloffStart = 16f;
+            mp5.falloffEnd = 48f;
+            mp5.falloffMinMul = 0.42f;
+            mp5.range = 130f;
+            mp5.spreadBase = 1.35f;
+            mp5.spreadAdsMul = 0.1f;
+            mp5.spreadPerShot = 0.24f;
+            mp5.spreadRecovery = 5.6f;
+            mp5.recoilVertical = 0.78f;
+            mp5.recoilHorizontal = 0.46f;
+            mp5.recoilRecoverFraction = 0.8f;
+            mp5.magSize = 30f;
+            mp5.reloadTime = 1.85f;
+            mp5.adsTime = 0.15f;
 
-            WeaponTuning dmr = new WeaponTuning();
-            dmr.name = "DMR-7";
-            dmr.rpm = 260f;
-            dmr.damage = 55f;
-            dmr.headMultiplier = 2.2f;
-            dmr.falloffStart = 65f;
-            dmr.falloffEnd = 180f;
-            dmr.falloffMinMul = 0.8f;
-            dmr.spreadBase = 0.6f;
-            dmr.spreadAdsMul = 0.02f;
-            dmr.spreadPerShot = 0.8f;
-            dmr.recoilVertical = 2.6f;
-            dmr.recoilHorizontal = 0.6f;
-            dmr.magSize = 10f;
-            dmr.reloadTime = 2.4f;
-            dmr.adsTime = 0.28f;
-            dmr.automatic = 0f;
-            dmr.range = 320f;
+            WeaponTuning usp = new WeaponTuning();
+            usp.name = "USP45";
+            usp.rpm = 420f;
+            usp.damage = 41f;
+            usp.headMultiplier = 2.4f;
+            usp.limbMultiplier = 0.75f;
+            usp.falloffStart = 18f;
+            usp.falloffEnd = 55f;
+            usp.falloffMinMul = 0.55f;
+            usp.range = 120f;
+            usp.spreadBase = 0.85f;
+            usp.spreadAdsMul = 0.06f;
+            usp.spreadPerShot = 0.75f;
+            usp.spreadRecovery = 6.5f;
+            usp.recoilVertical = 1.9f;
+            usp.recoilHorizontal = 0.35f;
+            usp.recoilRecoverFraction = 0.85f;
+            usp.magSize = 12f;
+            usp.reloadTime = 1.7f;
+            usp.adsTime = 0.13f;
+            usp.automatic = 0f;
 
-            return new WeaponTuning[] { ar, smg, dmr };
+            return new WeaponTuning[] { m4, mp5, usp };
         }
     }
 

@@ -1,0 +1,285 @@
+using UnityEngine;
+using Satisfying.Shared;
+
+namespace Satisfying.Game
+{
+    /// <summary>
+    /// Turns the keyboard and mouse into the tick-rate InputCommand stream the simulation eats.
+    /// Continuous state (aim, lean, stance, speed dial) is polled every frame; one-shot presses are
+    /// latched so a tap between two ticks is never swallowed.
+    /// </summary>
+    public sealed class LocalInputSource : IInputSource
+    {
+        public InputBindings Bindings;
+        public FeelTuning Feel;
+        public GameTuning Tuning;
+        public bool Enabled = true;
+
+        public float Yaw { get { return _yaw + _recoilYaw; } }
+        public float Pitch { get { return _pitch + _recoilPitch; } }
+        public float SpeedDial { get { return _speedDial; } }
+        public float BlindAngle { get { return _blindAngle; } }
+        public bool BlindFiring { get { return _blindFiring; } }
+        public Stance StanceRequest { get { return _stance; } }
+        public bool FreeLeaning { get { return _freeLeaning; } }
+        public float LeanTarget { get { return _leanTarget; } }
+
+        float _yaw;
+        float _pitch;
+        float _recoilPitch;
+        float _recoilYaw;
+        float _speedDial = 1f;
+        float _blindAngle;
+        bool _blindFiring;
+        float _leanTarget;
+        float _analogLean;
+        bool _freeLeaning;
+        bool _leanToggleLeft;
+        bool _leanToggleRight;
+        Stance _stance = Stance.Stand;
+        byte _weapon;
+
+        bool _latchJump;
+        bool _latchReload;
+        bool _latchStepLeft;
+        bool _latchStepRight;
+        bool _latchMantle;
+        float _smoothX;
+        float _smoothY;
+
+        public void ResetView(float yaw, float pitch)
+        {
+            _yaw = yaw;
+            _pitch = pitch;
+            _recoilPitch = 0f;
+            _recoilYaw = 0f;
+            _leanTarget = 0f;
+            _analogLean = 0f;
+            _blindAngle = 0f;
+            _leanToggleLeft = false;
+            _leanToggleRight = false;
+            _stance = Stance.Stand;
+        }
+
+        /// <summary>Called once per rendered frame, before any ticks are stepped.</summary>
+        public void PollFrame(float dt, in PlayerSimState predicted)
+        {
+            MovementTuning move = Tuning.move;
+            WeaponTuning weapon = Tuning.Weapon(_weapon);
+
+            RecoverRecoil(weapon, dt);
+
+            if (!Enabled)
+            {
+                _leanTarget = 0f;
+                _freeLeaning = false;
+                return;
+            }
+
+            float sensitivity = Feel.sensitivity * Mathf.Lerp(1f, Feel.adsSensitivityMul, predicted.Ads);
+            float rawX = Input.GetAxisRaw("Mouse X") * sensitivity;
+            float rawY = Input.GetAxisRaw("Mouse Y") * sensitivity * (Feel.invertY >= 0.5f ? 1f : -1f);
+
+            if (Feel.smoothing > 0.001f)
+            {
+                float k = 1f - Mathf.Exp(-Mathf.Lerp(60f, 6f, Mathf.Clamp01(Feel.smoothing)) * dt);
+                _smoothX = Mathf.Lerp(_smoothX, rawX, k);
+                _smoothY = Mathf.Lerp(_smoothY, rawY, k);
+                rawX = _smoothX;
+                rawY = _smoothY;
+            }
+
+            PollLean(rawX, move);
+            if (!_freeLeaning) _yaw += rawX;
+            _pitch = Mathf.Clamp(_pitch + rawY, -move.pitchLimit, move.pitchLimit);
+            _yaw = Mathf.Repeat(_yaw + 180f, 360f) - 180f;
+
+            PollStance();
+            _blindFiring = Bindings.Held(GameAction.BlindFire);
+            PollSpeedDial(move);
+            PollWeapons();
+
+            if (Bindings.Pressed(GameAction.Jump)) { _latchJump = true; _latchMantle = true; }
+            if (Bindings.Pressed(GameAction.Reload)) _latchReload = true;
+            if (Bindings.Pressed(GameAction.StepLeft)) _latchStepLeft = true;
+            if (Bindings.Pressed(GameAction.StepRight)) _latchStepRight = true;
+        }
+
+        void PollLean(float mouseX, MovementTuning move)
+        {
+            bool modifier = Bindings.Held(GameAction.LeanModifier);
+            bool leftHeld = Bindings.Held(GameAction.LeanLeft) || (modifier && Input.GetKey(Bindings[GameAction.LeanLeft].Key));
+            bool rightHeld = Bindings.Held(GameAction.LeanRight) || (modifier && Input.GetKey(Bindings[GameAction.LeanRight].Key));
+
+            if (Bindings.LeanIsToggle)
+            {
+                if (Bindings.Pressed(GameAction.LeanLeft) || (modifier && Input.GetKeyDown(Bindings[GameAction.LeanLeft].Key)))
+                {
+                    _leanToggleLeft = !_leanToggleLeft;
+                    _leanToggleRight = false;
+                }
+                if (Bindings.Pressed(GameAction.LeanRight) || (modifier && Input.GetKeyDown(Bindings[GameAction.LeanRight].Key)))
+                {
+                    _leanToggleRight = !_leanToggleRight;
+                    _leanToggleLeft = false;
+                }
+                leftHeld = _leanToggleLeft;
+                rightHeld = _leanToggleRight;
+            }
+
+            // Hold the modifier plus a lean key and the mouse drives the lean instead of the view:
+            // that is the fine-grained "slice the pie" peek.
+            bool wantsFreeLean = Bindings.FreeLeanWithMouse && modifier && (leftHeld || rightHeld);
+            if (wantsFreeLean && !_freeLeaning)
+            {
+                _analogLean = (rightHeld ? 1f : 0f) - (leftHeld ? 1f : 0f);
+                _analogLean *= 0.35f;   // start shallow, mouse takes it the rest of the way
+            }
+            _freeLeaning = wantsFreeLean;
+
+            if (_freeLeaning)
+            {
+                float direction = rightHeld && !leftHeld ? 1f : (leftHeld && !rightHeld ? -1f : 0f);
+                _analogLean += mouseX * move.freeLeanMouseScale * (direction >= 0f ? 1f : 1f);
+                _analogLean = Mathf.Clamp(_analogLean, -1f, 1f);
+                if (direction > 0f) _analogLean = Mathf.Clamp(_analogLean, 0f, 1f);
+                else if (direction < 0f) _analogLean = Mathf.Clamp(_analogLean, -1f, 0f);
+                _leanTarget = _analogLean;
+                return;
+            }
+
+            float target = 0f;
+            if (leftHeld) target -= 1f;
+            if (rightHeld) target += 1f;
+            _leanTarget = target;
+        }
+
+        void PollStance()
+        {
+            if (Bindings.CrouchIsToggle)
+            {
+                if (Bindings.Pressed(GameAction.Crouch))
+                    _stance = _stance == Stance.Crouch ? Stance.Stand : Stance.Crouch;
+            }
+            else
+            {
+                if (Bindings.Held(GameAction.Crouch)) { if (_stance != Stance.Prone) _stance = Stance.Crouch; }
+                else if (_stance == Stance.Crouch) _stance = Stance.Stand;
+            }
+
+            if (Bindings.ProneIsToggle)
+            {
+                if (Bindings.Pressed(GameAction.Prone))
+                    _stance = _stance == Stance.Prone ? Stance.Crouch : Stance.Prone;
+            }
+            else
+            {
+                if (Bindings.Held(GameAction.Prone)) _stance = Stance.Prone;
+                else if (_stance == Stance.Prone) _stance = Stance.Crouch;
+            }
+
+            // Sprinting stands you up; so does jumping.
+            if (Bindings.Held(GameAction.Sprint) && Bindings.Held(GameAction.MoveForward)) _stance = Stance.Stand;
+            if (Bindings.Pressed(GameAction.Jump)) _stance = Stance.Stand;
+        }
+
+        void PollSpeedDial(MovementTuning move)
+        {
+            float wheel = Input.mouseScrollDelta.y;
+
+            // While the gun is up over cover the wheel aims it instead of setting your walking pace -
+            // it is the only way to steer a shot you cannot see.
+            if (_blindFiring)
+            {
+                if (Mathf.Abs(wheel) > 0.01f) _blindAngle += Mathf.Sign(wheel) * move.blindFireAngleStep;
+                if (Bindings.Pressed(GameAction.SpeedUp)) _blindAngle += move.blindFireAngleStep;
+                if (Bindings.Pressed(GameAction.SpeedDown)) _blindAngle -= move.blindFireAngleStep;
+                _blindAngle = Mathf.Clamp(_blindAngle, -1f, 1f);
+                return;
+            }
+
+            if (Mathf.Abs(wheel) > 0.01f) _speedDial += Mathf.Sign(wheel) * move.speedDialStep;
+            if (Bindings.Pressed(GameAction.SpeedUp)) _speedDial += move.speedDialStep;
+            if (Bindings.Pressed(GameAction.SpeedDown)) _speedDial -= move.speedDialStep;
+            _speedDial = Mathf.Clamp01(_speedDial);
+        }
+
+        void PollWeapons()
+        {
+            if (Bindings.Pressed(GameAction.Weapon1)) _weapon = 0;
+            if (Bindings.Pressed(GameAction.Weapon2)) _weapon = 1;
+            if (Bindings.Pressed(GameAction.Weapon3)) _weapon = 2;
+        }
+
+        void RecoverRecoil(WeaponTuning weapon, float dt)
+        {
+            _recoilPitch = MathK.ExpSmooth(_recoilPitch, 0f, weapon.recoilRecoverSpeed, dt);
+            _recoilYaw = MathK.ExpSmooth(_recoilYaw, 0f, weapon.recoilRecoverSpeed, dt);
+        }
+
+        /// <summary>
+        /// Recoil is applied to the shooter's own aim, so it costs nothing in latency. The share the game
+        /// pulls back down for you lives in the recovering offset; the rest is baked into your real aim.
+        /// </summary>
+        public void ApplyRecoil(int playerId, uint shotIndex, WeaponTuning weapon)
+        {
+            float pitchKick, yawKick;
+            ShotSolver.RecoilKick(weapon, playerId, shotIndex, out pitchKick, out yawKick);
+
+            float recovered = Mathf.Clamp01(weapon.recoilRecoverFraction);
+            _pitch = Mathf.Clamp(_pitch + pitchKick * (1f - recovered), -Tuning.move.pitchLimit, Tuning.move.pitchLimit);
+            _yaw += yawKick * (1f - recovered);
+            _recoilPitch += pitchKick * recovered;
+            _recoilYaw += yawKick * recovered;
+        }
+
+        // ------------------------------------------------------------------ IInputSource
+        public InputCommand Sample(uint tick, float dt)
+        {
+            InputCommand c = InputCommand.Default(tick);
+            c.Yaw = Yaw;
+            c.Pitch = Pitch;
+            c.WeaponIndex = _weapon;
+            c.SpeedDial = _speedDial;
+            c.BlindAngle = _blindAngle;
+            c.StanceRequest = _stance;
+
+            if (!Enabled)
+            {
+                c.LeanAxis = 0f;
+                return c;
+            }
+
+            float x = 0f, y = 0f;
+            if (Bindings.Held(GameAction.MoveForward)) y += 1f;
+            if (Bindings.Held(GameAction.MoveBack)) y -= 1f;
+            if (Bindings.Held(GameAction.MoveRight)) x += 1f;
+            if (Bindings.Held(GameAction.MoveLeft)) x -= 1f;
+            c.MoveX = x;
+            c.MoveY = y;
+            c.LeanAxis = _leanTarget;
+
+            Buttons buttons = Buttons.None;
+            if (Bindings.Held(GameAction.Jump) || _latchJump) buttons |= Buttons.Jump;
+            if (_latchMantle) buttons |= Buttons.Mantle;
+            if (Bindings.Held(GameAction.Sprint)) buttons |= Buttons.Sprint;
+            if (Bindings.Held(GameAction.Aim)) buttons |= Buttons.Ads;
+            if (Bindings.Held(GameAction.Fire)) buttons |= Buttons.Fire;
+            if (Bindings.Held(GameAction.Reload) || _latchReload) buttons |= Buttons.Reload;
+            if (Bindings.Held(GameAction.WalkSlow)) buttons |= Buttons.WalkToggle;
+            if (_blindFiring) buttons |= Buttons.BlindFire;
+            if (Bindings.Held(GameAction.LeanModifier)) buttons |= Buttons.SlowLean;
+            if (_freeLeaning) buttons |= Buttons.FreeLean;
+            if (Bindings.Held(GameAction.StepLeft) || _latchStepLeft) buttons |= Buttons.StepLeft;
+            if (Bindings.Held(GameAction.StepRight) || _latchStepRight) buttons |= Buttons.StepRight;
+            c.Buttons = buttons;
+
+            _latchJump = false;
+            _latchMantle = false;
+            _latchReload = false;
+            _latchStepLeft = false;
+            _latchStepRight = false;
+            return c;
+        }
+    }
+}

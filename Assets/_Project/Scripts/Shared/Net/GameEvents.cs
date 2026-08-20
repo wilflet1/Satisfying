@@ -18,7 +18,7 @@ namespace Satisfying.Shared
 
     public static class GameEvents
     {
-        static NetBuffer Writer(EventType type)
+        static NetBuffer Writer(NetEventType type)
         {
             NetBuffer b = new NetBuffer(Protocol.MaxPacketSize);
             b.ResetWrite();
@@ -28,7 +28,7 @@ namespace Satisfying.Shared
 
         public static byte[] PlayerJoined(int peerId, string name)
         {
-            NetBuffer b = Writer(EventType.PlayerJoined);
+            NetBuffer b = Writer(NetEventType.PlayerJoined);
             b.WriteBits((uint)peerId, 3);
             b.WriteString(name);
             return b.ToArray();
@@ -36,7 +36,7 @@ namespace Satisfying.Shared
 
         public static byte[] PlayerLeft(int peerId, DisconnectReason reason)
         {
-            NetBuffer b = Writer(EventType.PlayerLeft);
+            NetBuffer b = Writer(NetEventType.PlayerLeft);
             b.WriteBits((uint)peerId, 3);
             b.WriteByte((byte)reason);
             return b.ToArray();
@@ -44,7 +44,7 @@ namespace Satisfying.Shared
 
         public static byte[] Spawn(int peerId, Vec3 position, float yaw)
         {
-            NetBuffer b = Writer(EventType.Spawn);
+            NetBuffer b = Writer(NetEventType.Spawn);
             b.WriteBits((uint)peerId, 3);
             b.WriteVec3(position);
             b.WriteFloat(yaw);
@@ -53,7 +53,7 @@ namespace Satisfying.Shared
 
         public static byte[] Death(int victim, int killer, HitZone zone, float distance)
         {
-            NetBuffer b = Writer(EventType.Death);
+            NetBuffer b = Writer(NetEventType.Death);
             b.WriteBits((uint)victim, 3);
             b.WriteBits((uint)(killer < 0 ? 7 : killer), 3);
             b.WriteBits((uint)zone, 3);
@@ -63,7 +63,7 @@ namespace Satisfying.Shared
 
         public static byte[] HitConfirm(int target, HitZone zone, float damage, bool killed)
         {
-            NetBuffer b = Writer(EventType.HitConfirm);
+            NetBuffer b = Writer(NetEventType.HitConfirm);
             b.WriteBits((uint)target, 3);
             b.WriteBits((uint)zone, 3);
             b.WriteQ(damage, 0f, 400f, 12);
@@ -73,7 +73,7 @@ namespace Satisfying.Shared
 
         public static byte[] Score(int peerId, int kills, int deaths)
         {
-            NetBuffer b = Writer(EventType.Score);
+            NetBuffer b = Writer(NetEventType.Score);
             b.WriteBits((uint)peerId, 3);
             b.WriteBits((uint)MathK.Clamp(kills, 0, 4095), 12);
             b.WriteBits((uint)MathK.Clamp(deaths, 0, 4095), 12);
@@ -82,7 +82,7 @@ namespace Satisfying.Shared
 
         public static byte[] Phase(MatchPhase phase, float timer, int winner)
         {
-            NetBuffer b = Writer(EventType.MatchPhase);
+            NetBuffer b = Writer(NetEventType.MatchPhase);
             b.WriteBits((uint)phase, 3);
             b.WriteQ(MathK.Clamp(timer, 0f, 600f), 0f, 600f, 14);
             b.WriteBits((uint)(winner < 0 ? 7 : winner), 3);
@@ -93,14 +93,14 @@ namespace Satisfying.Shared
         {
             NetBuffer b = new NetBuffer(64 * 1024);
             b.ResetWrite();
-            b.WriteByte((byte)EventType.TuningSync);
+            b.WriteByte((byte)NetEventType.TuningSync);
             b.WriteString2(text);
             return b.ToArray();
         }
 
         public static byte[] Shot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint)
         {
-            NetBuffer b = Writer(EventType.Shot);
+            NetBuffer b = Writer(NetEventType.Shot);
             b.WriteBits((uint)shooter, 3);
             b.WriteVec3(origin);
             b.WriteQVec3(direction, -1f, 1f, 12);
@@ -114,19 +114,19 @@ namespace Satisfying.Shared
         {
             NetBuffer b = new NetBuffer(payload.Length + 4);
             b.ResetRead(payload, payload.Length);
-            EventType type = (EventType)b.ReadByte();
+            NetEventType type = (NetEventType)b.ReadByte();
             switch (type)
             {
-                case EventType.PlayerJoined:
+                case NetEventType.PlayerJoined:
                     sink.OnPlayerJoined((int)b.ReadBits(3), b.ReadString());
                     break;
-                case EventType.PlayerLeft:
+                case NetEventType.PlayerLeft:
                     sink.OnPlayerLeft((int)b.ReadBits(3), (DisconnectReason)b.ReadByte());
                     break;
-                case EventType.Spawn:
+                case NetEventType.Spawn:
                     sink.OnSpawn((int)b.ReadBits(3), b.ReadVec3(), b.ReadFloat());
                     break;
-                case EventType.Death:
+                case NetEventType.Death:
                 {
                     int victim = (int)b.ReadBits(3);
                     int killer = (int)b.ReadBits(3);
@@ -135,7 +135,7 @@ namespace Satisfying.Shared
                     sink.OnDeath(victim, killer == 7 ? -1 : killer, zone, dist);
                     break;
                 }
-                case EventType.HitConfirm:
+                case NetEventType.HitConfirm:
                 {
                     int target = (int)b.ReadBits(3);
                     HitZone zone = (HitZone)b.ReadBits(3);
@@ -144,10 +144,10 @@ namespace Satisfying.Shared
                     sink.OnHitConfirm(target, zone, dmg, killed);
                     break;
                 }
-                case EventType.Score:
+                case NetEventType.Score:
                     sink.OnScore((int)b.ReadBits(3), (int)b.ReadBits(12), (int)b.ReadBits(12));
                     break;
-                case EventType.MatchPhase:
+                case NetEventType.MatchPhase:
                 {
                     MatchPhase phase = (MatchPhase)b.ReadBits(3);
                     float timer = b.ReadQ(0f, 600f, 14);
@@ -155,10 +155,10 @@ namespace Satisfying.Shared
                     sink.OnMatchPhase(phase, timer, winner == 7 ? -1 : winner);
                     break;
                 }
-                case EventType.TuningSync:
+                case NetEventType.TuningSync:
                     sink.OnTuning(b.ReadString2());
                     break;
-                case EventType.Shot:
+                case NetEventType.Shot:
                 {
                     int shooter = (int)b.ReadBits(3);
                     Vec3 origin = b.ReadVec3();

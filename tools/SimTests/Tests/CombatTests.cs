@@ -190,6 +190,114 @@ namespace Satisfying.Tests
                 Assert.Less(adsProne, adsStanding, "prone tightens it further");
                 Assert.Greater(hipMoving, hipStanding, "running makes you spray");
             });
+
+            TestRunner.Add("blindfire/lifts the muzzle without exposing the head", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+
+                Vec3 headBefore = s.EyePosition(t);
+                InputCommand c = InputCommand.Default(0);
+                c.Buttons |= Buttons.BlindFire;
+                Sim.Run(ref s, c, t, w, 0.6f);
+
+                Assert.Near(s.BlindFire, 1f, 0.01f, "weapon fully raised");
+                Assert.Near(Vec3.Distance(s.EyePosition(t), headBefore), 0f, 0.001f, "head did not move");
+                Assert.Near(s.WeaponOrigin(t).y - s.EyePosition(t).y, t.blindFireRaise, 0.01f, "muzzle lifted over the cover");
+
+                PlayerHitbox box = PlayerHitbox.FromState(in s, t);
+                PlayerSimState idle = Sim.Fresh(t, Vec3.Zero);
+                PlayerHitbox idleBox = PlayerHitbox.FromState(in idle, t);
+                Assert.Near(Vec3.Distance(box.HeadCenter, idleBox.HeadCenter), 0f, 0.001f, "head hitbox unchanged - nothing new to shoot at");
+            });
+
+            TestRunner.Add("blindfire/costs you all your accuracy", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                WeaponTuning gun = WeaponTuning.DefaultLoadout()[0];
+
+                PlayerSimState aimed = Sim.Fresh(t, Vec3.Zero);
+                Sim.Run(ref aimed, InputCommand.Default(0), t, w, 0.6f);
+                float normal = MovementCore.CurrentSpread(in aimed, t, gun);
+
+                PlayerSimState blind = Sim.Fresh(t, Vec3.Zero);
+                InputCommand c = InputCommand.Default(0);
+                c.Buttons |= Buttons.BlindFire;
+                Sim.Run(ref blind, c, t, w, 0.6f);
+                float blindSpread = MovementCore.CurrentSpread(in blind, t, gun);
+
+                Assert.Near(blindSpread, normal * t.blindFireSpreadMul, 0.05f, "spread multiplied by the blind fire penalty");
+            });
+
+            TestRunner.Add("blindfire/you can keep walking", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+                InputCommand c = Sim.Forward();
+                c.Buttons |= Buttons.BlindFire | Buttons.Fire;
+                SimEvents ev = Sim.Run(ref s, c, t, w, 1.5f);
+
+                Assert.Greater(s.Velocity.Flat.Magnitude, t.walkSpeed * t.blindFireSpeedMul * 0.9f, "still moving at a walk");
+                Assert.Greater(ev.ShotsFired, 0f, "and still shooting");
+            });
+
+            TestRunner.Add("blindfire/the wheel dial changes where the rounds go", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+
+                Vec3 DirectionFor(float dial)
+                {
+                    PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+                    InputCommand c = InputCommand.Default(0);
+                    c.Buttons |= Buttons.BlindFire;
+                    c.BlindAngle = dial;
+                    Sim.Run(ref s, c, t, w, 0.8f);
+                    return s.WeaponDirection(t);
+                }
+
+                Vec3 flat = DirectionFor(0f);
+                Vec3 up = DirectionFor(1f);
+                Vec3 down = DirectionFor(-1f);
+
+                Assert.Near(ViewMath.PitchOf(flat), 0f, 1f, "dial at zero fires level");
+                Assert.Near(ViewMath.PitchOf(up), -t.blindFirePitchMax, 1.5f, "dial up elevates the muzzle");
+                Assert.Near(ViewMath.PitchOf(down), -t.blindFirePitchMin, 1.5f, "dial down drops the muzzle");
+            });
+
+            TestRunner.Add("blindfire/leaning swings the shot around the corner", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+                InputCommand c = InputCommand.Default(0);
+                c.Buttons |= Buttons.BlindFire;
+                c.LeanAxis = 1f;
+                Sim.Run(ref s, c, t, w, 1f);
+
+                float yaw = ViewMath.YawOf(s.WeaponDirection(t));
+                Assert.Near(yaw, t.blindFireYaw, 2f, "muzzle swings toward the lean");
+                Assert.Near(s.Yaw, 0f, 0.001f, "the view itself never turned");
+            });
+
+            TestRunner.Add("blindfire/blocks aiming down sights", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+                InputCommand c = InputCommand.Default(0);
+                c.Buttons |= Buttons.Ads;
+                Sim.Run(ref s, c, t, w, 0.6f);
+                Assert.Near(s.Ads, 1f, 0.01f, "aimed in");
+
+                c.Buttons |= Buttons.BlindFire;
+                Sim.Run(ref s, c, t, w, 0.8f);
+                Assert.Near(s.Ads, 0f, 0.01f, "raising the gun over cover drops you out of the sights");
+            });
+
         }
     }
 }

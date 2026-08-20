@@ -3,7 +3,7 @@ namespace Satisfying.Shared
     /// <summary>
     /// One tick of player intent. This is the only thing a client is trusted to send;
     /// the server runs the identical simulation over it and owns the result.
-    /// Packed size is 15 bytes, so a 12-command redundant burst still fits comfortably in one datagram.
+    /// Packed size is 17 bytes, so a 12-command redundant burst still fits comfortably in one datagram.
     /// </summary>
     public struct InputCommand
     {
@@ -14,6 +14,7 @@ namespace Satisfying.Shared
         public float Pitch;         // absolute degrees, negative = up
         public float LeanAxis;      // -1..1 desired lean (analog when free-leaning)
         public float SpeedDial;     // 0..1 analog walk speed
+        public float BlindAngle;    // -1..1 blind fire elevation dial (mouse wheel while blind firing)
         public Stance StanceRequest;
         public byte WeaponIndex;
         public Buttons Buttons;
@@ -49,9 +50,10 @@ namespace Satisfying.Shared
             b.WriteQ(MathK.Clamp(Pitch, -90f, 90f), -90f, 90f, 16);
             b.WriteQ(LeanAxis, -1f, 1f, 8);
             b.WriteQ(SpeedDial, 0f, 1f, 6);
+            b.WriteQ(BlindAngle, -1f, 1f, 7);
             b.WriteBits((uint)StanceRequest, 2);
             b.WriteBits(WeaponIndex, 3);
-            b.WriteBits((uint)Buttons, 12);
+            b.WriteBits((uint)Buttons, 13);
             b.WriteQ(RenderTick - (baseTick - 64f), 0f, 128f, 16);
         }
 
@@ -65,9 +67,10 @@ namespace Satisfying.Shared
             c.Pitch = b.ReadQ(-90f, 90f, 16);
             c.LeanAxis = b.ReadQ(-1f, 1f, 8);
             c.SpeedDial = b.ReadQ(0f, 1f, 6);
+            c.BlindAngle = b.ReadQ(-1f, 1f, 7);
             c.StanceRequest = (Stance)b.ReadBits(2);
             c.WeaponIndex = (byte)b.ReadBits(3);
-            c.Buttons = (Buttons)b.ReadBits(12);
+            c.Buttons = (Buttons)b.ReadBits(13);
             c.RenderTick = b.ReadQ(0f, 128f, 16) + (baseTick - 64f);
             return c;
         }

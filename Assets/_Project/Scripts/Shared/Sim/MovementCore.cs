@@ -21,6 +21,7 @@ namespace Satisfying.Shared
 
             if (s.Mantling)
             {
+                s.BlindFire = MathK.MoveTowards(s.BlindFire, 0f, dt / MathK.Max(0.02f, t.blindFireBlendTime));
                 StepMantle(ref s, t, dt);
                 StepWeapon(ref s, cmd, t, w, dt, ref ev);
                 StepStamina(ref s, cmd, t, dt, false, 0f);
@@ -28,6 +29,7 @@ namespace Satisfying.Shared
             }
 
             bool wantsSprint = ResolveSprint(ref s, cmd, t, world);
+            StepBlindFire(ref s, cmd, t, dt, wantsSprint);
             StepStance(ref s, cmd, t, world, dt, wantsSprint, ref ev);
             StepLean(ref s, cmd, t, world, dt, wantsSprint);
             StepAds(ref s, cmd, t, w, dt, wantsSprint);
@@ -165,10 +167,24 @@ namespace Satisfying.Shared
             return MathK.Lerp(candidate, 0f, t.leanWallPushback);
         }
 
+        // ------------------------------------------------------------------ blind fire
+        /// <summary>
+        /// Holding the weapon over cover. Your head never moves, so nothing new is exposed - you simply
+        /// cannot see where the rounds are going, which is what the spread penalty is for. Movement is
+        /// deliberately still allowed: walking out of cover while spraying is the whole point.
+        /// </summary>
+        static void StepBlindFire(ref PlayerSimState s, InputCommand cmd, MovementTuning t, float dt, bool sprinting)
+        {
+            bool wants = cmd.Has(Buttons.BlindFire) && !sprinting && !s.Mantling && s.Stamina > 0f;
+            float rate = dt / MathK.Max(0.02f, t.blindFireBlendTime);
+            s.BlindFire = MathK.MoveTowards(s.BlindFire, wants ? 1f : 0f, rate);
+            s.BlindAngle = MathK.MoveTowards(s.BlindAngle, MathK.Clamp(cmd.BlindAngle, -1f, 1f), rate * 2f);
+        }
+
         // ------------------------------------------------------------------ aim
         static void StepAds(ref PlayerSimState s, InputCommand cmd, MovementTuning t, WeaponTuning w, float dt, bool sprinting)
         {
-            bool wantsAds = cmd.Has(Buttons.Ads) && !sprinting && !s.Mantling;
+            bool wantsAds = cmd.Has(Buttons.Ads) && !sprinting && !s.Mantling && s.BlindFire < 0.5f;
             float time = MathK.Max(0.02f, w != null ? w.adsTime : t.adsTime);
             s.Ads = MathK.MoveTowards(s.Ads, wantsAds ? 1f : 0f, dt / time);
         }
@@ -196,6 +212,7 @@ namespace Satisfying.Shared
                 speed *= MathK.Lerp(1f, t.leanSpeedMul, MathK.Abs(s.Lean));
                 speed *= MathK.Lerp(1f, t.adsSpeedMul, s.Ads);
                 speed *= MathK.Lerp(1f, t.sideStepSpeedMul, MathK.Abs(s.SideStep));
+                speed *= MathK.Lerp(1f, t.blindFireSpeedMul, s.BlindFire);
             }
             if (IsChangingStance(in s, t)) speed *= t.stanceChangeSpeedMul;
             if (s.Exhausted) speed *= t.exhaustedSpeedMul;
@@ -452,6 +469,7 @@ namespace Satisfying.Shared
             if (sprinting) drain += t.sprintStaminaDrain;
             if (leanAmount > 0.05f) drain += t.leanStaminaDrain * leanAmount;
             if (s.Ads > 0.5f) drain += t.adsStaminaDrain;
+            if (s.BlindFire > 0.05f) drain += t.blindFireStaminaDrain * s.BlindFire;
 
             if (drain > 0f)
             {
@@ -543,6 +561,7 @@ namespace Satisfying.Shared
             spread *= MathK.Lerp(1f, w.spreadAdsMul, s.Ads);
             if (s.Exhausted) spread *= 1.35f;
             if (!s.Grounded) spread *= 2.2f;
+            if (s.BlindFire > 0.01f) spread *= MathK.Lerp(1f, MathK.Max(1f, t.blindFireSpreadMul), s.BlindFire);
             return MathK.Max(0f, spread);
         }
     }

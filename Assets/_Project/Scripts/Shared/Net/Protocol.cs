@@ -12,8 +12,11 @@ namespace Satisfying.Shared
         Pong = 8
     }
 
-    /// <summary>Reliable, ordered-ish payloads that ride along inside snapshot packets.</summary>
-    public enum EventType : byte
+    /// <summary>
+    /// Reliable, ordered-ish payloads that ride along inside snapshot packets.
+    /// Named NetEventType rather than EventType so it never collides with UnityEngine.EventType.
+    /// </summary>
+    public enum NetEventType : byte
     {
         PlayerJoined = 1,
         PlayerLeft = 2,
@@ -47,7 +50,7 @@ namespace Satisfying.Shared
     public static class Protocol
     {
         /// <summary>Bumped whenever the packet layout or the simulation changes shape.</summary>
-        public const ushort Version = 7;
+        public const ushort Version = 8;
 
         public const int DefaultPort = 7777;
         public const int MaxPlayers = 8;

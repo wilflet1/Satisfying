@@ -1,0 +1,235 @@
+using UnityEngine;
+using Satisfying.Shared;
+
+namespace Satisfying.Game
+{
+    /// <summary>
+    /// The whole game in one component. It builds the arena, the camera rig, the audio and the UI at
+    /// runtime, so the project contains no scenes, prefabs or binary assets that could go stale:
+    /// open the project, press play.
+    /// </summary>
+    public sealed class GameBootstrap : MonoBehaviour
+    {
+        public const int LayerWorld = 8;
+        public const int LayerPlayer = 9;
+        public const int LayerProbe = 10;
+        public const int LayerViewmodel = 11;
+        public const int LayerFx = 12;
+
+        public static GameBootstrap Instance { get; private set; }
+
+        NetGame _game;
+        GameUI _ui;
+        TuningPanelUI _tuningPanel;
+        BindingsPanelUI _bindingsPanel;
+        InputBindings _bindings;
+        FeelTuning _feel;
+        LocalInputSource _input;
+        PlayerView _view;
+        UnityCollisionWorld _world;
+        Palette _palette;
+        AudioBank _audio;
+        SoundPlayer _sound;
+        CombatFx _fx;
+        float _pushTuningTimer;
+        bool _tuningDirty;
+
+        /// <summary>
+        /// Boots the game from any scene, including an empty one. Unity projects usually hide their
+        /// entry point inside a .unity file; keeping it in code means nothing can come unwired.
+        /// </summary>
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        static void AutoBoot()
+        {
+            if (Instance != null) return;
+#if UNITY_2023_1_OR_NEWER
+            GameBootstrap existing = Object.FindFirstObjectByType<GameBootstrap>();
+#else
+            GameBootstrap existing = Object.FindObjectOfType<GameBootstrap>();
+#endif
+            if (existing != null) return;
+
+            GameObject go = new GameObject("Satisfying");
+            go.AddComponent<GameBootstrap>();
+        }
+
+        void Awake()
+        {
+            if (Instance != null && Instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+
+            ConfigureEngine();
+            BuildWorld();
+            BuildPlayerSystems();
+            BuildInterface();
+        }
+
+        void ConfigureEngine()
+        {
+            Application.targetFrameRate = -1;
+            QualitySettings.vSyncCount = 0;
+            Physics.autoSimulation = true;
+            Time.fixedDeltaTime = Protocol.TickDt;
+
+            // The query probe capsule must never take part in the physics simulation.
+            for (int i = 0; i < 32; i++) Physics.IgnoreLayerCollision(LayerProbe, i, true);
+            for (int i = 0; i < 32; i++) Physics.IgnoreLayerCollision(LayerPlayer, i, true);
+            for (int i = 0; i < 32; i++) Physics.IgnoreLayerCollision(LayerFx, i, true);
+            for (int i = 0; i < 32; i++) Physics.IgnoreLayerCollision(LayerViewmodel, i, true);
+
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.32f, 0.36f, 0.44f);
+            RenderSettings.ambientEquatorColor = new Color(0.22f, 0.23f, 0.27f);
+            RenderSettings.ambientGroundColor = new Color(0.11f, 0.11f, 0.13f);
+            RenderSettings.fog = true;
+            RenderSettings.fogMode = FogMode.Linear;
+            RenderSettings.fogColor = new Color(0.14f, 0.16f, 0.2f);
+            RenderSettings.fogStartDistance = 45f;
+            RenderSettings.fogEndDistance = 220f;
+        }
+
+        void BuildWorld()
+        {
+            _palette = Palette.Build();
+
+            GameObject sunGo = new GameObject("Sun");
+            sunGo.transform.SetParent(transform, false);
+            sunGo.transform.rotation = Quaternion.Euler(48f, 36f, 0f);
+            Light sun = sunGo.AddComponent<Light>();
+            sun.type = LightType.Directional;
+            sun.color = new Color(1f, 0.95f, 0.87f);
+            sun.intensity = 1.15f;
+            sun.shadows = LightShadows.Soft;
+            sun.shadowStrength = 0.72f;
+
+            ArenaBuilder.Result arena = ArenaBuilder.Build(_palette, LayerWorld);
+            arena.Root.transform.SetParent(transform, false);
+
+            _world = new UnityCollisionWorld(1 << LayerWorld, LayerProbe);
+
+            _audio = AudioBank.Build();
+            _sound = new SoundPlayer(transform);
+            _fx = new CombatFx(transform, _palette, LayerFx);
+
+            _game = new NetGame();
+            _game.World = _world;
+            _game.Spawns = arena.Spawns;
+            _game.Palette = _palette;
+            _game.Audio = _audio;
+            _game.Sound = _sound;
+            _game.Fx = _fx;
+            _game.Root = transform;
+            _game.PlayerLayer = LayerPlayer;
+        }
+
+        void BuildPlayerSystems()
+        {
+            _feel = new FeelTuning();
+            _bindings = new InputBindings();
+            _bindings.Load();
+
+            _input = new LocalInputSource();
+            _input.Bindings = _bindings;
+            _input.Feel = _feel;
+            _input.Tuning = _game.Tuning;
+
+            _view = new PlayerView(transform, _feel, _palette, LayerViewmodel);
+            _view.Camera.transform.position = new Vector3(0f, 6f, -18f);
+            _view.Camera.transform.rotation = Quaternion.Euler(12f, 0f, 0f);
+
+            _game.Feel = _feel;
+            _game.Input = _input;
+            _game.View = _view;
+            _sound.MasterVolume = _feel.masterVolume;
+        }
+
+        void BuildInterface()
+        {
+            _tuningPanel = new TuningPanelUI();
+            _tuningPanel.Game = _game;
+            _tuningPanel.Feel = _feel;
+            _tuningPanel.OnSimValueChanged = MarkTuningDirty;
+            _tuningPanel.LoadFeelFromPrefs();
+
+            _bindingsPanel = new BindingsPanelUI();
+            _bindingsPanel.Bindings = _bindings;
+            _bindingsPanel.Feel = _feel;
+
+            _ui = new GameUI();
+            _ui.Game = _game;
+            _ui.Bindings = _bindings;
+            _ui.Feel = _feel;
+            _ui.Tuning = _tuningPanel;
+            _ui.Controls = _bindingsPanel;
+            _ui.OnQuit = Quit;
+            _ui.Initialise();
+        }
+
+        void MarkTuningDirty()
+        {
+            _tuningDirty = true;
+        }
+
+        void Update()
+        {
+            float dt = Mathf.Min(Time.deltaTime, 0.25f);
+
+            _ui.Update(dt);
+            _game.Update(dt);
+            _sound.MasterVolume = _feel.masterVolume;
+
+            if (_game.Client != null && _tuningPanel.ClientNet != _game.Client.NetTuning)
+            {
+                _tuningPanel.ClientNet = _game.Client.NetTuning;
+                _tuningPanel.Rebuild();
+            }
+
+            // Tuning edits are batched: sliders fire every frame, the network does not need to.
+            if (!_tuningDirty) return;
+            _pushTuningTimer -= dt;
+            if (_pushTuningTimer > 0f) return;
+            _pushTuningTimer = 0.25f;
+            _tuningDirty = false;
+            if (_game.Server != null) _game.Server.PushTuning();
+        }
+
+        void OnGUI()
+        {
+            _ui.Draw();
+        }
+
+        void OnApplicationQuit()
+        {
+            Shutdown();
+        }
+
+        void OnDestroy()
+        {
+            if (Instance == this) Shutdown();
+        }
+
+        void Shutdown()
+        {
+            if (_tuningPanel != null) _tuningPanel.SaveFeelToPrefs();
+            if (_bindings != null) _bindings.Save();
+            if (_ui != null) _ui.Shutdown();
+            if (_game != null) _game.Leave();
+            if (_world != null) _world.Dispose();
+            if (Instance == this) Instance = null;
+        }
+
+        public void Quit()
+        {
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
+        }
+    }
+}
