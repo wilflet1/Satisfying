@@ -44,11 +44,10 @@ namespace Satisfying.Game
             holder.transform.localPosition = new Vector3(0.10f, -0.06f, 0.20f);
             _weaponHolder = holder.transform;
 
-            Material armMaterial = Palette.Make("remote arms", new Color(0.36f, 0.30f, 0.27f), 0.12f, 0f);
             _rightArm = ArmRig.Build(Character.Chest, "right arm", new Vector3(0.24f, -0.02f, 0.0f), 1f,
-                palette, armMaterial, layer, 0.10f, 0.28f, 0.27f);
+                palette, palette.RemoteArms, layer, 0.10f, 0.28f, 0.27f);
             _leftArm = ArmRig.Build(Character.Chest, "left arm", new Vector3(-0.24f, -0.02f, 0.0f), -1f,
-                palette, armMaterial, layer, 0.10f, 0.28f, 0.27f);
+                palette, palette.RemoteArms, layer, 0.10f, 0.28f, 0.27f);
 
             SetWeapon(0);
         }

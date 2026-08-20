@@ -18,6 +18,8 @@ namespace Satisfying.Game
         public Material Gun;
         public Material GunDark;
         public Material Glow;
+        public Material Hands;
+        public Material RemoteArms;
 
         static Shader FindShader()
         {
@@ -60,6 +62,8 @@ namespace Satisfying.Game
             p.Gun = Make("gun", new Color(0.18f, 0.19f, 0.21f), 0.45f, 0.6f);
             p.GunDark = Make("gun dark", new Color(0.11f, 0.115f, 0.13f), 0.3f, 0.4f);
             p.Glow = Make("glow", new Color(1f, 0.82f, 0.45f), 0.5f, 0f, true);
+            p.Hands = Make("hands", new Color(0.42f, 0.36f, 0.31f), 0.12f, 0f);
+            p.RemoteArms = Make("remote arms", new Color(0.36f, 0.30f, 0.27f), 0.12f, 0f);
             return p;
         }
     }

@@ -96,7 +96,10 @@ namespace Satisfying.Editor
         {
             if (File.Exists(ScenePath)) return;
 
-            Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
+            // Create the folder through the asset database, not System.IO, so Unity knows about it
+            // before a scene is saved into it.
+            if (!AssetDatabase.IsValidFolder("Assets/Scenes")) AssetDatabase.CreateFolder("Assets", "Scenes");
+
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
             // The game builds itself at runtime, so the scene only needs the boot component.

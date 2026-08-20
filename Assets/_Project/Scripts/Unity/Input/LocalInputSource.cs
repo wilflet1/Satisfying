@@ -13,7 +13,15 @@ namespace Satisfying.Game
         public InputBindings Bindings;
         public FeelTuning Feel;
         public GameTuning Tuning;
+        /// <summary>Keyboard actions: movement, lean, stance. Off while a modal menu owns the input.</summary>
         public bool Enabled = true;
+
+        /// <summary>
+        /// Mouse look and the mouse buttons. Turned off on its own while the tuning panel is open, so
+        /// you can drag a slider with the cursor and still strafe and lean with the keyboard - which is
+        /// the entire point of tuning movement live.
+        /// </summary>
+        public bool LookEnabled = true;
 
         public float Yaw { get { return _yaw + _recoilYaw; } }
         public float Pitch { get { return _pitch + _recoilPitch; } }
@@ -73,29 +81,35 @@ namespace Satisfying.Game
             {
                 _leanTarget = 0f;
                 _freeLeaning = false;
+                _blindFiring = false;
                 return;
             }
 
-            float sensitivity = Feel.sensitivity * Mathf.Lerp(1f, Feel.adsSensitivityMul, predicted.Ads);
-            float rawX = Input.GetAxisRaw("Mouse X") * sensitivity;
-            float rawY = Input.GetAxisRaw("Mouse Y") * sensitivity * (Feel.invertY >= 0.5f ? 1f : -1f);
-
-            if (Feel.smoothing > 0.001f)
+            float rawX = 0f;
+            if (LookEnabled)
             {
-                float k = 1f - Mathf.Exp(-Mathf.Lerp(60f, 6f, Mathf.Clamp01(Feel.smoothing)) * dt);
-                _smoothX = Mathf.Lerp(_smoothX, rawX, k);
-                _smoothY = Mathf.Lerp(_smoothY, rawY, k);
-                rawX = _smoothX;
-                rawY = _smoothY;
+                float sensitivity = Feel.sensitivity * Mathf.Lerp(1f, Feel.adsSensitivityMul, predicted.Ads);
+                rawX = Input.GetAxisRaw("Mouse X") * sensitivity;
+                float rawY = Input.GetAxisRaw("Mouse Y") * sensitivity * (Feel.invertY >= 0.5f ? 1f : -1f);
+
+                if (Feel.smoothing > 0.001f)
+                {
+                    float k = 1f - Mathf.Exp(-Mathf.Lerp(60f, 6f, Mathf.Clamp01(Feel.smoothing)) * dt);
+                    _smoothX = Mathf.Lerp(_smoothX, rawX, k);
+                    _smoothY = Mathf.Lerp(_smoothY, rawY, k);
+                    rawX = _smoothX;
+                    rawY = _smoothY;
+                }
+
+                _pitch = Mathf.Clamp(_pitch + rawY, -move.pitchLimit, move.pitchLimit);
             }
 
             PollLean(rawX, move);
             if (!_freeLeaning) _yaw += rawX;
-            _pitch = Mathf.Clamp(_pitch + rawY, -move.pitchLimit, move.pitchLimit);
             _yaw = Mathf.Repeat(_yaw + 180f, 360f) - 180f;
 
             PollStance();
-            _blindFiring = Bindings.Held(GameAction.BlindFire);
+            _blindFiring = LookEnabled && Bindings.Held(GameAction.BlindFire);
             PollSpeedDial(move);
             PollWeapons();
 
@@ -140,7 +154,7 @@ namespace Satisfying.Game
             if (_freeLeaning)
             {
                 float direction = rightHeld && !leftHeld ? 1f : (leftHeld && !rightHeld ? -1f : 0f);
-                _analogLean += mouseX * move.freeLeanMouseScale * (direction >= 0f ? 1f : 1f);
+                _analogLean += mouseX * move.freeLeanMouseScale;
                 _analogLean = Mathf.Clamp(_analogLean, -1f, 1f);
                 if (direction > 0f) _analogLean = Mathf.Clamp(_analogLean, 0f, 1f);
                 else if (direction < 0f) _analogLean = Mathf.Clamp(_analogLean, -1f, 0f);
@@ -185,7 +199,7 @@ namespace Satisfying.Game
 
         void PollSpeedDial(MovementTuning move)
         {
-            float wheel = Input.mouseScrollDelta.y;
+            float wheel = LookEnabled ? Input.mouseScrollDelta.y : 0f;
 
             // While the gun is up over cover the wheel aims it instead of setting your walking pace -
             // it is the only way to steer a shot you cannot see.
@@ -263,8 +277,9 @@ namespace Satisfying.Game
             if (Bindings.Held(GameAction.Jump) || _latchJump) buttons |= Buttons.Jump;
             if (_latchMantle) buttons |= Buttons.Mantle;
             if (Bindings.Held(GameAction.Sprint)) buttons |= Buttons.Sprint;
-            if (Bindings.Held(GameAction.Aim)) buttons |= Buttons.Ads;
-            if (Bindings.Held(GameAction.Fire)) buttons |= Buttons.Fire;
+            // Firing and aiming follow the cursor: clicking a slider must never fire the gun.
+            if (LookEnabled && Bindings.Held(GameAction.Aim)) buttons |= Buttons.Ads;
+            if (LookEnabled && Bindings.Held(GameAction.Fire)) buttons |= Buttons.Fire;
             if (Bindings.Held(GameAction.Reload) || _latchReload) buttons |= Buttons.Reload;
             if (Bindings.Held(GameAction.WalkSlow)) buttons |= Buttons.WalkToggle;
             if (_blindFiring) buttons |= Buttons.BlindFire;

@@ -92,10 +92,16 @@ namespace Satisfying.Game
                 StartBrowsing();
             }
 
-            bool wantsCursor = ShowMenu || ShowTuning || ShowControls || !Game.InGame;
+            // The menu is modal. The tuning and controls panels are not: they free the cursor but leave
+            // the keyboard to you, so you can strafe and lean while dragging a slider.
+            bool modal = ShowMenu || !Game.InGame;
+            bool panelOpen = ShowTuning || ShowControls;
+            bool wantsCursor = modal || panelOpen;
+
             Cursor.lockState = wantsCursor ? CursorLockMode.None : CursorLockMode.Locked;
             Cursor.visible = wantsCursor;
-            Game.Input.Enabled = !wantsCursor;
+            Game.Input.Enabled = !modal && !Controls.Capturing;
+            Game.Input.LookEnabled = !wantsCursor;
         }
 
         // ================================================================== drawing

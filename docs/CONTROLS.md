@@ -37,6 +37,13 @@ special cases in the movement code.
 
 To make one: open the controls panel, click the binding, then hold the modifier and press the key.
 
+## Panels and the cursor
+
+The menu (**Esc**) is modal. The tuning (**F1**) and controls (**F2**) panels are not: they release
+the cursor so you can drag a slider, but the keyboard stays live — you can strafe, lean and change
+stance while you tune, which is the only way to judge a movement value. Mouse look, firing and
+aiming are held while the cursor is free, so clicking a slider never fires your weapon.
+
 ## Hold or toggle
 
 Crouch, prone and lean can each be a hold or a toggle (controls panel). Free lean can be turned off

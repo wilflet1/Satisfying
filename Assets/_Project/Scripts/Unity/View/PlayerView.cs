@@ -19,7 +19,6 @@ namespace Satisfying.Game
 
         readonly FeelTuning _feel;
         readonly Palette _palette;
-        readonly Material _handMaterial;
         readonly int _layer;
         readonly WeaponAnimator _animator = new WeaponAnimator();
         ArmRig _rightArm;
@@ -44,7 +43,6 @@ namespace Satisfying.Game
             _feel = feel;
             _palette = palette;
             _layer = viewmodelLayer;
-            _handMaterial = Palette.Make("hands", new Color(0.42f, 0.36f, 0.31f), 0.12f, 0f);
 
             GameObject rig = new GameObject("View Rig");
             rig.transform.SetParent(parent, false);
@@ -79,9 +77,9 @@ namespace Satisfying.Game
 
             // Arms hang off the camera, not the weapon, and reach for it with IK.
             _rightArm = ArmRig.Build(cameraGo.transform, "right arm", new Vector3(0.19f, -0.26f, -0.24f), 1f,
-                palette, _handMaterial, viewmodelLayer, 0.072f, 0.26f, 0.25f);
+                palette, palette.Hands, viewmodelLayer, 0.072f, 0.26f, 0.25f);
             _leftArm = ArmRig.Build(cameraGo.transform, "left arm", new Vector3(-0.19f, -0.26f, -0.24f), -1f,
-                palette, _handMaterial, viewmodelLayer, 0.070f, 0.26f, 0.25f);
+                palette, palette.Hands, viewmodelLayer, 0.070f, 0.26f, 0.25f);
 
             SetWeapon(0);
         }

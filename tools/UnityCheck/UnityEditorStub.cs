@@ -64,6 +64,8 @@ namespace UnityEditor
         public static void SaveAssets() { }
         public static void Refresh() { }
         public static void CreateAsset(UnityEngine.Object asset, string path) { }
+        public static bool IsValidFolder(string path) { return true; }
+        public static string CreateFolder(string parent, string name) { return ""; }
     }
 
     public class SerializedProperty
