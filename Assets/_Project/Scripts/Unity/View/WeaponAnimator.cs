@@ -17,6 +17,19 @@ namespace Satisfying.Game
         Quaternion _magazineHomeRotation;
         bool _magazineHidden;
 
+        public enum SoundCue { None, MagOut, MagIn, Bolt }
+
+        float _lastProgress;
+        SoundCue _pendingCue;
+
+        /// <summary>Reload sounds are emitted when the animation actually reaches that beat.</summary>
+        public SoundCue ConsumeCue()
+        {
+            SoundCue cue = _pendingCue;
+            _pendingCue = SoundCue.None;
+            return cue;
+        }
+
         public Vector3 PoseOffset { get; private set; }
         public Vector3 PoseEuler { get; private set; }
         public Vector3 SupportHandLocal { get; private set; }
@@ -61,6 +74,7 @@ namespace Satisfying.Game
 
             if (!reloading)
             {
+                _lastProgress = 0f;
                 SetMagazineVisible(true);
                 if (Model.Magazine != null)
                 {
@@ -75,6 +89,10 @@ namespace Satisfying.Game
             }
 
             float p = Mathf.Clamp01(progress);
+            if (Crossed(p, 0.16f)) _pendingCue = SoundCue.MagOut;
+            else if (Crossed(p, 0.60f)) _pendingCue = SoundCue.MagIn;
+            else if (Crossed(p, 0.88f)) _pendingCue = SoundCue.Bolt;
+            _lastProgress = p;
 
             // Tilt the weapon inboard so the magazine well is actually visible while you work.
             float tilt = Mathf.Sin(Mathf.Clamp01(p * 1.4f) * Mathf.PI) ;
@@ -127,6 +145,11 @@ namespace Satisfying.Game
                 if (k > 0.25f && k < 0.5f) _bolt = Mathf.Max(_bolt, 1f - (k - 0.25f) / 0.25f);
                 SupportHandBlend = 1f - Mathf.Clamp01((k - 0.6f) / 0.4f);
             }
+        }
+
+        bool Crossed(float progress, float threshold)
+        {
+            return _lastProgress < threshold && progress >= threshold;
         }
 
         void SetMagazinePose(float outAmount)

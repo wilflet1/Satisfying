@@ -160,7 +160,7 @@ namespace Satisfying.Game
 
             // Lowest free id, never a wrap: reusing a live peer's id would hand them someone else's player.
             id = -1;
-            for (int candidate = 1; candidate <= Protocol.MaxPlayers; candidate++)
+            for (int candidate = 1; candidate < Protocol.MaxPlayers; candidate++)   // ids are 3 bits on the wire
             {
                 if (_peerById.ContainsKey(candidate)) continue;
                 id = candidate;

@@ -78,6 +78,7 @@ namespace Satisfying.Game
         readonly Dictionary<int, RemotePlayerView> _remoteViews = new Dictionary<int, RemotePlayerView>();
         readonly List<int> _scratchIds = new List<int>();
         float _lastHealth = 100f;
+        float _stepDistance;
 
         public bool InGame { get { return Client != null && Client.Connected; } }
         public bool IsHost { get { return Server != null; } }
@@ -232,6 +233,44 @@ namespace Satisfying.Game
 
             View.Render(in state, Client.RenderPosition.ToUnity(), Client.Tuning.move,
                         Client.Tuning.Weapon(state.Weapon.Index), state.Yaw, state.Pitch, dt, sprinting);
+
+            PlayWeaponCue(View.ConsumeWeaponCue(), View.Camera.transform.position, 0.55f);
+            TrackFootsteps(in state, Client.Tuning.move, dt);
+        }
+
+        void PlayWeaponCue(WeaponAnimator.SoundCue cue, Vector3 position, float volume)
+        {
+            switch (cue)
+            {
+                case WeaponAnimator.SoundCue.MagOut: Sound.PlayAt(Audio.MagOut, position, volume); break;
+                case WeaponAnimator.SoundCue.MagIn: Sound.PlayAt(Audio.MagIn, position, volume); break;
+                case WeaponAnimator.SoundCue.Bolt: Sound.PlayAt(Audio.BoltRelease, position, volume); break;
+            }
+        }
+
+        /// <summary>
+        /// Footsteps are driven by distance travelled rather than a timer, so the analog speed dial
+        /// changes how loud and how often you are - creeping really is quieter.
+        /// </summary>
+        void TrackFootsteps(in PlayerSimState state, MovementTuning move, float dt)
+        {
+            if (!state.Grounded || state.Mantling) return;
+
+            float speed = state.Velocity.Flat.Magnitude;
+            if (speed < 0.35f) { _stepDistance = 0f; return; }
+
+            _stepDistance += speed * dt;
+
+            float stride = state.Stance == Stance.Prone ? 1.1f : (state.Stance == Stance.Crouch ? 1.5f : 2.0f);
+            if (_stepDistance < stride) return;
+            _stepDistance = 0f;
+
+            float loudness = Mathf.Clamp01(speed / Mathf.Max(1f, move.sprintSpeed));
+            if (state.Stance == Stance.Crouch) loudness *= 0.45f;
+            else if (state.Stance == Stance.Prone) loudness *= 0.25f;
+
+            Sound.PlayAt(Audio.Footstep, View.Camera.transform.position, 0.25f + loudness * 0.5f,
+                Random.Range(0.9f, 1.1f));
         }
 
         void RenderRemotes(float dt)
@@ -254,8 +293,15 @@ namespace Satisfying.Game
 
                 float footstep;
                 view.Render(in kv.Value.Render, dt, Client.Tuning.Weapon(kv.Value.Render.WeaponIndex), out footstep);
+
+                Vector3 where = kv.Value.Render.Position.ToUnity();
                 if (footstep > 0.02f)
-                    Sound.PlayAt(Audio.Footstep, kv.Value.Render.Position.ToUnity(), 0.55f * footstep, Random.Range(0.92f, 1.08f));
+                {
+                    float quiet = kv.Value.Render.Stance == Stance.Prone ? 0.25f
+                                : (kv.Value.Render.Stance == Stance.Crouch ? 0.5f : 1f);
+                    Sound.PlayAt(Audio.Footstep, where, 0.55f * footstep * quiet, Random.Range(0.92f, 1.08f));
+                }
+                PlayWeaponCue(view.ConsumeWeaponCue(), where, 0.7f);
             }
 
             // Drop views for players who left.
@@ -309,7 +355,7 @@ namespace Satisfying.Game
 
                 Vector3 muzzle = View.MuzzleTip != null ? View.MuzzleTip.position : origin + aim * 0.4f;
                 Fx.MuzzleFlash(muzzle, aim);
-                Sound.PlayAt(Audio.Shot, origin, 0.75f, Random.Range(0.96f, 1.05f));
+                Sound.PlayAt(Audio.ShotFor(cmd.WeaponIndex), origin, 0.75f, Random.Range(0.96f, 1.05f));
 
                 int pellets = weapon.PelletsInt;
                 for (int pellet = 0; pellet < pellets; pellet++)
@@ -453,7 +499,11 @@ namespace Satisfying.Game
             Vector3 to = hit ? hitPoint.ToUnity() : from + direction.ToUnity() * 60f;
             Fx.MuzzleFlash(from, direction.ToUnity());
             Fx.Tracer(from, to, 0.07f);
-            Sound.PlayAt(Audio.Shot, from, 0.8f, Random.Range(0.95f, 1.05f));
+
+            // Far enough away and you hear the report rather than the crack.
+            float distance = Vector3.Distance(from, View.Camera.transform.position);
+            AudioClip report = distance > 35f ? Audio.DistantShotFor(weaponIndex) : Audio.ShotFor(weaponIndex);
+            Sound.PlayAt(report, from, 0.8f, Random.Range(0.95f, 1.05f));
             if (hit) Fx.Impact(to, -direction.ToUnity());
         }
     }

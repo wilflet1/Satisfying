@@ -1,0 +1,20 @@
+# Unity text assets are line-ending sensitive: keep them LF everywhere.
+*.cs        text diff=csharp eol=lf
+*.asmdef    text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.unity     text eol=lf merge=unityyamlmerge
+*.prefab    text eol=lf merge=unityyamlmerge
+*.asset     text eol=lf merge=unityyamlmerge
+*.meta      text eol=lf merge=unityyamlmerge
+*.txt       text eol=lf
+
+# Binary art, should you add any. Enable Git LFS before committing large files.
+*.png       binary
+*.jpg       binary
+*.tga       binary
+*.fbx       binary
+*.blend     binary
+*.wav       binary
+*.ogg       binary
+*.mp3       binary

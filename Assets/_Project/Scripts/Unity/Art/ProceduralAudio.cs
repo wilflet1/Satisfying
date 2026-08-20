@@ -8,9 +8,15 @@ namespace Satisfying.Game
     /// </summary>
     public sealed class AudioBank
     {
+        /// <summary>One shot per weapon so an M4 and a USP45 never sound like the same gun.</summary>
+        public AudioClip[] Shots;
+        public AudioClip[] ShotsDistant;
         public AudioClip Shot;
         public AudioClip ShotDistant;
         public AudioClip DryFire;
+        public AudioClip MagOut;
+        public AudioClip MagIn;
+        public AudioClip BoltRelease;
         public AudioClip Reload;
         public AudioClip HitMarker;
         public AudioClip HeadshotMarker;
@@ -28,10 +34,25 @@ namespace Satisfying.Game
         public static AudioBank Build()
         {
             AudioBank b = new AudioBank();
-            b.Shot = Synth.Gunshot("shot", 0.30f, 140f, 1f);
-            b.ShotDistant = Synth.Gunshot("shot distant", 0.45f, 70f, 0.55f);
+            // M4: sharp crack. MP5: flatter and faster. USP45: slower, deeper thump.
+            b.Shots = new AudioClip[3];
+            b.Shots[0] = Synth.Gunshot("m4 shot", 0.28f, 155f, 1f);
+            b.Shots[1] = Synth.Gunshot("mp5 shot", 0.21f, 215f, 0.9f);
+            b.Shots[2] = Synth.Gunshot("usp shot", 0.36f, 105f, 1.05f);
+
+            b.ShotsDistant = new AudioClip[3];
+            b.ShotsDistant[0] = Synth.Gunshot("m4 distant", 0.42f, 78f, 0.55f);
+            b.ShotsDistant[1] = Synth.Gunshot("mp5 distant", 0.34f, 105f, 0.5f);
+            b.ShotsDistant[2] = Synth.Gunshot("usp distant", 0.50f, 60f, 0.6f);
+
+            b.Shot = b.Shots[0];
+            b.ShotDistant = b.ShotsDistant[0];
+
             b.DryFire = Synth.Click("dry fire", 0.06f, 2600f, 0.35f);
-            b.Reload = Synth.Click("reload", 0.10f, 900f, 0.5f);
+            b.MagOut = Synth.Click("mag out", 0.09f, 620f, 0.45f);
+            b.MagIn = Synth.Click("mag in", 0.11f, 380f, 0.55f);
+            b.BoltRelease = Synth.Click("bolt", 0.08f, 1500f, 0.5f);
+            b.Reload = b.MagIn;
             b.HitMarker = Synth.Tone("hit", 0.07f, 1500f, 0.28f);
             b.HeadshotMarker = Synth.Tone("headshot", 0.11f, 2100f, 0.34f);
             b.Impact = Synth.Noise("impact", 0.09f, 0.35f, 3200f);
@@ -45,6 +66,18 @@ namespace Satisfying.Game
             b.UiClick = Synth.Click("ui", 0.04f, 1800f, 0.25f);
             b.RoundStart = Synth.Tone("round", 0.5f, 520f, 0.35f, 0.4f);
             return b;
+        }
+
+        public AudioClip ShotFor(int weaponIndex)
+        {
+            if (Shots == null || Shots.Length == 0) return Shot;
+            return Shots[weaponIndex < 0 || weaponIndex >= Shots.Length ? 0 : weaponIndex];
+        }
+
+        public AudioClip DistantShotFor(int weaponIndex)
+        {
+            if (ShotsDistant == null || ShotsDistant.Length == 0) return ShotDistant;
+            return ShotsDistant[weaponIndex < 0 || weaponIndex >= ShotsDistant.Length ? 0 : weaponIndex];
         }
     }
 

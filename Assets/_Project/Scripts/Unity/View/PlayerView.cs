@@ -95,6 +95,8 @@ namespace Satisfying.Game
             _animator.Bind(Weapon);
         }
 
+        public WeaponAnimator.SoundCue ConsumeWeaponCue() { return _animator.ConsumeCue(); }
+
         public void OnLanded(float impactSpeed)
         {
             _landDip = Mathf.Min(_feel.landDipMax, impactSpeed * _feel.landDipPerSpeed);

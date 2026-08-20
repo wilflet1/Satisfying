@@ -36,6 +36,8 @@ namespace Satisfying.Shared
             public uint LastClientTimeMs;
 
             public readonly ReliableChannel Reliable = new ReliableChannel();
+            /// <summary>Non null for a training bot: it produces its own input instead of receiving it.</summary>
+            public BotBrain Bot;
 
             public readonly PlayerSimState[] History = new PlayerSimState[Protocol.HistoryTicks];
             public readonly uint[] HistoryTick = new uint[Protocol.HistoryTicks];
@@ -117,7 +119,7 @@ namespace Satisfying.Shared
                 ServerPlayer p = _players[i];
                 if (!p.Active) continue;
 
-                InputCommand cmd = DequeueInput(p);
+                InputCommand cmd = p.Bot != null ? ThinkForBot(p) : DequeueInput(p);
                 p.SpawnProtection = MathK.Max(0f, p.SpawnProtection - Protocol.TickDt);
 
                 if (!p.Alive)
@@ -174,6 +176,80 @@ namespace Satisfying.Shared
             p.RenderTick = cmd.RenderTick;
             p.BufferHealth = p.Pending.Count;
             return cmd;
+        }
+
+        InputCommand ThinkForBot(ServerPlayer bot)
+        {
+            ServerPlayer target = null;
+            float best = float.MaxValue;
+            for (int i = 0; i < _players.Count; i++)
+            {
+                ServerPlayer other = _players[i];
+                if (other == bot || !other.Active || !other.Alive) continue;
+                float distance = Vec3.Distance(other.Sim.Position, bot.Sim.Position);
+                if (distance >= best) continue;
+                best = distance;
+                target = other;
+            }
+
+            Vec3 targetEye = target != null ? target.Sim.EyePosition(Tuning.move) : Vec3.Zero;
+            InputCommand cmd = bot.Bot.Think(Tick, in bot.Sim, Tuning.move, _world,
+                target != null, targetEye, _spawns, Protocol.TickDt);
+            cmd.RenderTick = Tick;          // a bot has no latency to compensate for
+            bot.LastInput = cmd;
+            bot.RenderTick = Tick;
+            return cmd;
+        }
+
+        /// <summary>Adds a practice opponent. It is a real player to the rest of the server.</summary>
+        public ServerPlayer AddBot(string name, float skill = 0.55f)
+        {
+            int peerId = -1;
+            for (int candidate = Protocol.MaxPlayers - 1; candidate >= 1; candidate--)
+            {
+                if (Find(candidate) != null) continue;
+                peerId = candidate;
+                break;
+            }
+            if (peerId < 0) return null;
+
+            ServerPlayer bot = new ServerPlayer();
+            bot.PeerId = peerId;
+            bot.Name = name;
+            bot.Active = true;
+            bot.LastPacketTime = _now;
+            bot.Bot = new BotBrain(peerId * 7919 + (int)Tick);
+            bot.Bot.Skill = MathK.Clamp01(skill);
+            bot.LastInput = InputCommand.Default(0);
+            _players.Add(bot);
+
+            Broadcast(GameEvents.PlayerJoined(peerId, name));
+            Broadcast(GameEvents.Score(peerId, 0, 0));
+            Respawn(bot);
+            return bot;
+        }
+
+        public int BotCount
+        {
+            get
+            {
+                int n = 0;
+                for (int i = 0; i < _players.Count; i++) if (_players[i].Active && _players[i].Bot != null) n++;
+                return n;
+            }
+        }
+
+        public void RemoveBots()
+        {
+            for (int i = _players.Count - 1; i >= 0; i--)
+            {
+                ServerPlayer p = _players[i];
+                if (p.Bot == null) continue;
+                p.Active = false;
+                p.Alive = false;
+                BroadcastExcept(p.PeerId, GameEvents.PlayerLeft(p.PeerId, DisconnectReason.ClosedByUser));
+                _players.RemoveAt(i);
+            }
         }
 
         // ================================================================== shooting
@@ -402,6 +478,14 @@ namespace Satisfying.Shared
             string name = _read.ReadString();
 
             ServerPlayer existing = Find(peerId);
+            if (existing != null && existing.Bot != null)
+            {
+                // A human takes precedence over a practice bot holding that slot.
+                existing.Active = false;
+                _players.Remove(existing);
+                BroadcastExcept(peerId, GameEvents.PlayerLeft(peerId, DisconnectReason.ClosedByUser));
+                existing = null;
+            }
             if (existing != null && existing.Active)
             {
                 existing.LastPacketTime = _now;
@@ -496,7 +580,7 @@ namespace Satisfying.Shared
             for (int i = 0; i < _players.Count; i++)
             {
                 ServerPlayer p = _players[i];
-                if (!p.Active) continue;
+                if (!p.Active || p.Bot != null) continue;
                 if (_now - p.LastPacketTime > Protocol.TimeoutSeconds) Kick(p.PeerId, DisconnectReason.Timeout);
             }
         }
@@ -525,7 +609,7 @@ namespace Satisfying.Shared
             for (int i = 0; i < _players.Count; i++)
             {
                 ServerPlayer p = _players[i];
-                if (!p.Active) continue;
+                if (!p.Active || p.Bot != null) continue;
 
                 _write.ResetWrite();
                 _write.WriteByte((byte)MessageType.Snapshot);

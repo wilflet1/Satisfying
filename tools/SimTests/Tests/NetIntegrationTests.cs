@@ -293,6 +293,51 @@ namespace Satisfying.Tests
                 Assert.Less(h.Clients[0].BytesInPerSecond, 12000f, "downstream under 12 KB/s, got " + h.Clients[0].BytesInPerSecond);
                 Assert.Less(h.Clients[0].BytesOutPerSecond, 12000f, "upstream under 12 KB/s, got " + h.Clients[0].BytesOutPerSecond);
             });
+
+            TestRunner.Add("net/a training bot plays a real game", () =>
+            {
+                NetHarness h = new NetHarness();
+                h.Server.Tuning.match.warmupTime = 0f;
+                h.Server.Tuning.match.spawnProtection = 0f;
+                h.Server.Tuning.match.killsToWin = 50f;
+                h.AddClient("alpha");
+                h.Advance(1.5f);
+
+                NetServer.ServerPlayer bot = h.Server.AddBot("training bot", 0.9f);
+                Assert.True(bot != null, "bot joined");
+                Vec3 spawn = bot.Sim.Position;
+
+                h.Advance(6f);
+
+                Assert.True(h.Server.Phase == MatchPhase.Live, "a bot makes the match live, phase=" + h.Server.Phase);
+                Assert.Greater(Vec3.Distance(bot.Sim.Position, spawn), 2f, "the bot actually moved");
+                Assert.True(h.Clients[0].Remotes.ContainsKey(bot.PeerId), "the client sees the bot");
+                Assert.True(h.Clients[0].Remotes[bot.PeerId].HasRender, "and renders it");
+                Assert.Greater(bot.Sim.Weapon.ShotIndex, 0f, "the bot took shots at the player");
+
+                h.Server.RemoveBots();
+                h.Advance(0.5f);
+                Assert.Equal(h.Server.BotCount, 0, "bots cleared");
+            });
+
+            TestRunner.Add("net/a joining human takes a bot's slot rather than colliding", () =>
+            {
+                NetHarness h = new NetHarness();
+                h.Server.Tuning.match.warmupTime = 0f;
+                h.AddClient("alpha");
+                h.Advance(1f);
+
+                // Force the bot onto the id the next client will be handed.
+                for (int i = 0; i < 6; i++) h.Server.AddBot("bot " + i, 0.4f);
+                h.Advance(0.5f);
+
+                h.AddClient("bravo");
+                h.Advance(2f);
+
+                Assert.True(h.Clients[1].Connected, "the second human still got in");
+                Assert.True(h.Clients[0].PeerId != h.Clients[1].PeerId, "the two humans have distinct ids");
+            });
+
         }
     }
 }

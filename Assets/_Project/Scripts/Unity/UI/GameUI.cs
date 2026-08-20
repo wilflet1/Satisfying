@@ -430,6 +430,22 @@ namespace Satisfying.Game
                     Game.Leave();
                     ShowMenu = true;
                 }
+
+                if (Game.IsHost)
+                {
+                    GUILayout.Space(10f);
+                    GUILayout.Label("PRACTICE", _skin.Header);
+                    GUILayout.Label("A training bot is a real player to the server - it moves, leans, takes cover and shoots back.", _skin.SmallDim);
+                    GUILayout.BeginHorizontal();
+                    if (GUILayout.Button("add a training bot", _skin.Button))
+                    {
+                        Game.Server.AddBot("training bot", 0.55f);
+                        ShowMenu = false;
+                    }
+                    if (Game.Server.BotCount > 0 && GUILayout.Button("remove bots", _skin.Button))
+                        Game.Server.RemoveBots();
+                    GUILayout.EndHorizontal();
+                }
             }
             else
             {

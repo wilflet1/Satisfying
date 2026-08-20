@@ -15,6 +15,12 @@ import: clone it, open it, press play.
    settings for you. If you ever need to re-run it: **Satisfying → Set up project**.
 3. Press play. Enter a name, click **host a duel**.
 
+### Practising alone
+
+Host a duel, open the menu and click **add a training bot**. It is a real player as far as the
+server is concerned — it moves, holds angles, leans, changes stance and shoots back, and it makes
+the match go live so hit registration and scoring work exactly as they will against a human.
+
 ### Getting a second player in
 
 - **Same machine** (the fastest way to feel the netcode): with the editor hosting, use
@@ -73,7 +79,7 @@ The simulation and netcode have **no UnityEngine dependency at all**, which mean
 Unity compiles also compiles and runs under plain .NET:
 
 ```bash
-dotnet run --project tools/SimTests          # 59 tests: movement, lean, blind fire, combat, netcode
+dotnet run --project tools/SimTests          # 61 tests: movement, lean, blind fire, combat, netcode
 dotnet build tools/UnityCheck                # type-checks the Unity layer against a stub UnityEngine
 ```
 
@@ -117,7 +123,8 @@ possible.
 ## Weapons and art
 
 Three weapons — **M4A1**, **MP5**, **USP45** — built from the same box vocabulary and three shared
-materials so they read as one set. Fire and reload are animated procedurally from simulation state
+materials so they read as one set, each with its own gunshot. Fire and reload are animated
+procedurally from simulation state
 (the bolt cycles when a round actually leaves; the magazine drops on the same timeline the server
 is counting down), and the hands are two-bone IK rigs pinned to anchors on each weapon, so the
 support hand follows the magazine through a reload without a single animation clip.

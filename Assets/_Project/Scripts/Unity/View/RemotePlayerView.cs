@@ -77,6 +77,8 @@ namespace Satisfying.Game
             _animator.OnShot();
         }
 
+        public WeaponAnimator.SoundCue ConsumeWeaponCue() { return _animator.ConsumeCue(); }
+
         public Vector3 MuzzlePosition()
         {
             return Weapon != null && Weapon.Muzzle != null ? Weapon.Muzzle.position : Character.Chest.position;
