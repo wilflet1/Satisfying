@@ -67,11 +67,48 @@ namespace Satisfying.Game
             BuildWorld();
             BuildPlayerSystems();
             BuildInterface();
+            ApplyCommandLine();
+        }
+
+        /// <summary>
+        /// Lets a second instance join automatically, which is how you playtest netcode alone:
+        ///   Satisfying -connect 127.0.0.1 -name challenger
+        ///   Satisfying -host -port 7777
+        /// </summary>
+        void ApplyCommandLine()
+        {
+            string[] args = System.Environment.GetCommandLineArgs();
+            string connect = null;
+            string playerName = null;
+            int port = Protocol.DefaultPort;
+            bool host = false;
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i])
+                {
+                    case "-host": host = true; break;
+                    case "-connect": if (i + 1 < args.Length) connect = args[++i]; break;
+                    case "-name": if (i + 1 < args.Length) playerName = args[++i]; break;
+                    case "-port":
+                        if (i + 1 < args.Length && !int.TryParse(args[++i], out port)) port = Protocol.DefaultPort;
+                        break;
+                }
+            }
+
+            if (!host && connect == null) return;
+            if (playerName == null) playerName = host ? "host" : "challenger";
+
+            string error;
+            bool started = host ? _game.Host(port, playerName, out error) : _game.Join(connect, port, playerName, out error);
+            if (started) _ui.ShowMenu = false;
+            else Debug.LogWarning("[satisfying] command line start failed: " + error);
         }
 
         void ConfigureEngine()
         {
             Application.targetFrameRate = -1;
+            Application.runInBackground = true;   // two instances on one machine must both keep ticking
             QualitySettings.vSyncCount = 0;
             Physics.autoSimulation = true;
             Time.fixedDeltaTime = Protocol.TickDt;

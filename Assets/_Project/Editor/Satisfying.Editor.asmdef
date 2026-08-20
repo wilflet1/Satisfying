@@ -1,0 +1,19 @@
+{
+    "name": "Satisfying.Editor",
+    "rootNamespace": "Satisfying.Editor",
+    "references": [
+        "Satisfying.Shared",
+        "Satisfying.Game"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

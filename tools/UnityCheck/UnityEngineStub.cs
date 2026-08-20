@@ -415,6 +415,7 @@ namespace UnityEngine
     public static class Application
     {
         public static int targetFrameRate { get; set; }
+        public static bool runInBackground { get; set; }
         public static string persistentDataPath { get { return "/tmp"; } }
         public static void Quit() { }
     }
