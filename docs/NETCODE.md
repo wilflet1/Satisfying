@@ -114,5 +114,11 @@ duel test bench, and the note is here so nobody assumes otherwise.
 that injects latency, jitter and loss, stepping a virtual clock. That is where prediction quality,
 lag compensation, reliability under 30% loss, bandwidth and the match flow are all asserted.
 
+`tools/Playground` uses the same machinery to *run* the game rather than assert on it: a real
+server, a real predicting client and real bots over a degraded link, with everything but the
+renderer. Two minutes at 281 ms round trip and 10% packet loss produces 325 corrections across
+7,757 ticks - 4% of snapshots, none larger than 5 cm, which is well inside what the render-error
+smoothing hides.
+
 The same conditioning is available in the game: the network simulator sliders in the menu wrap the
 real UDP transport, so you can feel 150 ms before you ship anything.
