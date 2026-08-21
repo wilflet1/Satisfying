@@ -2,14 +2,15 @@
 #  Satisfying - one shot setup for Windows
 #
 #  Downloads the project and registers it with Unity Hub, then opens it.
-#  Paste the whole thing into a normal PowerShell window - no admin needed.
+#  Run it with:
+#    irm "https://raw.githubusercontent.com/wilflet1/Satisfying/refs/heads/claude/fps-multiplayer-movement-8a2ve0/tools/Install-Satisfying.ps1" | iex
 # ==============================================================================
 
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 # ---- change these if you like ------------------------------------------------
-$Destination    = Join-Path $env:USERPROFILE 'Satisfying'
+$Destination    = Join-Path $env:USERPROFILE 'Satisfying\new'
 $UnityVersion   = '6000.3.17f1'
 $OpenAfterwards = $true
 # ------------------------------------------------------------------------------
@@ -18,54 +19,104 @@ $Owner  = 'wilflet1'
 $Repo   = 'Satisfying'
 $Branch = 'claude/fps-multiplayer-movement-8a2ve0'
 
+# git writes ordinary progress to stderr, and PowerShell turns that into a
+# terminating error when ErrorActionPreference is Stop. Run it with that relaxed
+# and judge success by the exit code instead, which is what it is for.
+function Invoke-Git {
+    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Arguments)
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    $output = & git @Arguments 2>&1
+    $code = $LASTEXITCODE
+    $ErrorActionPreference = $previous
+
+    return [pscustomobject]@{ Output = $output; ExitCode = $code }
+}
+
+function Write-GitOutput {
+    param($Result, [string]$Colour = 'DarkGray')
+    foreach ($line in $Result.Output) { Write-Host ("    " + $line) -ForegroundColor $Colour }
+}
+
 Write-Host ''
 Write-Host '  Satisfying - setup' -ForegroundColor Cyan
 Write-Host '  --------------------------------------------------------------'
+Write-Host "  Target folder: $Destination"
 
 # ------------------------------------------------------------------ 1. get the code
-$hasGit  = $null -ne (Get-Command git -ErrorAction SilentlyContinue)
-$isThere = Test-Path (Join-Path $Destination 'ProjectSettings')
+$hasGit       = $null -ne (Get-Command git -ErrorAction SilentlyContinue)
+$hasProject   = Test-Path (Join-Path $Destination 'ProjectSettings')
+$hasGitFolder = Test-Path (Join-Path $Destination '.git')
 
-if ($isThere) {
-    Write-Host "  Found an existing copy at $Destination"
-    if ($hasGit -and (Test-Path (Join-Path $Destination '.git'))) {
-        Write-Host '  Updating it from GitHub...'
-        $out = & git -C $Destination fetch origin $Branch 2>&1
-        $out = & git -C $Destination checkout $Branch 2>&1
-        $out = & git -C $Destination pull --ff-only origin $Branch 2>&1
-        if ($LASTEXITCODE -ne 0) { $out | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkYellow } }
+# Anything in the folder that is not a previous copy of this project is yours, and
+# this script will not touch it.
+$foreignFiles = @()
+if ((Test-Path $Destination) -and -not $hasProject) {
+    $foreignFiles = @(Get-ChildItem -Force -Path $Destination | Where-Object { $_.Name -ne '.git' })
+}
+
+if ($hasProject) {
+    Write-Host '  Found an existing copy - updating it.'
+    if ($hasGitFolder) {
+        $r = Invoke-Git fetch origin $Branch
+        if ($r.ExitCode -ne 0) { Write-GitOutput $r 'Yellow' }
+        $r = Invoke-Git checkout $Branch
+        if ($r.ExitCode -ne 0) { Write-GitOutput $r 'Yellow' }
+        $r = Invoke-Git pull --ff-only origin $Branch
+        if ($r.ExitCode -ne 0) { Write-GitOutput $r 'Yellow' }
+        Write-Host '  Up to date.' -ForegroundColor Green
     } else {
-        Write-Host '  Not a git clone, so leaving it as it is.'
-        Write-Host '  (Delete the folder and run this again for a clean copy.)'
+        Write-Host '  Not a git clone, so leaving it alone. Delete it for a clean copy.'
     }
 }
-elseif ($hasGit) {
-    Write-Host "  Cloning into $Destination ..."
-    $out = & git clone --branch $Branch --single-branch "https://github.com/$Owner/$Repo.git" $Destination 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        $out | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
-        throw 'git clone failed.'
-    }
+elseif ($foreignFiles.Count -gt 0) {
+    Write-Host ''
+    Write-Host "  $Destination already has files in it that are not this project:" -ForegroundColor Yellow
+    $foreignFiles | Select-Object -First 8 | ForEach-Object { Write-Host ("    " + $_.Name) -ForegroundColor Yellow }
+    Write-Host ''
+    throw "Refusing to write over your files. Point `$Destination somewhere empty and run this again."
 }
 else {
-    Write-Host '  git is not installed - downloading the zip instead...'
-    $zipPath = Join-Path $env:TEMP 'satisfying.zip'
-    $tempDir = Join-Path $env:TEMP ('satisfying-' + [guid]::NewGuid().ToString('N'))
-    $zipUrl  = "https://codeload.github.com/$Owner/$Repo/zip/refs/heads/$Branch"
+    # A clone that died halfway leaves a .git with no working tree: start over.
+    if ($hasGitFolder) {
+        Write-Host '  Clearing out an unfinished download...'
+        Remove-Item $Destination -Recurse -Force
+    }
 
-    Invoke-WebRequest -UseBasicParsing -Uri $zipUrl -OutFile $zipPath
-    Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
+    if ($hasGit) {
+        Write-Host '  Cloning from GitHub...'
+        $parent = Split-Path $Destination -Parent
+        if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
 
-    # The zip nests everything one folder deep, so find the real project root.
-    $marker = Get-ChildItem -Path $tempDir -Recurse -Directory -Filter 'ProjectSettings' | Select-Object -First 1
-    if (-not $marker) { throw 'That download did not contain a Unity project.' }
+        $r = Invoke-Git clone --branch $Branch --single-branch "https://github.com/$Owner/$Repo.git" $Destination
+        if ($r.ExitCode -ne 0) {
+            Write-GitOutput $r 'Red'
+            throw "git clone failed with exit code $($r.ExitCode)."
+        }
+        Write-GitOutput $r
+    }
+    else {
+        Write-Host '  git is not installed - downloading the zip instead...'
+        $zipPath = Join-Path $env:TEMP 'satisfying.zip'
+        $tempDir = Join-Path $env:TEMP ('satisfying-' + [guid]::NewGuid().ToString('N'))
+        $zipUrl  = "https://codeload.github.com/$Owner/$Repo/zip/refs/heads/$Branch"
 
-    if (Test-Path $Destination) { Remove-Item $Destination -Recurse -Force }
-    New-Item -ItemType Directory -Force -Path (Split-Path $Destination -Parent) | Out-Null
-    Move-Item -Path $marker.Parent.FullName -Destination $Destination
+        Invoke-WebRequest -UseBasicParsing -Uri $zipUrl -OutFile $zipPath
+        Expand-Archive -Path $zipPath -DestinationPath $tempDir -Force
 
-    Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
-    Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+        # The zip nests everything one folder deep, so find the real project root.
+        $marker = Get-ChildItem -Path $tempDir -Recurse -Directory -Filter 'ProjectSettings' | Select-Object -First 1
+        if (-not $marker) { throw 'That download did not contain a Unity project.' }
+
+        if (Test-Path $Destination) { Remove-Item $Destination -Recurse -Force }
+        $parent = Split-Path $Destination -Parent
+        if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Force -Path $parent | Out-Null }
+        Move-Item -Path $marker.Parent.FullName -Destination $Destination
+
+        Remove-Item $zipPath -Force -ErrorAction SilentlyContinue
+        Remove-Item $tempDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 foreach ($needed in @('Assets', 'Packages', 'ProjectSettings')) {
@@ -118,10 +169,8 @@ $hubDir  = Join-Path $env:APPDATA 'UnityHub'
 $hubJson = Join-Path $hubDir 'projects-v1.json'
 $hubExe  = 'C:\Program Files\Unity Hub\Unity Hub.exe'
 
-$hubWasRunning = $false
 $hubProc = Get-Process -Name 'Unity Hub' -ErrorAction SilentlyContinue
 if ($hubProc) {
-    $hubWasRunning = $true
     Write-Host '  Closing Unity Hub so its project list can be edited...'
     $hubProc | Stop-Process -Force
     Start-Sleep -Seconds 2
@@ -138,10 +187,10 @@ if (-not $hub.PSObject.Properties['data']) {
     $hub | Add-Member -NotePropertyName 'data' -NotePropertyValue ([pscustomobject]@{}) -Force
 }
 
-# Clone the shape of an entry the Hub wrote itself, so the schema always matches
-# whatever Hub version is installed.
-$template = $hub.data.PSObject.Properties | Select-Object -First 1
-$entryKey = $projectPath
+# Clone the shape of an entry the Hub wrote itself, so this matches whatever Hub
+# version is installed rather than assuming a schema.
+$template   = $hub.data.PSObject.Properties | Select-Object -First 1
+$entryKey   = $projectPath
 $folderPath = Split-Path $projectPath -Parent
 
 if ($template) {
