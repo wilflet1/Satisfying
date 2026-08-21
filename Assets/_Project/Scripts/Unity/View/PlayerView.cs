@@ -152,6 +152,7 @@ namespace Satisfying.Game
 
             float targetFov = _feel.fieldOfView;
             if (sprinting) targetFov += _feel.sprintFovAdd;
+            if (state.Sliding) targetFov += _feel.slideFovAdd;
             targetFov = Mathf.Lerp(targetFov, _feel.fieldOfView * _feel.adsFovMul, state.Ads);
             _fov = Mathf.Lerp(_fov, targetFov, 1f - Mathf.Exp(-_feel.fovLerpSpeed * dt));
             Camera.fieldOfView = _fov;
@@ -195,7 +196,13 @@ namespace Satisfying.Game
             Vector3 basePosition = Vector3.Lerp(hip, ads, state.Ads);
             Vector3 baseEuler = Vector3.zero;
 
-            if (state.Stance == Stance.Prone) basePosition += new Vector3(0f, 0.03f, -0.06f);
+            if (state.Sliding)
+            {
+                // Gun comes in tight and tips with the slide.
+                basePosition += new Vector3(-0.03f, 0.02f, -0.08f);
+                baseEuler += new Vector3(-6f, 10f, 16f);
+            }
+            else if (state.Stance == Stance.Prone) basePosition += new Vector3(0f, 0.03f, -0.06f);
             else if (state.Stance == Stance.Crouch) basePosition += new Vector3(0f, 0.012f, 0f);
 
             float sprintBlend = sprinting ? 1f : 0f;

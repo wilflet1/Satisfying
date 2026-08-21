@@ -87,14 +87,18 @@ namespace Satisfying.Tests
 
         public double Now;
 
-        public NetHarness(BoxWorld world = null)
+        public NetHarness(BoxWorld world = null, SpawnSet spawnSet = null)
         {
             World = world ?? BoxWorld.FlatGround(80f);
-            SpawnSet spawns = new SpawnSet();
-            spawns.Add(new Vec3(0f, 0f, -8f), 0f);
-            spawns.Add(new Vec3(0f, 0f, 8f), 180f);
-            spawns.Add(new Vec3(8f, 0f, 0f), 270f);
-            spawns.Add(new Vec3(-8f, 0f, 0f), 90f);
+            SpawnSet spawns = spawnSet;
+            if (spawns == null)
+            {
+                spawns = new SpawnSet();
+                spawns.Add(new Vec3(0f, 0f, -8f), 0f);
+                spawns.Add(new Vec3(0f, 0f, 8f), 180f);
+                spawns.Add(new Vec3(8f, 0f, 0f), 270f);
+                spawns.Add(new Vec3(-8f, 0f, 0f), 90f);
+            }
 
             ServerTransport = new ConditionedTransport(Network.CreateEndpoint(0));
             Server = new NetServer(ServerTransport, World, spawns, new GameTuning());

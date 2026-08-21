@@ -8,7 +8,8 @@ Everything here is rebindable in game (**F2**), including chords. Bindings are s
 |--------|-----|-------|
 | Move | W A S D | |
 | Sprint | Left Shift | Forward only, stands you up, drains stamina |
-| Jump / mantle | Space | Jump into a ledge in the mantle band and you pull yourself up |
+| Jump / mantle / vault | Space | At a ledge you climb it; at a thin railing you go over it |
+| **Sprint slide** | Sprint, then tap crouch | Needs real speed; goes lower than a crouch; jump out of it to keep the momentum |
 | Crouch | C | Toggle by default |
 | Prone | X | Toggle by default; from prone, C brings you to a crouch |
 | Walk slowly | Left Ctrl | Hold to force the speed dial to its minimum |
@@ -21,6 +22,7 @@ Everything here is rebindable in game (**F2**), including chords. Bindings are s
 | **Free lean** | Alt + Q/E, then move the mouse | Analog lean; your view is locked while you set it |
 | **Side step** | Alt + A / Alt + D | Shifts your body sideways without turning |
 | **Blind fire** | V | Weapon over cover, head stays hidden |
+| Vault | Space | Only over obstacles 0.50–1.30 m with floor beyond; anything solid gets climbed instead |
 | Blind fire angle | Mouse wheel while holding V | The only way to aim a shot you cannot see |
 | Weapons | 1 / 2 / 3 | M4A1, MP5, USP45 |
 | Scoreboard | Tab | |

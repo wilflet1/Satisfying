@@ -170,6 +170,10 @@ namespace Satisfying.Game
 
         void PollStance()
         {
+            // Sprinting stands you up - but a crouch pressed DURING a sprint is a slide request, so the
+            // stand has to be applied before the crouch is read, never after it.
+            if (Bindings.Held(GameAction.Sprint) && Bindings.Held(GameAction.MoveForward)) _stance = Stance.Stand;
+
             if (Bindings.CrouchIsToggle)
             {
                 if (Bindings.Pressed(GameAction.Crouch))
@@ -192,8 +196,6 @@ namespace Satisfying.Game
                 else if (_stance == Stance.Prone) _stance = Stance.Crouch;
             }
 
-            // Sprinting stands you up; so does jumping.
-            if (Bindings.Held(GameAction.Sprint) && Bindings.Held(GameAction.MoveForward)) _stance = Stance.Stand;
             if (Bindings.Pressed(GameAction.Jump)) _stance = Stance.Stand;
         }
 

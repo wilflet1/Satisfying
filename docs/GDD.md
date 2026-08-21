@@ -28,6 +28,9 @@ Every way of showing yourself trades exposure for information or accuracy:
 | Crouch / prone | Smaller, steadier, tighter groups | Slow, and standing back up takes time |
 | Prone lean | A low roll almost nobody checks for | Barely any angle, and turning is glacial |
 | Blind fire (V) | Suppress with the gun over cover, head hidden | Seven times the spread, aimed only by the mouse wheel |
+| Sprint slide | Cross open ground low and fast, under things a crouch cannot pass | Spends the speed you had; you cannot steer much or start one from a walk |
+| Slide jump | Keep the momentum instead of stopping | Puts you in the air, which is where you are easiest to hit |
+| Vault | Cross a railing without going round it | A committed animation while you are silhouetted on top of it |
 | Mantle | New angles: rooftops, window sills | Committed animation, big stamina cost |
 
 The arena exists to serve that table: hard corners, window sills at crouch and prone height, a
@@ -46,6 +49,13 @@ Three, chosen so the choice is about range and how much movement you can afford:
 
 First to ten eliminations. Respawn 2.2s at the spawn furthest from the opponent, with a short
 spawn protection so nobody gets shot mid-materialise. Everything in that paragraph is a slider.
+
+## The test range
+
+A second map that is a drill course rather than an arena: one lane per ability, sized against the
+tuning defaults. Change `slideHeight` in the tuning panel and the slide tunnel tells you about it
+immediately. It exists because a movement game is only as good as the loop between changing a
+number and feeling the result.
 
 ## What is deliberately missing
 

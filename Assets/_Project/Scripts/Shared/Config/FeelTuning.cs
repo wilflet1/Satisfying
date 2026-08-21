@@ -32,6 +32,9 @@ namespace Satisfying.Shared
         [Tune("Camera", 0f, 25f, Tip = "Extra FOV while sprinting - the speed cue.")]
         public float sprintFovAdd = 7f;
 
+        [Tune("Camera", 0f, 30f, Tip = "Extra FOV while sliding.")]
+        public float slideFovAdd = 11f;
+
         [Tune("Camera", 1f, 30f)]
         public float fovLerpSpeed = 11f;
 

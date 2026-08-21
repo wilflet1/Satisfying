@@ -62,6 +62,7 @@ namespace Satisfying.Shared
         /// <summary>Rewind targets to what the shooter actually saw. Turn off to feel why it exists.</summary>
         public bool LagCompensation = true;
         public string ServerName = "duel";
+        public MapId Map = MapId.DuelArena;
 
         double _accumulator;
         double _now;
@@ -541,6 +542,7 @@ namespace Satisfying.Shared
             _write.WriteBits((uint)p.PeerId, 3);
             _write.WriteUInt(Tick);
             _write.WriteByte(Protocol.TickRate);
+            _write.WriteByte((byte)Map);
             _write.WriteString(ServerName);
             Send(p.PeerId);
         }

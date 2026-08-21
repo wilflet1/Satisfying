@@ -33,6 +33,8 @@ namespace Satisfying.Game
         CombatFx _fx;
         float _pushTuningTimer;
         bool _tuningDirty;
+        GameObject _arenaRoot;
+        readonly SpawnSet _spawns = new SpawnSet();
 
         /// <summary>
         /// Boots the game from any scene, including an empty one. Unity projects usually hide their
@@ -144,9 +146,6 @@ namespace Satisfying.Game
             sun.shadows = LightShadows.Soft;
             sun.shadowStrength = 0.72f;
 
-            ArenaBuilder.Result arena = ArenaBuilder.Build(_palette, LayerWorld);
-            arena.Root.transform.SetParent(transform, false);
-
             _world = new UnityCollisionWorld(1 << LayerWorld, LayerProbe);
 
             _audio = AudioBank.Build();
@@ -155,13 +154,36 @@ namespace Satisfying.Game
 
             _game = new NetGame();
             _game.World = _world;
-            _game.Spawns = arena.Spawns;
+            _game.Spawns = _spawns;
+            _game.OnMapRequested = BuildArena;
             _game.Palette = _palette;
             _game.Audio = _audio;
             _game.Sound = _sound;
             _game.Fx = _fx;
             _game.Root = transform;
             _game.PlayerLayer = LayerPlayer;
+
+            BuildArena(MapId.DuelArena);
+        }
+
+        /// <summary>
+        /// Swaps the arena at runtime. The old geometry is deactivated before it is destroyed, because
+        /// Destroy is deferred to the end of the frame and two maps of colliders would overlap for it.
+        /// </summary>
+        public void BuildArena(MapId map)
+        {
+            if (_arenaRoot != null)
+            {
+                _arenaRoot.SetActive(false);
+                Destroy(_arenaRoot);
+            }
+
+            ArenaBuilder.Result arena = ArenaBuilder.Build(map, _spawns, _palette, LayerWorld);
+            arena.Root.transform.SetParent(transform, false);
+            _arenaRoot = arena.Root;
+
+            _game.CurrentMap = map;
+            _game.Stations = arena.Stations;
         }
 
         void BuildPlayerSystems()

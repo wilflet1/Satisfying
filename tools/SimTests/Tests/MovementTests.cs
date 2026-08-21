@@ -30,6 +30,9 @@ namespace Satisfying.Tests
                 total.StanceChanged |= ev.StanceChanged;
                 total.StartedSideStep |= ev.StartedSideStep;
                 total.StartedMantle |= ev.StartedMantle;
+                total.StartedVault |= ev.StartedVault;
+                total.StartedSlide |= ev.StartedSlide;
+                total.EndedSlide |= ev.EndedSlide;
                 total.ShotsFired += ev.ShotsFired;
             }
             return total;

@@ -118,6 +118,8 @@ namespace Satisfying.Shared
         public int PeerId = -1;
         public string PlayerName = "duellist";
         public string ServerName = "";
+        /// <summary>The arena the server told us to build. The view layer rebuilds when this changes.</summary>
+        public MapId Map = MapId.DuelArena;
 
         public uint ClientTick;
         public uint ServerTick;
@@ -257,9 +259,14 @@ namespace Satisfying.Shared
             int slot = (int)(ClientTick % HistorySize);
             _inputs[slot] = cmd;
 
-            WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
             SimEvents ev = new SimEvents();
-            MovementCore.Step(ref _predicted, cmd, Tuning.move, weapon, Protocol.TickDt, _world, ref ev);
+            if (Alive)
+            {
+                WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
+                MovementCore.Step(ref _predicted, cmd, Tuning.move, weapon, Protocol.TickDt, _world, ref ev);
+            }
+            // While dead the server does not step you either, so predicting movement here would put the
+            // two sides into a fight the server wins sixty times a second.
             LastEvents = ev;
 
             _states[slot] = _predicted;
@@ -309,6 +316,7 @@ namespace Satisfying.Shared
             int id = (int)_read.ReadBits(3);
             uint serverTick = _read.ReadUInt();
             byte tickRate = _read.ReadByte();
+            Map = (MapId)_read.ReadByte();
             ServerName = _read.ReadString();
 
             if (State == Status.Connected && PeerId == id) return;   // duplicate accept
@@ -427,9 +435,12 @@ namespace Satisfying.Shared
                 int s = (int)(t % HistorySize);
                 if (_stateTicks[s] != t) continue;
                 InputCommand cmd = _inputs[s];
-                WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
-                SimEvents ev = new SimEvents();
-                MovementCore.Step(ref corrected, cmd, Tuning.move, weapon, Protocol.TickDt, _world, ref ev);
+                if (Alive)
+                {
+                    WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
+                    SimEvents ev = new SimEvents();
+                    MovementCore.Step(ref corrected, cmd, Tuning.move, weapon, Protocol.TickDt, _world, ref ev);
+                }
                 _states[s] = corrected;
             }
 

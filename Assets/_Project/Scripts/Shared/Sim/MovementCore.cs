@@ -21,14 +21,17 @@ namespace Satisfying.Shared
 
             if (s.Mantling)
             {
+                s.Sliding = false;
                 s.BlindFire = MathK.MoveTowards(s.BlindFire, 0f, dt / MathK.Max(0.02f, t.blindFireBlendTime));
                 StepMantle(ref s, t, dt);
                 StepWeapon(ref s, cmd, t, w, dt, ref ev);
                 StepStamina(ref s, cmd, t, dt, false, 0f);
+                s.LastStanceRequest = cmd.StanceRequest;
                 return;
             }
 
             bool wantsSprint = ResolveSprint(ref s, cmd, t, world);
+            StepSlide(ref s, cmd, t, world, dt, ref wantsSprint, ref ev);
             StepBlindFire(ref s, cmd, t, dt, wantsSprint);
             StepStance(ref s, cmd, t, world, dt, wantsSprint, ref ev);
             StepLean(ref s, cmd, t, world, dt, wantsSprint);
@@ -55,6 +58,7 @@ namespace Satisfying.Shared
             StepWeapon(ref s, cmd, t, w, dt, ref ev);
 
             s.TimeSinceLanded += dt;
+            s.LastStanceRequest = cmd.StanceRequest;
         }
 
         // ------------------------------------------------------------------ view
@@ -90,6 +94,15 @@ namespace Satisfying.Shared
         static void StepStance(ref PlayerSimState s, InputCommand cmd, MovementTuning t, ICollisionWorld world,
                                float dt, bool sprinting, ref SimEvents ev)
         {
+            if (s.Sliding)
+            {
+                // The slide owns the capsule while it lasts.
+                s.Stance = Stance.Crouch;
+                float slideRate = MathK.Max(0.01f, t.standHeight - t.slideHeight) / MathK.Max(0.02f, t.crouchTransitionTime * 0.6f);
+                s.Height = MathK.MoveTowards(s.Height, t.slideHeight, slideRate * dt);
+                return;
+            }
+
             Stance want = sprinting ? Stance.Stand : cmd.StanceRequest;
 
             // Rising through stances needs headroom; sinking never does.
@@ -200,6 +213,8 @@ namespace Satisfying.Shared
 
         static float TargetSpeed(ref PlayerSimState s, InputCommand cmd, MovementTuning t, bool sprinting)
         {
+            if (s.Sliding) return 0f;   // a slide is not driven by the move keys
+
             float dial = cmd.Has(Buttons.WalkToggle) ? t.speedDialMin : MathK.Lerp(t.speedDialMin, 1f, MathK.Clamp01(cmd.SpeedDial));
             float speed = sprinting ? t.sprintSpeed : t.SpeedFor(s.Stance) * dial;
 
@@ -223,6 +238,12 @@ namespace Satisfying.Shared
         {
             Vec3 flat = s.Velocity.Flat;
             float wishLen = wish.Magnitude;
+
+            if (s.Sliding)
+            {
+                SlideAccelerate(ref s, wish, t, dt);
+                return;
+            }
 
             if (s.Grounded)
             {
@@ -257,6 +278,38 @@ namespace Satisfying.Shared
             s.Velocity = new Vec3(flat.x, s.Velocity.y, flat.z);
         }
 
+        /// <summary>
+        /// A slide is momentum you already had, bleeding away. You can lean on it and steer a little,
+        /// and a downhill will feed it - but you cannot accelerate into one.
+        /// </summary>
+        static void SlideAccelerate(ref PlayerSimState s, Vec3 wish, MovementTuning t, float dt)
+        {
+            Vec3 flat = s.Velocity.Flat;
+            float speed = flat.Magnitude;
+            if (speed < 0.01f) { s.Velocity = new Vec3(0f, s.Velocity.y, 0f); return; }
+
+            Vec3 forward = flat / speed;
+
+            // Steering is sideways only: you cannot pump the stick to go faster.
+            if (wish.SqrMagnitude > 0.01f)
+            {
+                Vec3 lateral = Vec3.ProjectOnPlane(wish.Normalized, forward);
+                flat += lateral * (t.slideSteering * dt);
+            }
+
+            // Downhill feeds the slide, uphill kills it.
+            Vec3 normal = s.GroundNormal.SqrMagnitude > 0.01f ? s.GroundNormal : Vec3.Up;
+            if (normal.y < 0.999f)
+            {
+                Vec3 downhill = Vec3.ProjectOnPlane(Vec3.Down, normal).Flat;
+                if (downhill.SqrMagnitude > 0.001f)
+                    flat += downhill.Normalized * (t.slideSlopeAccel * (1f - normal.y) * dt);
+            }
+
+            flat = Vec3.MoveTowards(flat, Vec3.Zero, t.slideFriction * dt);
+            s.Velocity = new Vec3(flat.x, s.Velocity.y, flat.z);
+        }
+
         static void ApplyGravity(ref PlayerSimState s, InputCommand cmd, MovementTuning t, float dt)
         {
             if (s.Grounded && s.Velocity.y <= 0f)
@@ -282,6 +335,7 @@ namespace Satisfying.Shared
             bool found = world.GroundProbe(s.Position, t.radius, probe, out dist, out normal);
             bool slopeOk = found && normal.y >= MathK.Cos(MathK.Clamp(t.slopeLimit, 1f, 89f) * MathK.Deg2Rad);
             s.Grounded = found && slopeOk && s.Velocity.y <= 0.1f;
+            s.GroundNormal = found ? normal : Vec3.Up;
 
             if (s.Grounded && !wasGrounded)
             {
@@ -303,6 +357,7 @@ namespace Satisfying.Shared
                 : MathK.Max(0f, s.JumpBufferTimer - dt);
 
             if (s.JumpBufferTimer <= 0f) return;
+            if (s.Sliding) return;                       // StepSlide converts it into a slide jump
             if (s.CoyoteTimer <= 0f || s.JumpCooldownTimer > 0f) return;
             if (s.Stamina < t.jumpStaminaCost || s.Exhausted) return;
             if (IsChangingStance(in s, t)) return;
@@ -391,69 +446,227 @@ namespace Satisfying.Shared
             return ViewMath.FlatRight(s.Yaw) * delta;
         }
 
-        // ------------------------------------------------------------------ mantle
+        // ------------------------------------------------------------------ slide
+        /// <summary>
+        /// Crouching out of a sprint converts the speed you already had into a low, fast slide. You
+        /// cannot accelerate into one and you cannot pump it - it is momentum being spent, which is why
+        /// it has a cooldown and a stamina price. Jumping out of it keeps the speed.
+        /// </summary>
+        static void StepSlide(ref PlayerSimState s, InputCommand cmd, MovementTuning t, ICollisionWorld world,
+                              float dt, ref bool sprinting, ref SimEvents ev)
+        {
+            s.SlideCooldown = MathK.Max(0f, s.SlideCooldown - dt);
+
+            if (s.Sliding)
+            {
+                sprinting = false;
+                s.SlideTimer -= dt;
+
+                bool jumped = cmd.Has(Buttons.Jump);
+                float speed = s.Velocity.Flat.Magnitude;
+                bool finished = s.SlideTimer <= 0f
+                                || speed < t.slideMinExitSpeed
+                                || !s.Grounded
+                                || s.Mantling
+                                || cmd.StanceRequest == Stance.Stand
+                                || jumped;
+                if (!finished) return;
+
+                s.Sliding = false;
+                s.SlideCooldown = t.slideCooldown;
+                ev.EndedSlide = true;
+
+                if (jumped && !world.CheckCapsule(s.Position, t.standHeight, t.radius))
+                {
+                    // Slide jump: stand up this tick so the normal jump fires, and keep the speed.
+                    Vec3 boosted = s.Velocity.Flat * t.slideJumpBoost;
+                    s.Velocity = new Vec3(boosted.x, s.Velocity.y, boosted.z);
+                    s.Stance = Stance.Stand;
+                    s.Height = t.standHeight;
+                }
+                return;
+            }
+
+            // A held crouch must not chain slides: it takes a fresh press each time.
+            bool freshCrouch = cmd.StanceRequest == Stance.Crouch && s.LastStanceRequest != Stance.Crouch;
+
+            if (t.slideEnabled < 0.5f || !sprinting || !s.Grounded || s.Mantling) return;
+            if (!freshCrouch) return;
+            if (s.SlideCooldown > 0f || s.Stamina < t.slideStaminaCost) return;
+
+            float entrySpeed = s.Velocity.Flat.Magnitude;
+            if (entrySpeed < t.slideMinSpeed) return;
+
+            Vec3 launch = s.Velocity.Flat.Normalized * (entrySpeed * t.slideImpulse);
+            s.Velocity = new Vec3(launch.x, s.Velocity.y, launch.z);
+            s.Sliding = true;
+            s.SlideTimer = t.slideDuration;
+            s.Lean = 0f;
+            s.SideStep = 0f;
+            sprinting = false;
+            SpendStamina(ref s, t, t.slideStaminaCost);
+            ev.StartedSlide = true;
+        }
+
+        // ------------------------------------------------------------------ mantle and vault
         static void TryMantle(ref PlayerSimState s, InputCommand cmd, MovementTuning t, ICollisionWorld world, ref SimEvents ev)
         {
-            if (t.mantleEnabled < 0.5f || s.Mantling) return;
+            if (s.Mantling) return;
             if (!cmd.Has(Buttons.Mantle) && !(cmd.Has(Buttons.Jump) && !s.Grounded)) return;
-            if (s.Stance == Stance.Prone) return;
-            if (s.Stamina < t.mantleStaminaCost) return;
+            if (s.Stance == Stance.Prone || s.Sliding) return;
+
+            bool canClimb = t.mantleEnabled >= 0.5f && s.Stamina >= t.mantleStaminaCost;
+            bool canVault = t.vaultEnabled >= 0.5f && s.Stamina >= t.vaultStaminaCost;
+            if (!canClimb && !canVault) return;
 
             Vec3 fwd = ViewMath.FlatForward(s.Yaw);
-            Vec3 chest = s.Position + Vec3.Up * (t.mantleMinHeight * 0.9f);
+            float reachHeight = MathK.Max(t.mantleMaxHeight, t.vaultMaxHeight);
+
+            // Something solid and upright in front of us?
+            Vec3 chest = s.Position + Vec3.Up * (MathK.Min(t.mantleMinHeight, t.vaultMinHeight) * 0.9f);
             float wallDist;
             Vec3 wallNormal;
             if (!world.Raycast(chest, fwd, t.radius + t.mantleReach, out wallDist, out wallNormal)) return;
             if (MathK.Abs(wallNormal.y) > 0.5f) return;
 
-            Vec3 ledgeProbe = s.Position + fwd * (wallDist + t.radius * 0.9f) + Vec3.Up * (t.mantleMaxHeight + 0.4f);
+            // Measure its top just past the face - a railing can be thinner than the capsule radius, so
+            // probing a whole radius in would sail straight over it and find the floor beyond.
+            Vec3 face = chest + fwd * wallDist;
+            Vec3 topProbe = new Vec3(face.x, s.Position.y + reachHeight + 0.5f, face.z) + fwd * 0.06f;
+
             float downDist;
             Vec3 downNormal;
-            if (!world.Raycast(ledgeProbe, Vec3.Down, t.mantleMaxHeight + 0.5f, out downDist, out downNormal)) return;
+            if (!world.Raycast(topProbe, Vec3.Down, reachHeight + 0.6f, out downDist, out downNormal)) return;
             if (downNormal.y < 0.6f) return;
 
-            float ledgeY = ledgeProbe.y - downDist;
+            float ledgeY = topProbe.y - downDist;
             float height = ledgeY - s.Position.y;
-            if (height < t.mantleMinHeight || height > t.mantleMaxHeight) return;
 
-            Vec3 target = new Vec3(ledgeProbe.x, ledgeY + SkinWidth, ledgeProbe.z);
+            // A railing is something with a floor well below its top on the far side: go OVER it.
+            if (canVault && height >= t.vaultMinHeight && height <= t.vaultMaxHeight &&
+                TryVaultBeyond(ref s, t, world, fwd, face, ledgeY, ref ev))
+                return;
+
+            if (!canClimb || height < t.mantleMinHeight || height > t.mantleMaxHeight) return;
+
+            // To climb it, there has to be a surface at that height a full capsule further in.
+            Vec3 target = s.Position + fwd * (wallDist + t.radius * 1.05f);
+            float standDist;
+            Vec3 standNormal;
+            Vec3 standProbe = new Vec3(target.x, ledgeY + 0.6f, target.z);
+            if (!world.Raycast(standProbe, Vec3.Down, 1.2f, out standDist, out standNormal)) return;
+            if (standNormal.y < 0.6f) return;
+            float standY = standProbe.y - standDist;
+            if (MathK.Abs(standY - ledgeY) > 0.2f) return;      // nothing to stand on: it was a railing
+
+            target = new Vec3(target.x, standY + SkinWidth, target.z);
             float clearHeight = world.CheckCapsule(target, t.standHeight, t.radius) ? t.crouchHeight : t.standHeight;
             if (world.CheckCapsule(target, clearHeight, t.radius)) return;
 
+            BeginTraversal(ref s, t, target, ledgeY, false);
+            if (clearHeight < t.standHeight) s.Stance = Stance.Crouch;
+            SpendStamina(ref s, t, t.mantleStaminaCost);
+            ev.StartedMantle = true;
+        }
+
+        /// <summary>
+        /// Looks past the top of the obstacle for ground to land on. If the far side is meaningfully
+        /// lower than the top, it is a railing or a window sill rather than a platform, and the right
+        /// move is to swing over it and keep going.
+        /// </summary>
+        static bool TryVaultBeyond(ref PlayerSimState s, MovementTuning t, ICollisionWorld world,
+                                   Vec3 forward, Vec3 face, float ledgeY, ref SimEvents ev)
+        {
+            Vec3 beyond = new Vec3(face.x, ledgeY + 1.4f, face.z) + forward * t.vaultReachBeyond;
+
+            float farDist;
+            Vec3 farNormal;
+            bool foundFloor = world.Raycast(beyond, Vec3.Down, 12f, out farDist, out farNormal);
+            float farY = foundFloor ? beyond.y - farDist : ledgeY - t.vaultMaxDrop - 1f;
+
+            if (foundFloor && farNormal.y >= 0.6f && farY > ledgeY - t.vaultDropThreshold)
+                return false;      // the far side is level with the top: it is a platform, climb it
+
+            Vec3 landing;
+            if (foundFloor && farNormal.y >= 0.6f && ledgeY - farY <= t.vaultMaxDrop)
+            {
+                landing = new Vec3(beyond.x, farY + SkinWidth, beyond.z);
+            }
+            else
+            {
+                // Long drop or nothing down there at all: go over the rail and fall the rest.
+                landing = new Vec3(beyond.x, ledgeY + 0.05f, beyond.z);
+            }
+
+            float clearHeight = world.CheckCapsule(landing, t.standHeight, t.radius) ? t.crouchHeight : t.standHeight;
+            if (world.CheckCapsule(landing, clearHeight, t.radius)) return false;
+
+            BeginTraversal(ref s, t, landing, ledgeY, true);
+            if (clearHeight < t.standHeight) s.Stance = Stance.Crouch;
+            SpendStamina(ref s, t, t.vaultStaminaCost);
+            ev.StartedVault = true;
+            return true;
+        }
+
+        static void BeginTraversal(ref PlayerSimState s, MovementTuning t, Vec3 target, float ledgeY, bool vault)
+        {
             s.Mantling = true;
+            s.Vaulting = vault;
             s.MantleTimer = 0f;
             s.MantleStart = s.Position;
             s.MantleEnd = target;
+
+            // The apex has to clear the obstacle, or a vault would clip straight through the railing.
+            Vec3 mid = (s.Position + target) * 0.5f;
+            s.MantlePeak = new Vec3(mid.x, ledgeY + t.radius * 0.9f, mid.z);
+
             s.Velocity = Vec3.Zero;
             s.Lean = 0f;
             s.SideStep = 0f;
-            if (clearHeight < t.standHeight) { s.Stance = Stance.Crouch; }
-            SpendStamina(ref s, t, t.mantleStaminaCost);
-            ev.StartedMantle = true;
+            s.Sliding = false;
         }
 
         static void StepMantle(ref PlayerSimState s, MovementTuning t, float dt)
         {
             s.MantleTimer += dt;
-            float k = MathK.Clamp01(s.MantleTimer / MathK.Max(0.05f, t.mantleTime));
+            float duration = MathK.Max(0.05f, s.Vaulting ? t.vaultTime : t.mantleTime);
+            float k = MathK.Clamp01(s.MantleTimer / duration);
 
-            // Up first, then across - reads as a pull-up rather than a slide.
-            float up = MathK.SmoothStep(MathK.Clamp01(k * 1.5f));
-            float across = MathK.SmoothStep(MathK.Clamp01((k - 0.25f) / 0.75f));
+            if (s.Vaulting)
+            {
+                // Quadratic arc through the apex: up, over the railing, down the far side.
+                float e = MathK.SmoothStep(k);
+                float inv = 1f - e;
+                s.Position = s.MantleStart * (inv * inv)
+                           + s.MantlePeak * (2f * inv * e)
+                           + s.MantleEnd * (e * e);
+            }
+            else
+            {
+                // Up first, then across - reads as a pull-up rather than a slide.
+                float up = MathK.SmoothStep(MathK.Clamp01(k * 1.5f));
+                float across = MathK.SmoothStep(MathK.Clamp01((k - 0.25f) / 0.75f));
+                s.Position = new Vec3(
+                    MathK.Lerp(s.MantleStart.x, s.MantleEnd.x, across),
+                    MathK.Lerp(s.MantleStart.y, s.MantleEnd.y, up),
+                    MathK.Lerp(s.MantleStart.z, s.MantleEnd.z, across));
+            }
 
-            float y = MathK.Lerp(s.MantleStart.y, s.MantleEnd.y, up);
-            float x = MathK.Lerp(s.MantleStart.x, s.MantleEnd.x, across);
-            float z = MathK.Lerp(s.MantleStart.z, s.MantleEnd.z, across);
-            s.Position = new Vec3(x, y, z);
             s.Velocity = Vec3.Zero;
 
-            if (k >= 1f)
-            {
-                s.Mantling = false;
-                s.Grounded = true;
-                s.CoyoteTimer = t.coyoteTime;
-                s.TimeSinceLanded = 0f;
-            }
+            if (k < 1f) return;
+
+            bool wasVault = s.Vaulting;
+            s.Mantling = false;
+            s.Vaulting = false;
+            s.Grounded = true;
+            s.CoyoteTimer = t.coyoteTime;
+            s.TimeSinceLanded = 0f;
+
+            // A vault is a traversal, not a stop: you come out of it still moving.
+            if (!wasVault) return;
+            Vec3 exit = (s.MantleEnd - s.MantleStart).Flat;
+            if (exit.SqrMagnitude > 0.01f) s.Velocity = exit.Normalized * t.vaultExitSpeed;
         }
 
         // ------------------------------------------------------------------ stamina

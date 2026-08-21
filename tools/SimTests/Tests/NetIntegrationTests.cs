@@ -338,6 +338,73 @@ namespace Satisfying.Tests
                 Assert.True(h.Clients[0].PeerId != h.Clients[1].PeerId, "the two humans have distinct ids");
             });
 
+
+            TestRunner.Add("net/a slide is replicated to the other player", () =>
+            {
+                NetHarness h = Duel(50f, 10f, 0f);
+                h.Bots[1].Behaviour = tick =>
+                {
+                    InputCommand c = InputCommand.Default(tick);
+                    c.MoveY = 1f;
+                    c.Buttons |= Buttons.Sprint;
+                    // One crouch press, once the sprint is up to speed.
+                    if (tick > 120 && tick < 200) c.StanceRequest = Stance.Crouch;
+                    return c;
+                };
+
+                bool sawSlide = false;
+                float lowestHeight = 99f;
+                for (int i = 0; i < 200; i++)
+                {
+                    h.Advance(1f / 60f);
+                    NetClient.RemotePlayer r = h.Clients[0].Remotes[h.Clients[1].PeerId];
+                    if (!r.HasRender) continue;
+                    if (r.Render.Sliding) sawSlide = true;
+                    lowestHeight = MathK.Min(lowestHeight, r.Render.Height);
+                }
+
+                Assert.True(sawSlide, "the opponent's slide came over the wire");
+                Assert.Less(lowestHeight, h.Server.Tuning.move.crouchHeight, "and they really did get lower than a crouch");
+            });
+
+            TestRunner.Add("net/a vault is replicated and lands both sides in the same place", () =>
+            {
+                BoxWorld world = BoxWorld.FlatGround(80f);
+                world.AddBox(new Vec3(0f, 0.5f, 12f), new Vec3(12f, 1f, 0.2f));   // railing
+
+                SpawnSet spawns = new SpawnSet();
+                spawns.Add(new Vec3(0f, 0f, 8f), 0f);
+                spawns.Add(new Vec3(6f, 0f, 8f), 0f);
+
+                NetHarness h = new NetHarness(world, spawns);
+                h.Server.Tuning.match.warmupTime = 0f;
+                h.AddClient("alpha");
+                h.AddClient("bravo");
+                h.SetConditions(60f, 10f, 2f);
+                h.Advance(1.5f);
+
+                h.Bots[0].Behaviour = tick =>
+                {
+                    InputCommand c = InputCommand.Default(tick);
+                    c.MoveY = 1f;
+                    c.Buttons |= Buttons.Mantle;
+                    return c;
+                };
+
+                bool sawVault = false;
+                for (int i = 0; i < 200; i++)
+                {
+                    h.Advance(1f / 60f);
+                    NetClient.RemotePlayer r = h.Clients[1].Remotes[h.Clients[0].PeerId];
+                    if (r.HasRender && r.Render.Vaulting) sawVault = true;
+                }
+
+                Assert.True(sawVault, "the opponent's vault came over the wire");
+                NetServer.ServerPlayer sp = h.ServerPlayerOf(h.Clients[0]);
+                Assert.Greater(sp.Sim.Position.z, 12.2f, "the server agrees they are past the railing");
+                Assert.Less(h.ConvergenceError(h.Clients[0]), 0.06f, "and the client predicted the same traversal");
+            });
+
         }
     }
 }

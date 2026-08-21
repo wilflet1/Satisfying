@@ -72,6 +72,7 @@ namespace Satisfying.Tests
             SerializationTests.Register();
             NetIntegrationTests.Register();
             CombatTests.Register();
+            TraversalTests.Register();
 
             int passed = 0;
             List<string> failures = new List<string>();

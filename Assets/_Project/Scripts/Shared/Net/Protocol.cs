@@ -29,6 +29,16 @@ namespace Satisfying.Shared
         Shot = 9
     }
 
+    /// <summary>
+    /// Which arena to build. It rides in the connect accept because both machines have to build the
+    /// same geometry - prediction is only quiet when the client collides with what the server collides with.
+    /// </summary>
+    public enum MapId : byte
+    {
+        DuelArena = 0,
+        TestRange = 1
+    }
+
     public enum MatchPhase : byte
     {
         Warmup = 0,
@@ -50,7 +60,7 @@ namespace Satisfying.Shared
     public static class Protocol
     {
         /// <summary>Bumped whenever the packet layout or the simulation changes shape.</summary>
-        public const ushort Version = 8;
+        public const ushort Version = 9;
 
         public const int DefaultPort = 7777;
         public const int MaxPlayers = 8;

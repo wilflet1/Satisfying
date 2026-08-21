@@ -187,6 +187,71 @@ namespace Satisfying.Shared
         [Tune("SideStep", 0f, 20f, Tip = "Extra camera roll (deg) at full side step.")]
         public float sideStepRoll = 4.5f;
 
+        // ---------------------------------------------------------------- slide
+        [Tune("Slide", 0f, 1f, Tip = "0 disables sprint sliding entirely.")]
+        public float slideEnabled = 1f;
+
+        [Tune("Slide", 1f, 12f, Tip = "How fast you must be moving before crouch turns into a slide.")]
+        public float slideMinSpeed = 5.2f;
+
+        [Tune("Slide", 1f, 2f, Tip = "Speed multiplier at the moment the slide starts.")]
+        public float slideImpulse = 1.25f;
+
+        [Tune("Slide", 0.1f, 3f, Tip = "Maximum length of a slide in seconds.")]
+        public float slideDuration = 0.85f;
+
+        [Tune("Slide", 0.5f, 30f, Tip = "How quickly a slide bleeds off speed.")]
+        public float slideFriction = 4.2f;
+
+        [Tune("Slide", 0f, 20f, Tip = "How much you can steer mid slide.")]
+        public float slideSteering = 5.5f;
+
+        [Tune("Slide", 0f, 40f, Tip = "Extra acceleration when sliding downhill.")]
+        public float slideSlopeAccel = 14f;
+
+        [Tune("Slide", 0.5f, 6f, Tip = "Speed below which the slide gives up.")]
+        public float slideMinExitSpeed = 2.6f;
+
+        [Tune("Slide", 0f, 3f, Tip = "Cooldown before another slide can start.")]
+        public float slideCooldown = 0.55f;
+
+        [Tune("Slide", 0f, 60f)]
+        public float slideStaminaCost = 16f;
+
+        [Tune("Slide", 0.3f, 1.4f, Tip = "Capsule height while sliding - low enough to go under things a crouch cannot.")]
+        public float slideHeight = 0.78f;
+
+        [Tune("Slide", 1f, 2f, Tip = "Speed kept when you jump out of a slide.")]
+        public float slideJumpBoost = 1.08f;
+
+        // ---------------------------------------------------------------- vault
+        [Tune("Vault", 0f, 1f, Tip = "0 disables vaulting over thin obstacles.")]
+        public float vaultEnabled = 1f;
+
+        [Tune("Vault", 0.2f, 1f, Tip = "Lowest railing worth vaulting rather than stepping over.")]
+        public float vaultMinHeight = 0.5f;
+
+        [Tune("Vault", 0.5f, 2f, Tip = "Highest railing you can throw yourself over.")]
+        public float vaultMaxHeight = 1.3f;
+
+        [Tune("Vault", 0.2f, 2.5f, Tip = "How far past the railing the game looks for a landing.")]
+        public float vaultReachBeyond = 1.15f;
+
+        [Tune("Vault", 0.05f, 1.5f, Tip = "How much lower the far side must be to count as a vault rather than a climb.")]
+        public float vaultDropThreshold = 0.35f;
+
+        [Tune("Vault", 0.15f, 1.5f, Tip = "Seconds to get over.")]
+        public float vaultTime = 0.46f;
+
+        [Tune("Vault", 0f, 60f)]
+        public float vaultStaminaCost = 13f;
+
+        [Tune("Vault", 0f, 10f, Tip = "Forward speed you carry out of a vault.")]
+        public float vaultExitSpeed = 3.4f;
+
+        [Tune("Vault", 0.3f, 6f, Tip = "Drop past this and you go over the railing into a fall rather than a landing.")]
+        public float vaultMaxDrop = 2.2f;
+
         // ---------------------------------------------------------------- blind fire
         [Tune("Blind fire", 0.02f, 1f, Tip = "Seconds to raise the weapon over cover.")]
         public float blindFireBlendTime = 0.18f;

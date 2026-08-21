@@ -45,15 +45,24 @@ namespace Satisfying.Shared
         public float TimeSinceLanded;
 
         public bool Mantling;
+        public bool Vaulting;           // a traversal OVER something rather than onto it
         public float MantleTimer;
         public Vec3 MantleStart;
         public Vec3 MantleEnd;
+        public Vec3 MantlePeak;         // apex of the arc: a vault has to clear the railing
+
+        public bool Sliding;
+        public Stance LastStanceRequest;    // slides need a fresh crouch press, not a held one
+        public float SlideTimer;
+        public float SlideCooldown;
+        public Vec3 GroundNormal;
 
         public WeaponSimState Weapon;
 
         public static PlayerSimState Spawn(Vec3 position, float yaw, MovementTuning t, WeaponTuning w)
         {
             PlayerSimState s = new PlayerSimState();
+            s.GroundNormal = Vec3.Up;
             s.Position = position;
             s.Yaw = yaw;
             s.Height = t.standHeight;
@@ -130,6 +139,9 @@ namespace Satisfying.Shared
     public struct SimEvents
     {
         public bool Jumped;
+        public bool StartedSlide;
+        public bool EndedSlide;
+        public bool StartedVault;
         public bool Landed;
         public float LandImpact;
         public bool StanceChanged;

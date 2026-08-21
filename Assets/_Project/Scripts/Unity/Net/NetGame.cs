@@ -51,6 +51,12 @@ namespace Satisfying.Game
         /// </summary>
         public NetConditions Conditions = new NetConditions();
 
+        /// <summary>Map the host will run. The server sends it to clients, who rebuild to match.</summary>
+        public MapId HostMap = MapId.DuelArena;
+        public MapId CurrentMap = MapId.DuelArena;
+        public System.Action<MapId> OnMapRequested;
+        public List<ArenaBuilder.Station> Stations;
+
         public NetServer Server;
         public NetClient Client;
         public LanDiscovery Discovery;
@@ -91,6 +97,9 @@ namespace Satisfying.Game
             Port = port;
             PlayerName = playerName;
 
+            // Build the map before the server exists: it takes the spawn points by reference.
+            if (CurrentMap != HostMap && OnMapRequested != null) OnMapRequested(HostMap);
+
             _serverSocket = UdpTransport.CreateServer(port, out error);
             if (_serverSocket == null) { Status = error; return false; }
 
@@ -98,6 +107,7 @@ namespace Satisfying.Game
             _serverTransport.Conditions = Conditions;
             Server = new NetServer(_serverTransport, World, Spawns, Tuning);
             Server.ServerName = playerName + "'s duel";
+            Server.Map = HostMap;
 
             Discovery = new LanDiscovery(false);
             CurrentMode = Mode.Hosting;
@@ -194,6 +204,10 @@ namespace Satisfying.Game
                         return;
                     }
                 }
+
+                // The server decides the map; both ends must collide with the same geometry.
+                if (Client.Connected && Client.Map != CurrentMap && OnMapRequested != null)
+                    OnMapRequested(Client.Map);
 
                 if (Client.Connected)
                 {
@@ -332,6 +346,9 @@ namespace Satisfying.Game
             if (ev.Jumped) Sound.PlayAt(Audio.Jump, View.Camera.transform.position, 0.35f);
             if (ev.StanceChanged) Sound.PlayAt(Audio.StanceChange, View.Camera.transform.position, 0.4f);
             if (ev.StartedSideStep) Sound.PlayAt(Audio.Lean, View.Camera.transform.position, 0.35f);
+            if (ev.StartedSlide) Sound.PlayAt(Audio.Land, View.Camera.transform.position, 0.55f, 0.75f);
+            if (ev.EndedSlide) Sound.PlayAt(Audio.StanceChange, View.Camera.transform.position, 0.3f);
+            if (ev.StartedVault) Sound.PlayAt(Audio.Jump, View.Camera.transform.position, 0.5f, 1.15f);
             if (ev.StartedMantle) Sound.PlayAt(Audio.Jump, View.Camera.transform.position, 0.5f, 0.8f);
             if (ev.Reloaded) Sound.Play2D(Audio.Reload, 0.6f);
             if (ev.DryFire) Sound.Play2D(Audio.DryFire, 0.5f);

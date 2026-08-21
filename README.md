@@ -1,8 +1,9 @@
 # Satisfying
 
 A 1v1 first-person duel built around Escape-from-Tarkov-style movement: lean, slow lean, free
-lean, prone lean, side step, blind fire, an analog speed dial, and mantling — with server
-authoritative netcode, client prediction, and every value tweakable while you play.
+lean, prone lean, side step, blind fire, sprint slides, vaulting, an analog speed dial, and
+mantling — with server authoritative netcode, client prediction, and every value tweakable while
+you play.
 
 Everything is generated in code. There are no scenes, prefabs, models, textures or audio files to
 import: clone it, open it, press play.
@@ -14,6 +15,21 @@ import: clone it, open it, press play.
 2. On the first load the editor script creates the boot scene, the custom layers and the build
    settings for you. If you ever need to re-run it: **Satisfying → Set up project**.
 3. Press play. Enter a name, click **host a duel**.
+
+### Two maps
+
+Pick one before you host:
+
+- **Duel arena** — the match map: hard corners, window sills at crouch and prone height, a roof you
+  can only reach by mantling, and one long sightline.
+- **Test range** — a drill course, one lane per ability: a vault row of railings at 0.55 / 0.80 /
+  1.05 / 1.25 / 1.60 m, a sprint runway into tunnels only a slide fits through, a slide-jump gap, a
+  mantle stack, a window to vault through, a lean gallery with dummies at increasing offsets, a
+  prone bar, a side-step alley and a shooting range with posts at 10 / 20 / 40 / 80 m. Walk up to
+  any station and the HUD tells you what it is for.
+
+The server decides the map and clients rebuild to match, because prediction is only quiet when both
+machines collide with the same geometry.
 
 ### Practising alone
 
@@ -48,7 +64,10 @@ Satisfying -connect 192.168.1.20 -name challenger
 | Side step | Alt + A / Alt + D | Shift your whole body sideways without turning |
 | Blind fire | Hold V | Weapon over cover, head hidden; the wheel aims it |
 | Speed dial | Mouse wheel | Continuous walk speed from a creep to a stride |
-| Mantle | Space at a ledge | Pull yourself onto sills, crates and rooftops |
+| Sprint slide | Sprint, then tap crouch | Spends the speed you built up; goes lower than a crouch |
+| Slide jump | Jump out of a slide | Keeps the momentum instead of stopping dead |
+| Vault | Space at a railing | Goes *over* thin obstacles and out the far side, still moving |
+| Mantle | Space at a ledge | Pull yourself *onto* sills, crates and rooftops |
 | Stances | C / X | Stand, crouch, prone, with real transition times and headroom checks |
 
 Full list, chords and rebinding: **[docs/CONTROLS.md](docs/CONTROLS.md)**.
@@ -79,8 +98,9 @@ The simulation and netcode have **no UnityEngine dependency at all**, which mean
 Unity compiles also compiles and runs under plain .NET:
 
 ```bash
-dotnet run --project tools/SimTests          # 61 tests: movement, lean, blind fire, combat, netcode
-dotnet build tools/UnityCheck                # type-checks the Unity layer against a stub UnityEngine
+dotnet run --project tools/SimTests    # 75 tests: movement, lean, slide, vault, combat, netcode
+dotnet build tools/UnityCheck          # type-checks the Unity layer against a stub UnityEngine
+dotnet run --project tools/Playground  # launches the real game headlessly and reports what happened
 ```
 
 `tools/SimTests` runs a real server and two real clients over an in-process link with injected
@@ -93,7 +113,22 @@ duel bandwidth stays under 12 KB/s.
 runs, but it proves every symbol resolves — it is how a `UnityEngine.EventType` collision was found
 without ever opening an editor.
 
-Both are plain .NET projects outside `Assets/`, so Unity never sees them.
+`tools/Playground` **launches the game** — a real authoritative server, a real predicting client,
+real training bots, over a link with real latency and loss, with everything except the renderer. A
+scripted runner drills the movement course; `--mode duel` fights the bots instead:
+
+```
+  mode drill   tick 64 Hz   link 60 ms one way, 12 ms jitter, 3% loss   bots 1
+
+   time   phase      player                       speed  stance   event
+    3.3s  Live      (  -0.5, -0.0, -16.4)     6.4  slide    slide
+   14.1s  Live      (   0.1,  0.2,  20.9)     4.1  vault    VAULT
+
+  slides 1   vaults 7   mantles 1   hits 1 (1 head)
+  round trip 151 ms   prediction corrections 100  (last 5.6 cm)   4.1 KB/s down, 11.1 KB/s up
+```
+
+All three are plain .NET projects outside `Assets/`, so Unity never sees them.
 
 ## Project layout
 

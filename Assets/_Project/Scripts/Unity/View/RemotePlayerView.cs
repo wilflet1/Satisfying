@@ -120,7 +120,29 @@ namespace Satisfying.Game
             float lean = LeanFor(in state);
             float heightFactor = Mathf.Clamp(state.Height / Mathf.Max(0.3f, _move.standHeight), 0.2f, 1.2f);
 
-            if (state.Stance == Stance.Prone)
+            if (state.Sliding)
+            {
+                // Leg out in front, torso back over it: reads as a slide from any angle.
+                Character.Body.localRotation = Quaternion.Euler(-28f, 0f, -lean * _move.leanAngle * 0.4f);
+                Character.Body.localPosition = new Vector3(0f, -0.42f, 0.1f);
+                Character.Body.localScale = new Vector3(1f, 0.78f, 1f);
+                Character.LeftLeg.localScale = new Vector3(1f, 0.9f, 1f);
+                Character.RightLeg.localScale = new Vector3(1f, 0.9f, 1f);
+                Character.LeftLeg.localPosition = new Vector3(-0.11f, 0.26f, 0.42f);
+                Character.RightLeg.localPosition = new Vector3(0.11f, 0.2f, 0.1f);
+            }
+            else if (state.Vaulting)
+            {
+                // Tucked over the railing.
+                Character.Body.localRotation = Quaternion.Euler(46f, 0f, 0f);
+                Character.Body.localPosition = new Vector3(0f, -0.2f, 0.1f);
+                Character.Body.localScale = new Vector3(1f, 0.9f, 1f);
+                Character.LeftLeg.localPosition = new Vector3(-0.11f, 0.45f, 0.3f);
+                Character.RightLeg.localPosition = new Vector3(0.11f, 0.5f, 0.15f);
+                Character.LeftLeg.localScale = new Vector3(1f, 0.7f, 1f);
+                Character.RightLeg.localScale = new Vector3(1f, 0.7f, 1f);
+            }
+            else if (state.Stance == Stance.Prone)
             {
                 Character.Body.localRotation = Quaternion.Euler(82f, 0f, -lean * _move.leanAngle * 0.6f);
                 Character.Body.localPosition = new Vector3(lean * _move.leanOffset, -0.72f, 0.28f);
@@ -177,7 +199,11 @@ namespace Satisfying.Game
             _weaponHolder.localRotation = Quaternion.Euler(holderEuler);
 
             float speed = state.Velocity.Flat.Magnitude;
-            if (state.Grounded && speed > 0.4f)
+            if (state.Sliding || state.Vaulting)
+            {
+                // The pose above already places the legs.
+            }
+            else if (state.Grounded && speed > 0.4f)
             {
                 float previousPhase = _stepPhase;
                 _stepPhase += dt * Mathf.Clamp(speed * 1.5f, 1f, 14f);

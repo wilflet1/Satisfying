@@ -24,6 +24,8 @@ namespace Satisfying.Shared
         public Stance Stance;
         public bool Grounded;
         public bool Mantling;
+        public bool Vaulting;
+        public bool Sliding;
 
         public byte WeaponIndex;
         public short Ammo;
@@ -50,6 +52,8 @@ namespace Satisfying.Shared
             n.Stance = s.Stance;
             n.Grounded = s.Grounded;
             n.Mantling = s.Mantling;
+            n.Vaulting = s.Vaulting;
+            n.Sliding = s.Sliding;
             n.WeaponIndex = s.Weapon.Index;
             n.Ammo = s.Weapon.Ammo;
             n.Reloading = s.Weapon.Reloading;
@@ -74,6 +78,8 @@ namespace Satisfying.Shared
             s.Stance = Stance;
             s.Grounded = Grounded;
             s.Mantling = Mantling;
+            s.Vaulting = Vaulting;
+            s.Sliding = Sliding;
             s.Weapon.Index = WeaponIndex;
             s.Weapon.Ammo = Ammo;
             s.Weapon.Spread = Spread;
@@ -98,6 +104,8 @@ namespace Satisfying.Shared
             s.Stance = Stance;
             s.Grounded = Grounded;
             s.Mantling = Mantling;
+            s.Vaulting = Vaulting;
+            s.Sliding = Sliding;
             s.Weapon.Index = WeaponIndex;
             s.Weapon.Ammo = Ammo;
             s.Weapon.Spread = Spread;
@@ -127,6 +135,8 @@ namespace Satisfying.Shared
             b.WriteBits((uint)Stance, 2);
             b.WriteBool(Grounded);
             b.WriteBool(Mantling);
+            b.WriteBool(Vaulting);
+            b.WriteBool(Sliding);
             b.WriteBits(WeaponIndex, 3);
             b.WriteBits((uint)MathK.Clamp(Ammo, 0, 511), 9);
             b.WriteBool(Reloading);
@@ -157,6 +167,8 @@ namespace Satisfying.Shared
             n.Stance = (Stance)b.ReadBits(2);
             n.Grounded = b.ReadBool();
             n.Mantling = b.ReadBool();
+            n.Vaulting = b.ReadBool();
+            n.Sliding = b.ReadBool();
             n.WeaponIndex = (byte)b.ReadBits(3);
             n.Ammo = (short)b.ReadBits(9);
             n.Reloading = b.ReadBool();

@@ -134,6 +134,7 @@ namespace Satisfying.Game
             DrawVitals(in state, move, weapon);
             DrawMatchBanner();
             DrawKillFeed();
+            DrawStationCaption();
 
             if (Game.DamageFlashTimer > 0f)
             {
@@ -279,6 +280,9 @@ namespace Satisfying.Game
             float sx = x;
             float sy = y + 62f;
             string stance = state.Stance == Stance.Prone ? "PRONE" : (state.Stance == Stance.Crouch ? "CROUCH" : "STAND");
+            if (state.Sliding) stance = "SLIDE";
+            else if (state.Vaulting) stance = "VAULT";
+            else if (state.Mantling) stance = "MANTLE";
             if (state.BlindFire > 0.5f) stance += "  BLIND";
             _skin.Text(new Rect(sx, sy, 160f, 20f), stance, _skin.Label, UiSkin.Accent);
 
@@ -337,6 +341,31 @@ namespace Satisfying.Game
             }
         }
 
+        /// <summary>On the test range, name whichever drill you are standing in.</summary>
+        void DrawStationCaption()
+        {
+            if (Game.Stations == null || Game.Stations.Count == 0) return;
+
+            Vector3 me = Game.Client.RenderPosition.ToUnity();
+            float best = 16f;
+            int nearest = -1;
+            for (int i = 0; i < Game.Stations.Count; i++)
+            {
+                float distance = Vector3.Distance(me, Game.Stations[i].Position);
+                if (distance >= best) continue;
+                best = distance;
+                nearest = i;
+            }
+            if (nearest < 0) return;
+
+            ArenaBuilder.Station station = Game.Stations[nearest];
+            float fade = Mathf.Clamp01((16f - best) / 4f);
+            _skin.Text(new Rect(0f, _height - 172f, _width, 24f), station.Title, _centreHeader,
+                new Color(UiSkin.Accent.r, UiSkin.Accent.g, UiSkin.Accent.b, fade));
+            _skin.Text(new Rect(0f, _height - 150f, _width, 20f), station.Hint, _centreDim,
+                new Color(UiSkin.InkDim.r, UiSkin.InkDim.g, UiSkin.InkDim.b, fade));
+        }
+
         void DrawNetGraph()
         {
             NetClient c = Game.Client;
@@ -362,6 +391,8 @@ namespace Satisfying.Game
             Row("height", state.Height.ToString("0.00"));
             Row("lean", state.Lean.ToString("0.00") + " -> " + state.EffectiveLean(move).ToString("0.00"));
             Row("side step", state.SideStep.ToString("0.00"));
+            Row("slide", state.Sliding ? state.SlideTimer.ToString("0.00") + "s left"
+                : (state.SlideCooldown > 0f ? "cooldown " + state.SlideCooldown.ToString("0.00") : "ready"));
             Row("stamina", state.Stamina.ToString("0") + (state.Exhausted ? "  winded" : ""));
             GUILayout.EndArea();
         }
@@ -457,6 +488,20 @@ namespace Satisfying.Game
             {
                 GUILayout.Space(8f);
                 GUILayout.Label("HOST", _skin.Header);
+
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("map", _skin.Label, GUILayout.Width(90f));
+                if (GUILayout.Button(Game.HostMap == MapId.DuelArena ? "> duel arena" : "duel arena",
+                        Game.HostMap == MapId.DuelArena ? _skin.ButtonPrimary : _skin.Button))
+                    Game.HostMap = MapId.DuelArena;
+                if (GUILayout.Button(Game.HostMap == MapId.TestRange ? "> test range" : "test range",
+                        Game.HostMap == MapId.TestRange ? _skin.ButtonPrimary : _skin.Button))
+                    Game.HostMap = MapId.TestRange;
+                GUILayout.EndHorizontal();
+                GUILayout.Label(Game.HostMap == MapId.TestRange
+                    ? "A drill course: vault row, slide lane, mantle stack, lean gallery, shooting range."
+                    : "The duel map: corners, window sills, a roof and one long sightline.", _skin.SmallDim);
+
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("port", _skin.Label, GUILayout.Width(90f));
                 _port = GUILayout.TextField(_port, 6, _skin.TextField, GUILayout.Width(110f));
@@ -497,6 +542,7 @@ namespace Satisfying.Game
                 "WASD move   Space jump/mantle   Shift sprint   C crouch   X prone\n" +
                 "Q / E lean   Alt+Q / Alt+E slow lean (move the mouse for a fine lean)\n" +
                 "Alt+A / Alt+D side step   Ctrl walk   wheel speed dial\n" +
+                "sprint + tap C to slide   Space at a railing to vault it\n" +
                 "V blind fire (wheel aims it)   1 M4A1   2 MP5   3 USP45\n" +
                 "F1 tuning   F2 controls   F3 net graph   Tab scoreboard   Esc menu",
                 _skin.Small);

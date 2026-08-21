@@ -36,6 +36,10 @@ only if you are the host.
 | `move.leanSpeed` / `leanReturnSpeed` | How fast a peek opens and closes — the single most important duel number |
 | `move.slowLeanSpeedMul` | How much slower the Alt lean is |
 | `move.sideStepDistance` / `sideStepTime` | Whether a side step is a shuffle or a lunge |
+| `move.slideMinSpeed` / `slideImpulse` | Whether a slide is a reward for sprinting or a free dash |
+| `move.slideFriction` / `slideDuration` | How far one slide carries you |
+| `move.slideHeight` | What you can slide under. The test range tunnels are 1.0 m |
+| `move.vaultMaxHeight` / `vaultDropThreshold` | Which obstacles read as railings to go over instead of platforms to climb |
 | `move.blindFireSpreadMul` | Whether blind fire is suppression or a real threat |
 | `move.speedDialMin` | How slow the slowest creep is |
 | `Network.interpolationDelayMs` | Smoothness of the opponent against how far in the past they are |
