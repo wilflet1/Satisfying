@@ -11,6 +11,7 @@ namespace UnityEngine.SceneManagement
     {
         public string name { get; set; }
         public string path { get; set; }
+        public bool isDirty { get; set; }
         public bool IsValid() { return true; }
     }
 

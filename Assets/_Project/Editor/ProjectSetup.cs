@@ -96,6 +96,14 @@ namespace Satisfying.Editor
         {
             if (File.Exists(ScenePath)) return;
 
+            // Never replace a scene somebody is in the middle of editing.
+            if (SceneManager.GetActiveScene().isDirty)
+            {
+                Debug.Log("[satisfying] the open scene has unsaved changes, so the boot scene was not created. " +
+                          "Save it, then run Satisfying > Set up project.");
+                return;
+            }
+
             // Create the folder through the asset database, not System.IO, so Unity knows about it
             // before a scene is saved into it.
             if (!AssetDatabase.IsValidFolder("Assets/Scenes")) AssetDatabase.CreateFolder("Assets", "Scenes");

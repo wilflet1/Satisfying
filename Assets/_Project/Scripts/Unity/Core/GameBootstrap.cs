@@ -69,7 +69,33 @@ namespace Satisfying.Game
             BuildWorld();
             BuildPlayerSystems();
             BuildInterface();
+            TakeOverSceneCameras();
             ApplyCommandLine();
+        }
+
+        /// <summary>
+        /// The game brings its own camera and audio listener. If you press play in a scene that already
+        /// has Unity's default ones, stand them down rather than fighting over which one renders.
+        /// </summary>
+        void TakeOverSceneCameras()
+        {
+#if UNITY_2023_1_OR_NEWER
+            Camera[] cameras = Object.FindObjectsByType<Camera>(FindObjectsSortMode.None);
+            AudioListener[] listeners = Object.FindObjectsByType<AudioListener>(FindObjectsSortMode.None);
+#else
+            Camera[] cameras = Object.FindObjectsOfType<Camera>();
+            AudioListener[] listeners = Object.FindObjectsOfType<AudioListener>();
+#endif
+            for (int i = 0; i < cameras.Length; i++)
+            {
+                if (cameras[i] == null || cameras[i].transform.IsChildOf(transform)) continue;
+                cameras[i].enabled = false;
+            }
+            for (int i = 0; i < listeners.Length; i++)
+            {
+                if (listeners[i] == null || listeners[i].transform.IsChildOf(transform)) continue;
+                listeners[i].enabled = false;
+            }
         }
 
         /// <summary>
@@ -112,7 +138,6 @@ namespace Satisfying.Game
             Application.targetFrameRate = -1;
             Application.runInBackground = true;   // two instances on one machine must both keep ticking
             QualitySettings.vSyncCount = 0;
-            Physics.autoSimulation = true;
             Time.fixedDeltaTime = Protocol.TickDt;
 
             // The query probe capsule must never take part in the physics simulation.

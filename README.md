@@ -10,8 +10,8 @@ import: clone it, open it, press play.
 
 ## Quick start
 
-1. Open the folder in Unity **6000.0** (anything from 2021.3 up will work — the project uses no
-   packages beyond Unity's built-in modules).
+1. Open the folder in Unity **6000.3** (anything from 2021.3 up will work — the project uses no
+   packages beyond Unity's built-in modules, so there is nothing to download and nothing to resolve).
 2. On the first load the editor script creates the boot scene, the custom layers and the build
    settings for you. If you ever need to re-run it: **Satisfying → Set up project**.
 3. Press play. Enter a name, click **host a duel**.

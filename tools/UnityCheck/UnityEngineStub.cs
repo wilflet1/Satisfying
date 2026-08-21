@@ -163,6 +163,7 @@ namespace UnityEngine
     }
 
     public enum HideFlags { None = 0, HideAndDontSave = 61 }
+    public enum FindObjectsSortMode { None, InstanceID }
     public enum PrimitiveType { Sphere, Capsule, Cylinder, Cube, Plane, Quad }
     public enum CursorLockMode { None, Locked, Confined }
     public enum LightType { Spot, Directional, Point, Area }
@@ -198,6 +199,8 @@ namespace UnityEngine
         public static void DontDestroyOnLoad(Object target) { }
         public static T FindObjectOfType<T>() where T : Object { return null; }
         public static T FindFirstObjectByType<T>() where T : Object { return null; }
+        public static T[] FindObjectsOfType<T>() where T : Object { return new T[0]; }
+        public static T[] FindObjectsByType<T>(FindObjectsSortMode sort) where T : Object { return new T[0]; }
         public static bool operator ==(Object a, Object b) { return ReferenceEquals(a, b); }
         public static bool operator !=(Object a, Object b) { return !ReferenceEquals(a, b); }
         public override bool Equals(object o) { return ReferenceEquals(this, o); }
@@ -236,6 +239,7 @@ namespace UnityEngine
         public Transform GetChild(int index) { return null; }
         public void SetParent(Transform parent) { }
         public void SetParent(Transform parent, bool worldPositionStays) { }
+        public bool IsChildOf(Transform parent) { return false; }
         public Vector3 TransformPoint(Vector3 local) { return local; }
         public Vector3 InverseTransformPoint(Vector3 world) { return world; }
         public Vector3 TransformDirection(Vector3 local) { return local; }
