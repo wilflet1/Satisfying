@@ -12,7 +12,9 @@ import: clone it, open it, press play.
 ## Quick start
 
 **Windows, in one paste:** run `tools/Install-Satisfying.ps1` in a PowerShell window. It downloads
-the project, registers it with Unity Hub and opens it. Otherwise:
+the project, registers it with Unity Hub and opens it. Once you have a copy,
+`tools/Update-Satisfying.ps1` pulls the latest and reopens it — it stashes anything you changed
+rather than clobbering it, and refuses to pull while the editor has the project open. Otherwise:
 
 1. Open the folder in Unity **6000.3** (anything from 2021.3 up will work — the project uses no
    packages beyond Unity's built-in modules, so there is nothing to download and nothing to resolve).
