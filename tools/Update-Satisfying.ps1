@@ -206,9 +206,18 @@ if ($OpenAfterwards) {
 Write-Host ''
 Write-Host '  Done.' -ForegroundColor Cyan
 Write-Host '  --------------------------------------------------------------'
-Write-Host '  New since the last build: G for the gear menu (irons, red dot, holo),'
-Write-Host '  F to bash with the stock - it breaks windows - and E to grab and drag'
-Write-Host '  the crates. Heavier is slower, for the crate and for you.'
+Write-Host '  KEYS HAVE MOVED.' -ForegroundColor Yellow
+Write-Host '  Grab and lean-right were both on E, so every grab also leaned you.'
+Write-Host '  Lean keeps Q/E. Interact is now F, melee V, blind fire B.'
+Write-Host '  Your saved bindings reset to these once - rebind from F2 if you like.'
 Write-Host ''
-Write-Host '  Break a pane and listen: footsteps through it go from muffled to sharp.'
+Write-Host '  Worth testing:' -ForegroundColor Cyan
+Write-Host '    F on a crate, then F again      - it should let go every time'
+Write-Host '    shoot a window                  - bullets break glass now, even alone'
+Write-Host '    V into a window                 - the stock breaks it too'
+Write-Host '    tap shift while walking         - sprint speed on the first frame'
+Write-Host '    test range, shooting lane       - posts at real 10/25/50/100/150 m,'
+Write-Host '                                      and hits ring back with the range'
+Write-Host '    F1 -> copy changes              - puts your tuning on the clipboard'
+Write-Host '    host a duel                     - the menu shows the address to give out'
 Write-Host ''
