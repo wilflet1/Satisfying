@@ -26,7 +26,8 @@ namespace Satisfying.Shared
         Score = 6,
         MatchPhase = 7,
         TuningSync = 8,
-        Shot = 9
+        Shot = 9,
+        TargetHit = 10
     }
 
     /// <summary>

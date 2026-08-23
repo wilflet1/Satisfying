@@ -38,6 +38,15 @@ namespace Satisfying.Tests
             if (Client != null && killer == Client.PeerId) Kills++;
         }
 
+        public int TargetHits;
+        public float LastTargetDistance;
+
+        public void OnTargetHit(HitZone zone, float distance)
+        {
+            TargetHits++;
+            LastTargetDistance = distance;
+        }
+
         public void OnHitConfirm(int target, HitZone zone, float damage, bool killed)
         {
             HitsConfirmed++;
@@ -98,7 +107,12 @@ namespace Satisfying.Tests
 
         public NetHarness(BoxWorld world = null, SpawnSet spawnSet = null, WorldModel model = null)
         {
-            if (model != null) { Model.Windows.AddRange(model.Windows); Model.Props.AddRange(model.Props); }
+            if (model != null)
+            {
+                Model.Windows.AddRange(model.Windows);
+                Model.Props.AddRange(model.Props);
+                Model.Targets.AddRange(model.Targets);
+            }
             World = world ?? BoxWorld.FlatGround(80f);
             SpawnSet spawns = spawnSet;
             if (spawns == null)

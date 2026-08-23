@@ -253,6 +253,15 @@ namespace Satisfying.Game
 
         void DrawHitMarker()
         {
+            // The range tells you how far out that one landed - the number people actually want.
+            if (Game.LastTargetTimer > 0f)
+            {
+                float fade = Mathf.Clamp01(Game.LastTargetTimer / 0.6f);
+                _skin.Text(new Rect(_width * 0.5f + 26f, _height * 0.5f + 14f, 140f, 18f),
+                    Game.LastTargetDistance.ToString("0") + " m", _skin.Small,
+                    new Color(UiSkin.Accent.r, UiSkin.Accent.g, UiSkin.Accent.b, fade));
+            }
+
             if (Game.HitMarkerTimer <= 0f) return;
             float k = Game.HitMarkerTimer / 0.28f;
             Color color = Game.HitMarkerHeadshot ? new Color(1f, 0.4f, 0.35f, k) : new Color(1f, 1f, 1f, k);
@@ -591,9 +600,9 @@ namespace Satisfying.Game
                 "Q / E lean   Alt+Q / Alt+E slow lean (move the mouse for a fine lean)\n" +
                 "Alt+A / Alt+D side step   Ctrl walk   wheel speed dial\n" +
                 "sprint + tap C to slide   Space at a railing to vault it\n" +
-                "F melee with the stock (breaks glass)   E grab and drag objects\n" +
-                "V blind fire (wheel aims it)   1 M4A1   2 MP5   3 USP45\n" +
-                "F1 tuning   F2 controls   F3 net graph   Tab scoreboard   Esc menu",
+                "V melee with the stock (breaks glass)   F grab and drag objects\n" +
+                "B blind fire (wheel aims it)   1 M4A1   2 MP5   3 USP45\n" +
+                "G gear   F1 tuning   F2 controls   F3 net graph   Tab scoreboard   Esc menu",
                 _skin.Small);
 
             GUILayout.Space(10f);

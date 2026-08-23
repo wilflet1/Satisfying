@@ -10,6 +10,7 @@ namespace Satisfying.Shared
         void OnSpawn(int peerId, Vec3 position, float yaw);
         void OnDeath(int victim, int killer, HitZone zone, float distance);
         void OnHitConfirm(int target, HitZone zone, float damage, bool killed);
+        void OnTargetHit(HitZone zone, float distance);
         void OnScore(int peerId, int kills, int deaths);
         void OnMatchPhase(MatchPhase phase, float timer, int winner);
         void OnTuning(string tuningText);
@@ -70,6 +71,15 @@ namespace Satisfying.Shared
             b.WriteBits((uint)zone, 3);
             b.WriteQ(damage, 0f, 400f, 12);
             b.WriteBool(killed);
+            return b.ToArray();
+        }
+
+        /// <summary>A practice target took the round. No damage, no score - just the confirmation.</summary>
+        public static byte[] TargetHit(HitZone zone, float distance)
+        {
+            NetBuffer b = Writer(NetEventType.TargetHit);
+            b.WriteBits((uint)zone, 3);
+            b.WriteQ(distance, 0f, 400f, 12);
             return b.ToArray();
         }
 
@@ -144,6 +154,13 @@ namespace Satisfying.Shared
                     float dmg = b.ReadQ(0f, 400f, 12);
                     bool killed = b.ReadBool();
                     sink.OnHitConfirm(target, zone, dmg, killed);
+                    break;
+                }
+                case NetEventType.TargetHit:
+                {
+                    HitZone zone = (HitZone)b.ReadBits(3);
+                    float distance = b.ReadQ(0f, 400f, 12);
+                    sink.OnTargetHit(zone, distance);
                     break;
                 }
                 case NetEventType.Score:

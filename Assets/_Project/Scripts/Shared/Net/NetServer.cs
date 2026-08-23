@@ -315,6 +315,15 @@ namespace Satisfying.Shared
                     if (World.RaycastWindows(Model, origin, dir, limit, out glassIndex, out glassDistance))
                         BreakWindow(glassIndex);
 
+                    // Practice targets are ordinary geometry, so a hit on one comes back at exactly the
+                    // distance the wall cast already found. Only the first pellet reports, or a shotgun
+                    // would ring the marker once per pellet.
+                    int targetIndex;
+                    bool targetHead;
+                    float targetDistance;
+                    if (pellet == 0 && Model.RaycastTargets(origin, dir, limit + 0.05f, out targetIndex, out targetHead, out targetDistance))
+                        shooter.Reliable.Queue(GameEvents.TargetHit(targetHead ? HitZone.Head : HitZone.Body, targetDistance));
+
                     ServerPlayer victim = null;
                     HitTestResult best = new HitTestResult();
                     best.Distance = limit;

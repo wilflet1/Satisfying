@@ -230,6 +230,7 @@ namespace Satisfying.Game
             if (Fx != null) Fx.Update();
 
             HitMarkerTimer = Mathf.Max(0f, HitMarkerTimer - dt);
+            LastTargetTimer = Mathf.Max(0f, LastTargetTimer - dt);
             DamageFlashTimer = Mathf.Max(0f, DamageFlashTimer - dt);
             RespawnCountdown = Mathf.Max(0f, RespawnCountdown - dt);
 
@@ -531,6 +532,22 @@ namespace Satisfying.Game
             HitMarkerHeadshot = zone == HitZone.Head;
             Sound.Play2D(zone == HitZone.Head ? Audio.HeadshotMarker : Audio.HitMarker, 0.45f);
         }
+
+        /// <summary>
+        /// A range target. Same marker and the same ding as a player hit, because the point of a range
+        /// is to tell you what your rounds are doing.
+        /// </summary>
+        public void OnTargetHit(HitZone zone, float distance)
+        {
+            HitMarkerTimer = 0.28f;
+            HitMarkerHeadshot = zone == HitZone.Head;
+            LastTargetDistance = distance;
+            LastTargetTimer = 1.6f;
+            Sound.Play2D(zone == HitZone.Head ? Audio.HeadshotMarker : Audio.HitMarker, 0.4f);
+        }
+
+        public float LastTargetDistance;
+        public float LastTargetTimer;
 
         public void OnScore(int peerId, int kills, int deaths)
         {

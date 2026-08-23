@@ -6,6 +6,48 @@ namespace Satisfying.Tests
     {
         public static void Register()
         {
+            TestRunner.Add("net/a round on a range target rings back with the distance", () =>
+            {
+                // Targets are not players: no damage, no score, just the confirmation. And it has to
+                // work with nobody else on the server, which is when a range is actually used.
+                WorldModel model = new WorldModel();
+                model.AddTarget(new Vec3(0f, 1.15f, 40f), new Vec3(0.5f, 0.7f, 0.28f), false);
+                model.AddTarget(new Vec3(0f, 1.68f, 40f), new Vec3(0.24f, 0.26f, 0.24f), true);
+
+                SpawnSet spawns = new SpawnSet();
+                spawns.Add(new Vec3(0f, 0f, 0f), 0f);
+
+                NetHarness h = new NetHarness(BoxWorld.FlatGround(140f), spawns, model);
+                h.Server.Tuning.match.warmupTime = 0f;
+                for (int i = 0; i < h.Server.Tuning.weapons.Length; i++)
+                {
+                    h.Server.Tuning.weapons[i].spreadBase = 0f;
+                    h.Server.Tuning.weapons[i].spreadPerShot = 0f;
+                    h.Server.Tuning.weapons[i].spreadMovePerSpeed = 0f;
+                }
+                h.Server.PushTuning();
+
+                NetClient shooter = h.AddClient("shooter");
+                Assert.True(h.WaitForConnect(), "connected");
+                h.Advance(1f);
+                Assert.True(h.Server.Phase != MatchPhase.Live, "and is alone, so the match is not live");
+
+                h.Bots[0].Behaviour = tick =>
+                {
+                    float eye = h.ServerPlayerOf(shooter) != null
+                        ? h.ServerPlayerOf(shooter).Sim.EyeHeight(h.Server.Tuning.move) : 1.6f;
+                    InputCommand c = InputCommand.Default(tick);
+                    c.Yaw = 0f;
+                    c.Pitch = ViewMath.PitchOf(new Vec3(0f, 1.15f - eye, 40f).Normalized);
+                    if (tick % 30 == 0) c.Buttons |= Buttons.Fire;
+                    return c;
+                };
+                h.Advance(2.5f);
+
+                Assert.Greater(h.Sinks[0].TargetHits, 0.5f, "the shooter was told the target was hit");
+                Assert.Near(h.Sinks[0].LastTargetDistance, 40f, 2f, "and how far out it was");
+            });
+
             TestRunner.Add("combat/spread is identical on both machines", () =>
             {
                 Vec3 aim = new Vec3(0.3f, -0.1f, 1f).Normalized;

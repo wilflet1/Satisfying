@@ -30,7 +30,7 @@ namespace Satisfying.Shared
         public float falloffMinMul = 0.55f;
 
         [Tune("Weapon", 10f, 500f)]
-        public float range = 220f;
+        public float range = 320f;
 
         [Tune("Weapon", 0f, 8f, Tip = "Base cone of fire in degrees while standing still, hip fired.")]
         public float spreadBase = 1.15f;
@@ -106,7 +106,7 @@ namespace Satisfying.Shared
             m4.falloffStart = 32f;
             m4.falloffEnd = 100f;
             m4.falloffMinMul = 0.62f;
-            m4.range = 240f;
+            m4.range = 400f;
             m4.spreadBase = 1.05f;
             m4.spreadAdsMul = 0.07f;
             m4.spreadPerShot = 0.30f;
@@ -127,7 +127,7 @@ namespace Satisfying.Shared
             mp5.falloffStart = 16f;
             mp5.falloffEnd = 48f;
             mp5.falloffMinMul = 0.42f;
-            mp5.range = 130f;
+            mp5.range = 260f;
             mp5.spreadBase = 1.35f;
             mp5.spreadAdsMul = 0.1f;
             mp5.spreadPerShot = 0.24f;
@@ -148,7 +148,7 @@ namespace Satisfying.Shared
             usp.falloffStart = 18f;
             usp.falloffEnd = 55f;
             usp.falloffMinMul = 0.55f;
-            usp.range = 120f;
+            usp.range = 240f;
             usp.spreadBase = 0.85f;
             usp.spreadAdsMul = 0.06f;
             usp.spreadPerShot = 0.75f;

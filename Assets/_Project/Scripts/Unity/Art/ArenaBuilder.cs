@@ -56,12 +56,7 @@ namespace Satisfying.Game
             // ---------------------------------------------------------------- centre blockhouse
             // Two open doorways on the long sides and low windows on the short sides: every approach
             // gives you something to lean past.
-            BuildBlockhouse(t, palette, worldLayer);
-
-            // Glass in those window openings. Solid until someone shoots or bashes it out, and once
-            // it is gone the opening is a firing line, a way through, and a sound path.
-            model.AddWindow(new Vec3(9f, 1.7f, 0f), new Vec3(0.14f, 1.2f, 3.6f));
-            model.AddWindow(new Vec3(-9f, 1.7f, 0f), new Vec3(0.14f, 1.2f, 3.6f));
+            BuildBlockhouse(t, palette, worldLayer, model);
 
             // ---------------------------------------------------------------- mirrored halves
             for (int side = 0; side < 2; side++)
@@ -86,6 +81,11 @@ namespace Satisfying.Game
                 Pillar(t, palette, worldLayer, new Vector3(6.5f * s, 0f, 6.5f * s));
                 Pillar(t, palette, worldLayer, new Vector3(-8.5f * s, 0f, 5.0f * s));
                 Pillar(t, palette, worldLayer, new Vector3(20f * s, 0f, -2f * s));
+
+                // A glazed screen across the approach: cover you can see through, until someone decides
+                // they would rather shoot through it.
+                GlazedWall(t, palette, worldLayer, model, new Vector3(-2f * s, 1.5f, 19f * s),
+                           new Vector3(10f, 3f, 0.5f), 8f, 2f, 1.5f);
 
                 // Ramp up to a catwalk over the long sightline.
                 Ramp(t, palette, worldLayer, new Vector3(23f * s, 0f, 8f * s), 3.2f, 6f, s);
@@ -121,7 +121,7 @@ namespace Satisfying.Game
             Transform t = root.transform;
             List<Station> stations = new List<Station>();
 
-            const float half = 55f;
+            const float half = 95f;    // the range lane alone wants 150 m of it
             Blockout.Box(t, "floor", new Vector3(0f, -0.5f, 0f), new Vector3(half * 2f, 1f, half * 2f), palette.Ground, true, worldLayer);
             Wall(t, palette, worldLayer, new Vector3(0f, 3f, half), new Vector3(half * 2f, 6f, 1f));
             Wall(t, palette, worldLayer, new Vector3(0f, 3f, -half), new Vector3(half * 2f, 6f, 1f));
@@ -134,8 +134,8 @@ namespace Satisfying.Game
             BuildVaultLane(t, palette, worldLayer, stations);
             BuildSlideLane(t, palette, worldLayer, stations);
             BuildMantleLane(t, palette, worldLayer, stations, model);
-            BuildLeanLane(t, palette, worldLayer, stations);
-            BuildRangeLane(t, palette, worldLayer, stations);
+            BuildLeanLane(t, palette, worldLayer, stations, model);
+            BuildRangeLane(t, palette, worldLayer, stations, model);
             BuildDragLane(t, palette, worldLayer, stations, model);
 
             spawns.Add(new Vec3(0f, 0.15f, 0f), 0f);
@@ -234,11 +234,10 @@ namespace Satisfying.Game
                     tooTall ? palette.WallDark : palette.Wall, true, layer);
             }
 
-            // A wall with a window sill at 1.05: thin, so it is a vault rather than a climb.
-            Wall(l, palette, layer, new Vector3(36f, 0.52f, 0f), new Vector3(0.4f, 1.05f, 10f));
-            Wall(l, palette, layer, new Vector3(36f, 2.6f, 0f), new Vector3(0.4f, 1.6f, 10f));
-            Wall(l, palette, layer, new Vector3(36f, 1.8f, 4.2f), new Vector3(0.4f, 1.5f, 1.6f));
-            Wall(l, palette, layer, new Vector3(36f, 1.8f, -4.2f), new Vector3(0.4f, 1.5f, 1.6f));
+            // A wall with a window sill at 1.05: thin, so it is a vault rather than a climb. The hole
+            // and the pane come from one call, so they cannot disagree about where the opening is.
+            GlazedWall(l, palette, layer, model, new Vector3(36f, 1.7f, 0f), new Vector3(0.4f, 3.4f, 10f),
+                       7f, 1.5f, 1.8f);
 
             // Rooftop you can reach by chaining the ledges.
             Blockout.Box(l, "roof", new Vector3(44f, 1.6f, 0f), new Vector3(10f, 0.4f, 10f), palette.Wall, true, layer);
@@ -246,15 +245,12 @@ namespace Satisfying.Game
 
             AddStation(stations, new Vector3(15f, 0f, 0f), "MANTLE STACK",
                 "0.50 / 0.90 / 1.30 climb. 1.55 is above the band and will not.");
-            // The window is glazed: break it before you can go through it.
-            model.AddWindow(new Vec3(36f, 1.42f, 0f), new Vec3(0.14f, 0.74f, 6.6f));
-
             AddStation(stations, new Vector3(34f, 0f, 0f), "WINDOW",
-                "Glazed. Bash it with F or shoot it out, then vault the 1.05 sill.");
+                "Glazed. Bash it with V or shoot it out, then vault the 1.05 sill.");
         }
 
         /// <summary>Corners to lean around, pillars to side step behind, a gap to crawl through.</summary>
-        static void BuildLeanLane(Transform t, Palette palette, int layer, List<Station> stations)
+        static void BuildLeanLane(Transform t, Palette palette, int layer, List<Station> stations, WorldModel model)
         {
             GameObject lane = new GameObject("lean lane");
             lane.transform.SetParent(t, false);
@@ -264,7 +260,7 @@ namespace Satisfying.Game
             {
                 float x = -14f - i * 8f;
                 Wall(l, palette, layer, new Vector3(x, 1.6f, 2.5f), new Vector3(0.6f, 3.2f, 9f));
-                Dummy(l, palette, layer, new Vector3(x - 0.55f - i * 0.35f, 0f, 9f));
+                Dummy(l, palette, layer, new Vector3(x - 0.55f - i * 0.35f, 0f, 9f), model);
             }
 
             // Prone bar: 0.7 clearance, under a barricade.
@@ -274,7 +270,7 @@ namespace Satisfying.Game
             // Side step alley.
             for (int i = 0; i < 4; i++)
                 Pillar(l, palette, layer, new Vector3(-16f - i * 4f, 0f, -14f + (i % 2) * 2.2f));
-            Dummy(l, palette, layer, new Vector3(-34f, 0f, -14f));
+            Dummy(l, palette, layer, new Vector3(-34f, 0f, -14f), model);
 
             AddStation(stations, new Vector3(-14f, 0f, 6f), "LEAN GALLERY",
                 "Q / E to peek. Alt+Q / Alt+E to creep it open. The dummies sit further out each time.");
@@ -284,26 +280,38 @@ namespace Satisfying.Game
                 "Alt+A / Alt+D moves your body without turning your aim.");
         }
 
-        /// <summary>A long lane with distance markers and dummies, for weapon falloff and recoil.</summary>
-        static void BuildRangeLane(Transform t, Palette palette, int layer, List<Station> stations)
+        /// <summary>
+        /// A long lane with distance markers and dummies, for weapon falloff and recoil. The posts sit
+        /// at their true distance from the firing line - they used to be placed at half of it, so every
+        /// number on the range was a lie.
+        /// </summary>
+        static void BuildRangeLane(Transform t, Palette palette, int layer, List<Station> stations, WorldModel model)
         {
             GameObject lane = new GameObject("range lane");
             lane.transform.SetParent(t, false);
             Transform l = lane.transform;
 
-            float[] distances = { 10f, 20f, 40f, 80f };
+            const float firingLine = -85f;
+            const float z = -62f;
+
+            Blockout.Box(l, "firing line", new Vector3(firingLine, 0.06f, z), new Vector3(3f, 0.12f, 8f), palette.Accent, true, layer);
+            Wall(l, palette, layer, new Vector3(firingLine - 2f, 1.6f, z), new Vector3(0.5f, 3.2f, 9f));
+
+            float[] distances = { 10f, 25f, 50f, 100f, 150f };
             for (int i = 0; i < distances.Length; i++)
             {
-                float z = -8f;
-                float x = 10f + distances[i] * 0.5f;
-                Blockout.Box(l, "marker " + distances[i], new Vector3(x, 0.6f, z - 2.2f),
-                    new Vector3(0.3f, 1.2f, 0.3f), palette.Accent, true, layer);
-                Dummy(l, palette, layer, new Vector3(x, 0f, z));
+                float x = firingLine + distances[i];
+                Blockout.Box(l, "marker " + distances[i], new Vector3(x, 0.9f, z - 2.6f),
+                    new Vector3(0.3f, 1.8f, 0.3f), palette.Accent, true, layer);
+                Dummy(l, palette, layer, new Vector3(x, 0f, z), model);
             }
-            Wall(l, palette, layer, new Vector3(10f, 1.6f, -12f), new Vector3(52f, 3.2f, 0.5f));
 
-            AddStation(stations, new Vector3(12f, 0f, -8f), "SHOOTING RANGE",
-                "Posts at 10 / 20 / 40 / 80 metres. 1 M4A1, 2 MP5, 3 USP45.");
+            // Backstop past the far post, and a side wall so a wide miss still lands on something.
+            Wall(l, palette, layer, new Vector3(firingLine + 156f, 1.8f, z), new Vector3(0.6f, 3.6f, 12f));
+            Wall(l, palette, layer, new Vector3(firingLine + 78f, 1.8f, z - 6f), new Vector3(160f, 3.6f, 0.5f));
+
+            AddStation(stations, new Vector3(firingLine + 2f, 0f, z), "SHOOTING RANGE",
+                "Posts at 10 / 25 / 50 / 100 / 150 m, true distance. Hits ring back with the range.");
         }
 
         /// <summary>Things to take hold of, from a light box to something you really have to lean into.</summary>
@@ -314,7 +322,6 @@ namespace Satisfying.Game
             Transform l = lane.transform;
 
             // A pen with a gap: drag something in to plug it.
-            Wall(l, palette, layer, new Vector3(-14f, 1.1f, -30f), new Vector3(12f, 2.2f, 0.5f));
             Wall(l, palette, layer, new Vector3(-20.5f, 1.1f, -25f), new Vector3(0.5f, 2.2f, 10f));
             Wall(l, palette, layer, new Vector3(-7.5f, 1.1f, -25f), new Vector3(0.5f, 2.2f, 10f));
             Blockout.Box(l, "goal", new Vector3(-14f, 0.05f, -21f), new Vector3(3f, 0.1f, 3f), palette.Accent, true, layer);
@@ -327,15 +334,19 @@ namespace Satisfying.Game
                 model.AddProp(new Vec3(x, 0f, -16f), new Vec3(sizes[i], sizes[i] * 0.92f, sizes[i]), masses[i]);
             }
 
-            // A pane at the end of the pen, so you can smash your way out rather than walking round.
-            model.AddWindow(new Vec3(-14f, 1.1f, -29.9f), new Vec3(3.4f, 2f, 0.12f));
+            // A glazed panel in the end of the pen, so you can smash your way out rather than walk round.
+            GlazedWall(l, palette, layer, model, new Vector3(-14f, 1.1f, -30f), new Vector3(12f, 2.2f, 0.5f),
+                       5f, 1.9f, 1.05f);
 
             AddStation(stations, new Vector3(-14f, 0f, -17f), "DRAG LANE",
-                "E takes hold. 14 / 45 / 95 / 165 kg - heavier drags slower and slows you with it.");
+                "F takes hold. 14 / 45 / 95 / 165 kg - heavier drags slower and slows you with it.");
         }
 
-        /// <summary>A static target: blocks bullets so tracers and impacts land somewhere sensible.</summary>
-        static void Dummy(Transform parent, Palette palette, int layer, Vector3 basePosition)
+        /// <summary>
+        /// A static target. It blocks bullets like any other geometry, and its boxes are registered
+        /// with the world model so the server can tell the shooter that the round landed on one.
+        /// </summary>
+        static void Dummy(Transform parent, Palette palette, int layer, Vector3 basePosition, WorldModel model)
         {
             GameObject dummy = new GameObject("dummy");
             dummy.transform.SetParent(parent, false);
@@ -344,9 +355,15 @@ namespace Satisfying.Game
             Blockout.Box(dummy.transform, "torso", new Vector3(0f, 1.15f, 0f), new Vector3(0.5f, 0.7f, 0.28f), palette.Enemy, true, layer);
             Blockout.Box(dummy.transform, "head", new Vector3(0f, 1.68f, 0f), new Vector3(0.24f, 0.26f, 0.24f), palette.Enemy, true, layer);
             Blockout.Box(dummy.transform, "base", new Vector3(0f, 0.03f, 0f), new Vector3(0.7f, 0.06f, 0.7f), palette.Metal, true, layer);
+
+            if (model == null) return;
+            Vector3 world = parent.TransformPoint(basePosition);
+            model.AddTarget((world + new Vector3(0f, 0.4f, 0f)).ToSim(), new Vec3(0.35f, 0.8f, 0.25f), false);
+            model.AddTarget((world + new Vector3(0f, 1.15f, 0f)).ToSim(), new Vec3(0.5f, 0.7f, 0.28f), false);
+            model.AddTarget((world + new Vector3(0f, 1.68f, 0f)).ToSim(), new Vec3(0.24f, 0.26f, 0.24f), true);
         }
 
-        static void BuildBlockhouse(Transform t, Palette palette, int layer)
+        static void BuildBlockhouse(Transform t, Palette palette, int layer, WorldModel model)
         {
             GameObject house = new GameObject("blockhouse");
             house.transform.SetParent(t, false);
@@ -360,8 +377,10 @@ namespace Satisfying.Game
             for (int side = 0; side < 2; side++)
             {
                 float s = side == 0 ? 1f : -1f;
-                Wall(h, palette, layer, new Vector3(-(w * 0.5f + 0.75f) * 1f, height * 0.5f, d * s), new Vector3(w - 1.5f, height, 0.6f));
-                Wall(h, palette, layer, new Vector3((w * 0.5f + 0.75f) * 1f, height * 0.5f, d * s), new Vector3(w - 1.5f, height, 0.6f));
+                GlazedWall(h, palette, layer, model, new Vector3(-(w * 0.5f + 0.75f), height * 0.5f, d * s),
+                           new Vector3(w - 1.5f, height, 0.6f), 5f, 1.75f, 1.75f);
+                GlazedWall(h, palette, layer, model, new Vector3(w * 0.5f + 0.75f, height * 0.5f, d * s),
+                           new Vector3(w - 1.5f, height, 0.6f), 5f, 1.75f, 1.75f);
                 Wall(h, palette, layer, new Vector3(0f, height - 0.35f, d * s), new Vector3(3f, 0.7f, 0.6f));   // lintel over the door
             }
 
@@ -369,10 +388,10 @@ namespace Satisfying.Game
             for (int side = 0; side < 2; side++)
             {
                 float s = side == 0 ? 1f : -1f;
-                Wall(h, palette, layer, new Vector3(w * s, 0.55f, 0f), new Vector3(0.6f, 1.1f, d * 2f));
-                Wall(h, palette, layer, new Vector3(w * s, height - 0.55f, 0f), new Vector3(0.6f, 1.1f, d * 2f));
-                Wall(h, palette, layer, new Vector3(w * s, 1.8f, -(d * 0.5f + 0.9f)), new Vector3(0.6f, 1.4f, d - 1.8f));
-                Wall(h, palette, layer, new Vector3(w * s, 1.8f, d * 0.5f + 0.9f), new Vector3(0.6f, 1.4f, d - 1.8f));
+                // Sill at 1.05 so you can lean over it or go prone beneath, and wide enough that two
+                // people can trade through it once the glass is gone.
+                GlazedWall(h, palette, layer, model, new Vector3(w * s, height * 0.5f, 0f),
+                           new Vector3(0.6f, height, d * 2f), 7.2f, 1.7f, 1.9f);
             }
 
             // Roof, reachable by mantling the interior crate then the sill.
@@ -390,6 +409,53 @@ namespace Satisfying.Game
                 Wall(h, palette, layer, new Vector3(0f, height + 0.75f, (d + 0.15f) * s), new Vector3(w * 2f + 0.6f, 0.9f, 0.3f));
                 Wall(h, palette, layer, new Vector3((w + 0.15f) * s, height + 0.75f, 0f), new Vector3(0.3f, 0.9f, d * 2f + 0.6f));
             }
+        }
+
+        /// <summary>
+        /// A wall with a rectangular hole cut in it and a pane of glass filling the hole exactly. The
+        /// two have to agree or the round never reaches the glass: it stops on the wall first, which
+        /// is precisely how the arena ended up with windows that could not be shot out.
+        /// The thin axis of `size` is the wall's thickness; the hole is cut in the other two.
+        /// </summary>
+        static void GlazedWall(Transform parent, Palette palette, int layer, WorldModel model,
+                               Vector3 center, Vector3 size, float holeWidth, float holeHeight, float holeCentreY)
+        {
+            bool thinX = size.x <= size.z;
+            float thickness = thinX ? size.x : size.z;
+            float span = thinX ? size.z : size.x;          // the wall's length along its own long axis
+
+            float halfHole = Mathf.Max(0.2f, Mathf.Min(holeWidth, span - 0.2f)) * 0.5f;
+            float holeBottom = holeCentreY - holeHeight * 0.5f;
+            float holeTop = holeCentreY + holeHeight * 0.5f;
+            float wallBottom = center.y - size.y * 0.5f;
+            float wallTop = center.y + size.y * 0.5f;
+
+            // Sill and header run the full length; the cheeks fill either side of the hole.
+            float sill = holeBottom - wallBottom;
+            if (sill > 0.01f)
+                Wall(parent, palette, layer, new Vector3(center.x, wallBottom + sill * 0.5f, center.z),
+                     thinX ? new Vector3(thickness, sill, span) : new Vector3(span, sill, thickness));
+
+            float header = wallTop - holeTop;
+            if (header > 0.01f)
+                Wall(parent, palette, layer, new Vector3(center.x, holeTop + header * 0.5f, center.z),
+                     thinX ? new Vector3(thickness, header, span) : new Vector3(span, header, thickness));
+
+            float cheek = span * 0.5f - halfHole;
+            if (cheek > 0.01f)
+            {
+                float offset = halfHole + cheek * 0.5f;
+                Vector3 cheekSize = thinX ? new Vector3(thickness, holeHeight, cheek) : new Vector3(cheek, holeHeight, thickness);
+                Vector3 a = thinX ? new Vector3(center.x, holeCentreY, center.z + offset) : new Vector3(center.x + offset, holeCentreY, center.z);
+                Vector3 b = thinX ? new Vector3(center.x, holeCentreY, center.z - offset) : new Vector3(center.x - offset, holeCentreY, center.z);
+                Wall(parent, palette, layer, a, cheekSize);
+                Wall(parent, palette, layer, b, cheekSize);
+            }
+
+            Vector3 paneSize = thinX
+                ? new Vector3(thickness * 0.35f, holeHeight, halfHole * 2f)
+                : new Vector3(halfHole * 2f, holeHeight, thickness * 0.35f);
+            model.AddWindow(new Vector3(center.x, holeCentreY, center.z).ToSim(), paneSize.ToSim());
         }
 
         static void Wall(Transform parent, Palette palette, int layer, Vector3 center, Vector3 size)

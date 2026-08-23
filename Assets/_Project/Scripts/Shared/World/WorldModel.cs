@@ -8,6 +8,16 @@ namespace Satisfying.Shared
         public Box Bounds;
     }
 
+    /// <summary>
+    /// A practice target. It has no state - it does not break or move - it exists so the server can
+    /// tell you that you hit it, which is the whole point of a range.
+    /// </summary>
+    public struct TargetDef
+    {
+        public Box Bounds;
+        public bool Head;
+    }
+
     /// <summary>A movable object. Heavier means slower to drag, for you and for it.</summary>
     public struct PropDef
     {
@@ -24,11 +34,43 @@ namespace Satisfying.Shared
     {
         public readonly List<WindowDef> Windows = new List<WindowDef>();
         public readonly List<PropDef> Props = new List<PropDef>();
+        public readonly List<TargetDef> Targets = new List<TargetDef>();
 
         public void Clear()
         {
             Windows.Clear();
             Props.Clear();
+            Targets.Clear();
+        }
+
+        public int AddTarget(Vec3 center, Vec3 size, bool head)
+        {
+            TargetDef def;
+            def.Bounds = new Box(center, size);
+            def.Head = head;
+            Targets.Add(def);
+            return Targets.Count - 1;
+        }
+
+        /// <summary>
+        /// Nearest target along a ray. Targets are ordinary geometry as far as collision goes, so the
+        /// caller passes the distance to the nearest wall as the limit: come back inside that and the
+        /// target was what the round actually hit.
+        /// </summary>
+        public bool RaycastTargets(Vec3 origin, Vec3 direction, float maxDistance, out int index, out bool head, out float distance)
+        {
+            index = -1;
+            head = false;
+            distance = maxDistance;
+            for (int i = 0; i < Targets.Count; i++)
+            {
+                float hit;
+                if (!BoxMath.Raycast(Targets[i].Bounds, origin, direction, distance, out hit)) continue;
+                distance = hit;
+                index = i;
+                head = Targets[i].Head;
+            }
+            return index >= 0;
         }
 
         public int AddWindow(Vec3 center, Vec3 size)
