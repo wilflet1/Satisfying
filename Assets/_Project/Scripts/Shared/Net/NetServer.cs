@@ -133,7 +133,8 @@ namespace Satisfying.Shared
 
                 SimEvents ev = new SimEvents();
                 WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
-                MovementCore.Step(ref p.Sim, cmd, Tuning.move, weapon, Protocol.TickDt, _world, ref ev);
+                SightTuning sight = Tuning.Sight(cmd.SightIndex);
+                MovementCore.Step(ref p.Sim, cmd, Tuning.move, weapon, sight, Protocol.TickDt, _world, ref ev);
 
                 if (ev.ShotsFired > 0 && Phase == MatchPhase.Live)
                     ResolveShots(p, cmd, weapon, ev);
@@ -256,7 +257,7 @@ namespace Satisfying.Shared
         // ================================================================== shooting
         void ResolveShots(ServerPlayer shooter, InputCommand cmd, WeaponTuning weapon, SimEvents ev)
         {
-            float spread = MovementCore.CurrentSpread(in shooter.Sim, Tuning.move, weapon);
+            float spread = MovementCore.CurrentSpread(in shooter.Sim, Tuning.move, weapon, Tuning.Sight(cmd.SightIndex));
             // Blind fire lifts the muzzle over cover and swings it round the corner; the head stays put.
             Vec3 origin = shooter.Sim.WeaponOrigin(Tuning.move);
             Vec3 aim = shooter.Sim.WeaponDirection(Tuning.move);

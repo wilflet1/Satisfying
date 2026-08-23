@@ -14,11 +14,13 @@ namespace Satisfying.Game
         public FeelTuning Feel;
         public TuningPanelUI Tuning;
         public BindingsPanelUI Controls;
+        public GearPanelUI Gear;
         public System.Action OnQuit;
 
         public bool ShowMenu = true;
         public bool ShowTuning;
         public bool ShowControls;
+        public bool ShowGear;
 
         UiSkin _skin;
         GUIStyle _centreSmall;
@@ -47,6 +49,7 @@ namespace Satisfying.Game
             _port = PlayerPrefs.GetString("satisfying.port", Protocol.DefaultPort.ToString());
             Tuning.Skin = _skin;
             Controls.Skin = _skin;
+            Gear.Skin = _skin;
             BuildDerivedStyles();
             StartBrowsing();
         }
@@ -76,11 +79,13 @@ namespace Satisfying.Game
 
             if (Bindings.Pressed(GameAction.TuningPanel)) ShowTuning = !ShowTuning;
             if (Bindings.Pressed(GameAction.BindingsPanel)) ShowControls = !ShowControls;
+            if (Bindings.Pressed(GameAction.GearPanel)) ShowGear = !ShowGear;
             if (Bindings.Pressed(GameAction.NetGraph)) Feel.showNetGraph = Feel.showNetGraph > 0.5f ? 0f : 1f;
 
             if (Bindings.Pressed(GameAction.Menu))
             {
-                if (ShowControls) ShowControls = false;
+                if (ShowGear) ShowGear = false;
+                else if (ShowControls) ShowControls = false;
                 else if (ShowTuning) ShowTuning = false;
                 else if (Game.InGame) ShowMenu = !ShowMenu;
                 else if (Game.CurrentMode != NetGame.Mode.Offline) Game.Leave();   // give up on a connection
@@ -95,7 +100,7 @@ namespace Satisfying.Game
             // The menu is modal. The tuning and controls panels are not: they free the cursor but leave
             // the keyboard to you, so you can strafe and lean while dragging a slider.
             bool modal = ShowMenu || !Game.InGame;
-            bool panelOpen = ShowTuning || ShowControls;
+            bool panelOpen = ShowTuning || ShowControls || ShowGear;
             bool wantsCursor = modal || panelOpen;
 
             Cursor.lockState = wantsCursor ? CursorLockMode.None : CursorLockMode.Locked;
@@ -118,6 +123,7 @@ namespace Satisfying.Game
             else if (ShowMenu || !Game.InGame) DrawMenu();
             if (ShowTuning) Tuning.Draw(new Rect(_width - 470f, 20f, 450f, _height - 40f));
             if (ShowControls) Controls.Draw(new Rect(20f, 20f, 520f, _height - 40f));
+            if (ShowGear) Gear.Draw(new Rect(_width * 0.5f - 250f, _height * 0.5f - 230f, 500f, 460f));
         }
 
         // ------------------------------------------------------------------ HUD
@@ -128,8 +134,14 @@ namespace Satisfying.Game
             MovementTuning move = client.Tuning.move;
             WeaponTuning weapon = client.Tuning.Weapon(state.Weapon.Index);
 
+            SightKind sight = (SightKind)Mathf.Clamp(state.Weapon.Sight, 0, 2);
             if (state.BlindFire > 0.5f) DrawBlindFireDial(in state, move);
-            else DrawCrosshair(in state, move, weapon);
+            else
+            {
+                DrawCrosshair(in state, move, weapon, sight);
+                if (sight != SightKind.Iron)
+                    GearPanelUI.DrawReticle(_skin, sight, _width * 0.5f, _height * 0.5f, state.Ads);
+            }
             DrawHitMarker();
             DrawVitals(in state, move, weapon);
             DrawMatchBanner();
@@ -185,8 +197,12 @@ namespace Satisfying.Game
             return copy;
         }
 
-        void DrawCrosshair(in PlayerSimState state, MovementTuning move, WeaponTuning weapon)
+        void DrawCrosshair(in PlayerSimState state, MovementTuning move, WeaponTuning weapon, SightKind sight)
         {
+            // Behind an optic the crosshair is replaced by the reticle; behind irons it just fades out.
+            float aimFade = sight == SightKind.Iron ? Mathf.Lerp(0.9f, 0.1f, state.Ads) : Mathf.Lerp(0.9f, 0f, state.Ads * 1.4f);
+            if (aimFade <= 0.02f) return;
+
             float cx = _width * 0.5f;
             float cy = _height * 0.5f;
 
@@ -194,7 +210,7 @@ namespace Satisfying.Game
             if (Feel.dynamicCrosshair > 0.5f)
             {
                 // Convert the real cone of fire into pixels so the crosshair tells the truth.
-                float spread = MovementCore.CurrentSpread(in state, move, weapon);
+                float spread = MovementCore.CurrentSpread(in state, move, weapon, Game.Client.Tuning.Sight(state.Weapon.Sight));
                 float halfFov = Game.View.Camera.fieldOfView * 0.5f * Mathf.Deg2Rad;
                 float pixels = Mathf.Tan(spread * Mathf.Deg2Rad) / Mathf.Max(0.0001f, Mathf.Tan(halfFov)) * (_height * 0.5f);
                 gap = Mathf.Clamp(gap + pixels, Feel.crosshairGap, _height * 0.35f);
@@ -202,7 +218,7 @@ namespace Satisfying.Game
 
             float length = Feel.crosshairSize;
             float thickness = Mathf.Max(1f, Feel.crosshairThickness);
-            Color color = new Color(1f, 1f, 1f, Mathf.Lerp(0.9f, 0.25f, state.Ads));
+            Color color = new Color(1f, 1f, 1f, aimFade);
 
             _skin.Fill(new Rect(cx - gap - length, cy - thickness * 0.5f, length, thickness), color);
             _skin.Fill(new Rect(cx + gap, cy - thickness * 0.5f, length, thickness), color);

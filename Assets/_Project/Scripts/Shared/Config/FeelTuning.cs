@@ -109,8 +109,11 @@ namespace Satisfying.Shared
         [Tune("Weapon feel", -0.3f, 0.3f, Tip = "Nudge applied on top of the weapon's own hip position.")]
         public float viewmodelZ = 0f;
 
-        [Tune("Weapon feel", 0.05f, 0.6f, Tip = "How far in front of your eye the sights sit when aiming.")]
-        public float adsSightDistance = 0.22f;
+        [Tune("Weapon feel", 0.15f, 0.7f, Tip = "Eye relief: how far in front of your eye the sights sit when aiming.")]
+        public float adsSightDistance = 0.4f;
+
+        [Tune("Weapon feel", 35f, 80f, Tip = "Field of view the gun and hands are drawn with. Lower makes the weapon look bigger.")]
+        public float viewmodelFov = 58f;
 
         // ---------------------------------------------------------------- hud
         [Tune("HUD", 0f, 40f)]

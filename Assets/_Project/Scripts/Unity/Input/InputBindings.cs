@@ -14,7 +14,7 @@ namespace Satisfying.Game
         StepLeft, StepRight,
         Weapon1, Weapon2, Weapon3,
         SpeedUp, SpeedDown,
-        Scoreboard, TuningPanel, BindingsPanel, NetGraph, Menu,
+        Scoreboard, TuningPanel, BindingsPanel, GearPanel, NetGraph, Menu,
         Count
     }
 
@@ -122,6 +122,7 @@ namespace Satisfying.Game
             Set(GameAction.Scoreboard, KeyCode.Tab);
             Set(GameAction.TuningPanel, KeyCode.F1);
             Set(GameAction.BindingsPanel, KeyCode.F2);
+            Set(GameAction.GearPanel, KeyCode.G);
             Set(GameAction.NetGraph, KeyCode.F3);
             Set(GameAction.Menu, KeyCode.Escape);
 
@@ -214,6 +215,7 @@ namespace Satisfying.Game
                 case GameAction.SpeedDown: return "Speed dial down";
                 case GameAction.TuningPanel: return "Tuning panel";
                 case GameAction.BindingsPanel: return "Controls panel";
+                case GameAction.GearPanel: return "Gear menu";
                 case GameAction.NetGraph: return "Net graph";
                 case GameAction.Weapon1: return "Weapon 1";
                 case GameAction.Weapon2: return "Weapon 2";

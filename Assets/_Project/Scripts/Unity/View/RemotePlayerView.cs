@@ -87,6 +87,7 @@ namespace Satisfying.Game
         {
             footstepImpulse = 0f;
             SetWeapon(state.WeaponIndex);
+            if (Weapon != null) Weapon.SetSight(state.SightIndex);
 
             Transform root = Character.Root.transform;
             Vector3 position = state.Position.ToUnity();

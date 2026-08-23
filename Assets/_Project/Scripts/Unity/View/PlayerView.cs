@@ -67,7 +67,7 @@ namespace Satisfying.Game
             WeaponCamera.cullingMask = 1 << viewmodelLayer;
             WeaponCamera.nearClipPlane = 0.01f;
             WeaponCamera.farClipPlane = 8f;
-            WeaponCamera.fieldOfView = 55f;
+            WeaponCamera.fieldOfView = feel.viewmodelFov;
             WeaponCamera.depth = Camera.depth + 1;
 
             GameObject viewmodelRoot = new GameObject("Viewmodel");
@@ -112,9 +112,10 @@ namespace Satisfying.Game
         /// input layer, not from the network - your own view never waits for a packet.
         /// </summary>
         public void Render(in PlayerSimState state, Vector3 renderPosition, MovementTuning move, WeaponTuning weapon,
-                           float yaw, float pitch, float dt, bool sprinting)
+                           SightTuning sight, float yaw, float pitch, float dt, bool sprinting)
         {
             SetWeapon(state.Weapon.Index);
+            if (Weapon != null) Weapon.SetSight(state.Weapon.Sight);
 
             float lean = state.EffectiveLean(move);
             float speed = state.Velocity.Flat.Magnitude;
@@ -153,10 +154,14 @@ namespace Satisfying.Game
             float targetFov = _feel.fieldOfView;
             if (sprinting) targetFov += _feel.sprintFovAdd;
             if (state.Sliding) targetFov += _feel.slideFovAdd;
-            targetFov = Mathf.Lerp(targetFov, _feel.fieldOfView * _feel.adsFovMul, state.Ads);
+            // An optic's magnification rides on top of the base aim zoom.
+            float sightZoom = sight != null ? Mathf.Max(0.1f, sight.zoomMul) : 1f;
+            targetFov = Mathf.Lerp(targetFov, _feel.fieldOfView * _feel.adsFovMul * sightZoom, state.Ads);
             _fov = Mathf.Lerp(_fov, targetFov, 1f - Mathf.Exp(-_feel.fovLerpSpeed * dt));
             Camera.fieldOfView = _fov;
-            WeaponCamera.fieldOfView = Mathf.Lerp(55f, 42f, state.Ads);
+            // Barely narrow the viewmodel camera when aiming: zooming it is what makes the gun
+            // swell up and swallow the screen. The world camera does the zooming.
+            WeaponCamera.fieldOfView = Mathf.Lerp(_feel.viewmodelFov, _feel.viewmodelFov * 0.94f, state.Ads);
 
             RenderViewmodel(in state, move, weapon, yaw, pitch, dt, sprinting, bobX, bobY);
         }

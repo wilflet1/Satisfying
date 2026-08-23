@@ -4,6 +4,7 @@ namespace Satisfying.Shared
     public struct WeaponSimState
     {
         public byte Index;
+        public byte Sight;
         public short Ammo;
         public float FireCooldown;
         public float ReloadTimer;

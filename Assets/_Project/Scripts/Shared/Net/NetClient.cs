@@ -263,7 +263,8 @@ namespace Satisfying.Shared
             if (Alive)
             {
                 WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
-                MovementCore.Step(ref _predicted, cmd, Tuning.move, weapon, Protocol.TickDt, _world, ref ev);
+                MovementCore.Step(ref _predicted, cmd, Tuning.move, weapon, Tuning.Sight(cmd.SightIndex),
+                    Protocol.TickDt, _world, ref ev);
             }
             // While dead the server does not step you either, so predicting movement here would put the
             // two sides into a fight the server wins sixty times a second.
@@ -439,7 +440,8 @@ namespace Satisfying.Shared
                 {
                     WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
                     SimEvents ev = new SimEvents();
-                    MovementCore.Step(ref corrected, cmd, Tuning.move, weapon, Protocol.TickDt, _world, ref ev);
+                    MovementCore.Step(ref corrected, cmd, Tuning.move, weapon, Tuning.Sight(cmd.SightIndex),
+                        Protocol.TickDt, _world, ref ev);
                 }
                 _states[s] = corrected;
             }

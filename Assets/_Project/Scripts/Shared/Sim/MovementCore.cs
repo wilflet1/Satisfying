@@ -14,6 +14,12 @@ namespace Satisfying.Shared
         public static void Step(ref PlayerSimState s, InputCommand cmd, MovementTuning t, WeaponTuning w,
                                 float dt, ICollisionWorld world, ref SimEvents ev)
         {
+            Step(ref s, cmd, t, w, null, dt, world, ref ev);
+        }
+
+        public static void Step(ref PlayerSimState s, InputCommand cmd, MovementTuning t, WeaponTuning w,
+                                SightTuning sight, float dt, ICollisionWorld world, ref SimEvents ev)
+        {
             ev.Clear();
             if (dt <= 0f) return;
 
@@ -35,7 +41,7 @@ namespace Satisfying.Shared
             StepBlindFire(ref s, cmd, t, dt, wantsSprint);
             StepStance(ref s, cmd, t, world, dt, wantsSprint, ref ev);
             StepLean(ref s, cmd, t, world, dt, wantsSprint);
-            StepAds(ref s, cmd, t, w, dt, wantsSprint);
+            StepAds(ref s, cmd, t, w, sight, dt, wantsSprint);
 
             Vec3 wish = WishDirection(s.Yaw, cmd);
             float targetSpeed = TargetSpeed(ref s, cmd, t, wantsSprint);
@@ -195,10 +201,12 @@ namespace Satisfying.Shared
         }
 
         // ------------------------------------------------------------------ aim
-        static void StepAds(ref PlayerSimState s, InputCommand cmd, MovementTuning t, WeaponTuning w, float dt, bool sprinting)
+        static void StepAds(ref PlayerSimState s, InputCommand cmd, MovementTuning t, WeaponTuning w,
+                            SightTuning sight, float dt, bool sprinting)
         {
             bool wantsAds = cmd.Has(Buttons.Ads) && !sprinting && !s.Mantling && s.BlindFire < 0.5f;
             float time = MathK.Max(0.02f, w != null ? w.adsTime : t.adsTime);
+            if (sight != null) time *= MathK.Max(0.1f, sight.adsTimeMul);
             s.Ads = MathK.MoveTowards(s.Ads, wantsAds ? 1f : 0f, dt / time);
         }
 
@@ -708,6 +716,8 @@ namespace Satisfying.Shared
         {
             if (w == null) return;
 
+            s.Weapon.Sight = cmd.SightIndex;
+
             if (s.Weapon.Index != cmd.WeaponIndex)
             {
                 s.Weapon.Index = cmd.WeaponIndex;
@@ -767,11 +777,18 @@ namespace Satisfying.Shared
         /// <summary>Total cone of fire in degrees. Client draws it, server validates with it.</summary>
         public static float CurrentSpread(in PlayerSimState s, MovementTuning t, WeaponTuning w)
         {
+            return CurrentSpread(in s, t, w, null);
+        }
+
+        public static float CurrentSpread(in PlayerSimState s, MovementTuning t, WeaponTuning w, SightTuning sight)
+        {
             float spread = w.spreadBase + s.Weapon.Spread;
             spread += s.Velocity.Flat.Magnitude * w.spreadMovePerSpeed;
             if (s.Stance == Stance.Crouch) spread *= w.spreadCrouchMul;
             else if (s.Stance == Stance.Prone) spread *= w.spreadProneMul;
-            spread *= MathK.Lerp(1f, w.spreadAdsMul, s.Ads);
+            float adsSpread = w.spreadAdsMul;
+            if (sight != null) adsSpread *= MathK.Max(0.05f, sight.spreadMul);
+            spread *= MathK.Lerp(1f, adsSpread, s.Ads);
             if (s.Exhausted) spread *= 1.35f;
             if (!s.Grounded) spread *= 2.2f;
             if (s.BlindFire > 0.01f) spread *= MathK.Lerp(1f, MathK.Max(1f, t.blindFireSpreadMul), s.BlindFire);

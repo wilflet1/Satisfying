@@ -184,6 +184,20 @@ namespace Satisfying.Game
             Fill(new Rect(rect.x + half - 1f, rect.y - 2f, 2f, rect.height + 4f), new Color(1f, 1f, 1f, 0.5f));
         }
 
+        /// <summary>A circle drawn as short segments - enough for a reticle, and no texture needed.</summary>
+        public void Ring(Vector2 centre, float radius, float thickness, Color color, int segments = 32)
+        {
+            float step = Mathf.PI * 2f / Mathf.Max(8, segments);
+            float half = thickness * 0.5f;
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = step * i;
+                float x = centre.x + Mathf.Cos(angle) * radius;
+                float y = centre.y + Mathf.Sin(angle) * radius;
+                Fill(new Rect(x - half, y - half, thickness, thickness), color);
+            }
+        }
+
         public void Text(Rect rect, string text, GUIStyle style, Color color)
         {
             Color previous = style.normal.textColor;

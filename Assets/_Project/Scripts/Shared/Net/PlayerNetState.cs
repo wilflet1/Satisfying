@@ -28,6 +28,7 @@ namespace Satisfying.Shared
         public bool Sliding;
 
         public byte WeaponIndex;
+        public byte SightIndex;
         public short Ammo;
         public bool Reloading;
         public float Spread;
@@ -55,6 +56,7 @@ namespace Satisfying.Shared
             n.Vaulting = s.Vaulting;
             n.Sliding = s.Sliding;
             n.WeaponIndex = s.Weapon.Index;
+            n.SightIndex = s.Weapon.Sight;
             n.Ammo = s.Weapon.Ammo;
             n.Reloading = s.Weapon.Reloading;
             n.Spread = s.Weapon.Spread;
@@ -81,6 +83,7 @@ namespace Satisfying.Shared
             s.Vaulting = Vaulting;
             s.Sliding = Sliding;
             s.Weapon.Index = WeaponIndex;
+            s.Weapon.Sight = SightIndex;
             s.Weapon.Ammo = Ammo;
             s.Weapon.Spread = Spread;
             if (!Reloading) s.Weapon.ReloadTimer = 0f;
@@ -107,6 +110,7 @@ namespace Satisfying.Shared
             s.Vaulting = Vaulting;
             s.Sliding = Sliding;
             s.Weapon.Index = WeaponIndex;
+            s.Weapon.Sight = SightIndex;
             s.Weapon.Ammo = Ammo;
             s.Weapon.Spread = Spread;
             return s;
@@ -138,6 +142,7 @@ namespace Satisfying.Shared
             b.WriteBool(Vaulting);
             b.WriteBool(Sliding);
             b.WriteBits(WeaponIndex, 3);
+            b.WriteBits(SightIndex, 2);
             b.WriteBits((uint)MathK.Clamp(Ammo, 0, 511), 9);
             b.WriteBool(Reloading);
             b.WriteQ(Spread, 0f, 24f, 8);
@@ -170,6 +175,7 @@ namespace Satisfying.Shared
             n.Vaulting = b.ReadBool();
             n.Sliding = b.ReadBool();
             n.WeaponIndex = (byte)b.ReadBits(3);
+            n.SightIndex = (byte)b.ReadBits(2);
             n.Ammo = (short)b.ReadBits(9);
             n.Reloading = b.ReadBool();
             n.Spread = b.ReadQ(0f, 24f, 8);

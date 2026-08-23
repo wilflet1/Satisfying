@@ -22,6 +22,7 @@ namespace Satisfying.Game
         GameUI _ui;
         TuningPanelUI _tuningPanel;
         BindingsPanelUI _bindingsPanel;
+        GearPanelUI _gearPanel;
         InputBindings _bindings;
         FeelTuning _feel;
         LocalInputSource _input;
@@ -242,6 +243,11 @@ namespace Satisfying.Game
             _tuningPanel.OnSimValueChanged = MarkTuningDirty;
             _tuningPanel.LoadFeelFromPrefs();
 
+            _gearPanel = new GearPanelUI();
+            _gearPanel.Game = _game;
+            _gearPanel.Input = _input;
+            _gearPanel.Load();
+
             _bindingsPanel = new BindingsPanelUI();
             _bindingsPanel.Bindings = _bindings;
             _bindingsPanel.Feel = _feel;
@@ -252,6 +258,7 @@ namespace Satisfying.Game
             _ui.Feel = _feel;
             _ui.Tuning = _tuningPanel;
             _ui.Controls = _bindingsPanel;
+            _ui.Gear = _gearPanel;
             _ui.OnQuit = Quit;
             _ui.Initialise();
         }

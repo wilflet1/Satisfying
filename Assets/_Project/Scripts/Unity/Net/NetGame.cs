@@ -246,7 +246,8 @@ namespace Satisfying.Game
                              state.Velocity.Flat.Magnitude > Tuning.move.walkSpeed * 1.02f;
 
             View.Render(in state, Client.RenderPosition.ToUnity(), Client.Tuning.move,
-                        Client.Tuning.Weapon(state.Weapon.Index), state.Yaw, state.Pitch, dt, sprinting);
+                        Client.Tuning.Weapon(state.Weapon.Index), Client.Tuning.Sight(state.Weapon.Sight),
+                        state.Yaw, state.Pitch, dt, sprinting);
 
             PlayWeaponCue(View.ConsumeWeaponCue(), View.Camera.transform.position, 0.55f);
             TrackFootsteps(in state, Client.Tuning.move, dt);
@@ -357,7 +358,7 @@ namespace Satisfying.Game
 
             WeaponTuning weapon = Client.Tuning.Weapon(cmd.WeaponIndex);
             PlayerSimState state = Client.Predicted;
-            float spread = MovementCore.CurrentSpread(in state, Client.Tuning.move, weapon);
+            float spread = MovementCore.CurrentSpread(in state, Client.Tuning.move, weapon, Client.Tuning.Sight(cmd.SightIndex));
             // Blind fire moves the muzzle, not the camera - the tracer has to come from the gun.
             Vec3 simOriginVec = state.WeaponOrigin(Client.Tuning.move);
             Vec3 simAimVec = state.WeaponDirection(Client.Tuning.move);

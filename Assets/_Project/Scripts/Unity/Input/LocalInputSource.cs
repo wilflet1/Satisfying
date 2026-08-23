@@ -23,6 +23,10 @@ namespace Satisfying.Game
         /// </summary>
         public bool LookEnabled = true;
 
+        /// <summary>Optic fitted to each weapon, chosen in the gear menu and saved between sessions.</summary>
+        public readonly byte[] Sights = new byte[3];
+        public byte CurrentWeapon { get { return _weapon; } }
+
         public float Yaw { get { return _yaw + _recoilYaw; } }
         public float Pitch { get { return _pitch + _recoilPitch; } }
         public float SpeedDial { get { return _speedDial; } }
@@ -256,6 +260,7 @@ namespace Satisfying.Game
             c.Yaw = Yaw;
             c.Pitch = Pitch;
             c.WeaponIndex = _weapon;
+            c.SightIndex = Sights[Mathf.Clamp(_weapon, 0, Sights.Length - 1)];
             c.SpeedDial = _speedDial;
             c.BlindAngle = _blindAngle;
             c.StanceRequest = _stance;

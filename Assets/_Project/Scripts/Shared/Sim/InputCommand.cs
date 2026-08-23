@@ -17,6 +17,7 @@ namespace Satisfying.Shared
         public float BlindAngle;    // -1..1 blind fire elevation dial (mouse wheel while blind firing)
         public Stance StanceRequest;
         public byte WeaponIndex;
+        public byte SightIndex;     // optic fitted to the weapon in hand
         public Buttons Buttons;
         /// <summary>Server tick (fractional, x256) this client was rendering other players at - drives lag compensation.</summary>
         public float RenderTick;
@@ -53,7 +54,8 @@ namespace Satisfying.Shared
             b.WriteQ(BlindAngle, -1f, 1f, 7);
             b.WriteBits((uint)StanceRequest, 2);
             b.WriteBits(WeaponIndex, 3);
-            b.WriteBits((uint)Buttons, 13);
+            b.WriteBits(SightIndex, 2);
+            b.WriteBits((uint)Buttons, 14);
             b.WriteQ(RenderTick - (baseTick - 64f), 0f, 128f, 16);
         }
 
@@ -70,7 +72,8 @@ namespace Satisfying.Shared
             c.BlindAngle = b.ReadQ(-1f, 1f, 7);
             c.StanceRequest = (Stance)b.ReadBits(2);
             c.WeaponIndex = (byte)b.ReadBits(3);
-            c.Buttons = (Buttons)b.ReadBits(13);
+            c.SightIndex = (byte)b.ReadBits(2);
+            c.Buttons = (Buttons)b.ReadBits(14);
             c.RenderTick = b.ReadQ(0f, 128f, 16) + (baseTick - 64f);
             return c;
         }

@@ -60,7 +60,7 @@ namespace Satisfying.Shared
     public static class Protocol
     {
         /// <summary>Bumped whenever the packet layout or the simulation changes shape.</summary>
-        public const ushort Version = 9;
+        public const ushort Version = 10;
 
         public const int DefaultPort = 7777;
         public const int MaxPlayers = 8;

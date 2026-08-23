@@ -194,11 +194,18 @@ namespace Satisfying.Shared
         public MovementTuning move = new MovementTuning();
         public MatchTuning match = new MatchTuning();
         public WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
+        public SightTuning[] sights = SightTuning.Defaults();
 
         public WeaponTuning Weapon(int index)
         {
             if (weapons == null || weapons.Length == 0) return new WeaponTuning();
             return weapons[MathK.Clamp(index, 0, weapons.Length - 1)];
+        }
+
+        public SightTuning Sight(int index)
+        {
+            if (sights == null || sights.Length == 0) return new SightTuning();
+            return sights[MathK.Clamp(index, 0, sights.Length - 1)];
         }
 
         public GameTuning Clone()
@@ -208,6 +215,8 @@ namespace Satisfying.Shared
             c.match = match.Clone();
             c.weapons = new WeaponTuning[weapons.Length];
             for (int i = 0; i < weapons.Length; i++) c.weapons[i] = weapons[i].Clone();
+            c.sights = new SightTuning[sights.Length];
+            for (int i = 0; i < sights.Length; i++) c.sights[i] = sights[i].Clone();
             return c;
         }
     }
