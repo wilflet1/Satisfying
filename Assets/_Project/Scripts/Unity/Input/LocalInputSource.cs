@@ -56,6 +56,8 @@ namespace Satisfying.Game
         bool _latchStepLeft;
         bool _latchStepRight;
         bool _latchMantle;
+        bool _latchMelee;
+        bool _latchGrab;
         float _smoothX;
         float _smoothY;
 
@@ -119,6 +121,8 @@ namespace Satisfying.Game
 
             if (Bindings.Pressed(GameAction.Jump)) { _latchJump = true; _latchMantle = true; }
             if (Bindings.Pressed(GameAction.Reload)) _latchReload = true;
+            if (Bindings.Pressed(GameAction.Melee)) _latchMelee = true;
+            if (Bindings.Pressed(GameAction.Grab)) _latchGrab = true;
             if (Bindings.Pressed(GameAction.StepLeft)) _latchStepLeft = true;
             if (Bindings.Pressed(GameAction.StepRight)) _latchStepRight = true;
         }
@@ -290,6 +294,8 @@ namespace Satisfying.Game
             if (Bindings.Held(GameAction.Reload) || _latchReload) buttons |= Buttons.Reload;
             if (Bindings.Held(GameAction.WalkSlow)) buttons |= Buttons.WalkToggle;
             if (_blindFiring) buttons |= Buttons.BlindFire;
+            if (LookEnabled && (Bindings.Held(GameAction.Melee) || _latchMelee)) buttons |= Buttons.Melee;
+            if (Bindings.Held(GameAction.Grab) || _latchGrab) buttons |= Buttons.Grab;
             if (Bindings.Held(GameAction.LeanModifier)) buttons |= Buttons.SlowLean;
             if (_freeLeaning) buttons |= Buttons.FreeLean;
             if (Bindings.Held(GameAction.StepLeft) || _latchStepLeft) buttons |= Buttons.StepLeft;
@@ -298,6 +304,8 @@ namespace Satisfying.Game
 
             _latchJump = false;
             _latchMantle = false;
+            _latchMelee = false;
+            _latchGrab = false;
             _latchReload = false;
             _latchStepLeft = false;
             _latchStepRight = false;

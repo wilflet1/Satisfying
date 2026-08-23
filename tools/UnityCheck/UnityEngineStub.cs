@@ -160,6 +160,8 @@ namespace UnityEngine
         public static float Range(float min, float max) { return min; }
         public static int Range(int min, int max) { return min; }
         public static float value { get { return 0.5f; } }
+        public static Quaternion rotation { get { return Quaternion.identity; } }
+        public static Vector3 insideUnitSphere { get { return Vector3.zero; } }
     }
 
     public enum HideFlags { None = 0, HideAndDontSave = 61 }
@@ -285,6 +287,9 @@ namespace UnityEngine
         public void SetColor(string name, Color value) { }
         public void SetFloat(string name, float value) { }
         public void EnableKeyword(string keyword) { }
+        public void DisableKeyword(string keyword) { }
+        public int renderQueue { get; set; }
+        public float GetFloat(string name) { return 0f; }
         public Color color { get; set; }
     }
 
@@ -340,6 +345,7 @@ namespace UnityEngine
         public static int OverlapCapsuleNonAlloc(Vector3 p0, Vector3 p1, float radius, Collider[] results, int layerMask, QueryTriggerInteraction q) { return 0; }
         public static bool ComputePenetration(Collider a, Vector3 positionA, Quaternion rotationA, Collider b, Vector3 positionB, Quaternion rotationB, out Vector3 direction, out float distance) { direction = Vector3.up; distance = 0f; return false; }
         public static void IgnoreLayerCollision(int layer1, int layer2, bool ignore) { }
+        public static bool Linecast(Vector3 start, Vector3 end, int layerMask, QueryTriggerInteraction q) { return false; }
     }
 
     public class Camera : Behaviour
@@ -387,6 +393,12 @@ namespace UnityEngine
     }
 
     public class AudioListener : Behaviour { }
+
+    public class AudioLowPassFilter : Behaviour
+    {
+        public float cutoffFrequency { get; set; }
+        public float lowpassResonanceQ { get; set; }
+    }
 
     public static class Input
     {
@@ -593,6 +605,7 @@ namespace UnityEngine
 
 namespace UnityEngine.Rendering
 {
+    public enum BlendMode { Zero, One, SrcAlpha = 5, OneMinusSrcAlpha = 10 }
     public enum ShadowCastingMode { Off, On, TwoSided, ShadowsOnly }
     public enum AmbientMode { Skybox = 0, Trilight = 1, Flat = 3, Custom = 4 }
 }

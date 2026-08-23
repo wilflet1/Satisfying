@@ -84,7 +84,7 @@ namespace Satisfying.Shared
         }
 
         /// <summary>Nearest thing in front of you, within reach of where you are looking.</summary>
-        static int FindGrabbable(int playerId, in PlayerSimState s, MovementTuning t, WorldModel model, WorldState world)
+        public static int FindGrabbable(int playerId, in PlayerSimState s, MovementTuning t, WorldModel model, WorldState world)
         {
             Vec3 eye = s.EyePosition(t);
             Vec3 look = s.LookDirection();

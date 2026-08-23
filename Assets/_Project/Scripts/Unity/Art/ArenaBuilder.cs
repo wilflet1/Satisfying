@@ -28,16 +28,17 @@ namespace Satisfying.Game
             public List<Station> Stations;
         }
 
-        public static Result Build(MapId map, SpawnSet spawns, Palette palette, int worldLayer)
+        public static Result Build(MapId map, SpawnSet spawns, Palette palette, int worldLayer, WorldModel model)
         {
-            // Fill the caller's SpawnSet in place: the server holds a reference to it.
+            // Fill the caller's SpawnSet and WorldModel in place: the server holds references to them.
             spawns.Points.Clear();
+            model.Clear();
             return map == MapId.TestRange
-                ? BuildTestRange(spawns, palette, worldLayer)
-                : BuildDuelArena(spawns, palette, worldLayer);
+                ? BuildTestRange(spawns, palette, worldLayer, model)
+                : BuildDuelArena(spawns, palette, worldLayer, model);
         }
 
-        static Result BuildDuelArena(SpawnSet spawns, Palette palette, int worldLayer)
+        static Result BuildDuelArena(SpawnSet spawns, Palette palette, int worldLayer, WorldModel model)
         {
             GameObject root = new GameObject("Arena");
             Transform t = root.transform;
@@ -56,6 +57,11 @@ namespace Satisfying.Game
             // Two open doorways on the long sides and low windows on the short sides: every approach
             // gives you something to lean past.
             BuildBlockhouse(t, palette, worldLayer);
+
+            // Glass in those window openings. Solid until someone shoots or bashes it out, and once
+            // it is gone the opening is a firing line, a way through, and a sound path.
+            model.AddWindow(new Vec3(9f, 1.7f, 0f), new Vec3(0.14f, 1.2f, 3.6f));
+            model.AddWindow(new Vec3(-9f, 1.7f, 0f), new Vec3(0.14f, 1.2f, 3.6f));
 
             // ---------------------------------------------------------------- mirrored halves
             for (int side = 0; side < 2; side++)
@@ -86,6 +92,11 @@ namespace Satisfying.Game
                 Wall(t, palette, worldLayer, new Vector3(23f * s, 3.15f, 0f), new Vector3(4f, 0.3f, 16f));
                 Wall(t, palette, worldLayer, new Vector3(24.9f * s, 3.75f, 0f), new Vector3(0.3f, 0.9f, 16f));   // catwalk rail: crouch cover at height
 
+                // Something to shove into a doorway, or to hide behind while you drag it.
+                model.AddProp(new Vec3(11.5f * s, 0f, 3.5f * s), new Vec3(0.85f, 0.85f, 0.85f), 22f);
+                model.AddProp(new Vec3(17f * s, 0f, 6f * s), new Vec3(1.2f, 1.1f, 1.2f), 65f);
+                model.AddProp(new Vec3(4f * s, 0f, -16f * s), new Vec3(1.5f, 1.35f, 1.5f), 125f);
+
                 spawns.Add(new Vec3(24f * s, 0f, -24f * s), s > 0f ? 315f : 135f);
                 spawns.Add(new Vec3(6f * s, 0f, -22f * s), s > 0f ? 350f : 170f);
             }
@@ -104,7 +115,7 @@ namespace Satisfying.Game
         /// defaults so you can see immediately when a value stops working. Change slideHeight in the
         /// tuning panel and the slide tunnel will tell you about it.
         /// </summary>
-        static Result BuildTestRange(SpawnSet spawns, Palette palette, int worldLayer)
+        static Result BuildTestRange(SpawnSet spawns, Palette palette, int worldLayer, WorldModel model)
         {
             GameObject root = new GameObject("Test Range");
             Transform t = root.transform;
@@ -122,9 +133,10 @@ namespace Satisfying.Game
 
             BuildVaultLane(t, palette, worldLayer, stations);
             BuildSlideLane(t, palette, worldLayer, stations);
-            BuildMantleLane(t, palette, worldLayer, stations);
+            BuildMantleLane(t, palette, worldLayer, stations, model);
             BuildLeanLane(t, palette, worldLayer, stations);
             BuildRangeLane(t, palette, worldLayer, stations);
+            BuildDragLane(t, palette, worldLayer, stations, model);
 
             spawns.Add(new Vec3(0f, 0.15f, 0f), 0f);
             spawns.Add(new Vec3(4f, 0.15f, -4f), 315f);
@@ -206,7 +218,7 @@ namespace Satisfying.Game
         }
 
         /// <summary>Ledges to climb onto, plus a window to vault through.</summary>
-        static void BuildMantleLane(Transform t, Palette palette, int layer, List<Station> stations)
+        static void BuildMantleLane(Transform t, Palette palette, int layer, List<Station> stations, WorldModel model)
         {
             GameObject lane = new GameObject("mantle lane");
             lane.transform.SetParent(t, false);
@@ -234,8 +246,11 @@ namespace Satisfying.Game
 
             AddStation(stations, new Vector3(15f, 0f, 0f), "MANTLE STACK",
                 "0.50 / 0.90 / 1.30 climb. 1.55 is above the band and will not.");
+            // The window is glazed: break it before you can go through it.
+            model.AddWindow(new Vec3(36f, 1.42f, 0f), new Vec3(0.14f, 0.74f, 6.6f));
+
             AddStation(stations, new Vector3(34f, 0f, 0f), "WINDOW",
-                "A 1.05 sill with floor beyond: the game vaults you through it.");
+                "Glazed. Bash it with F or shoot it out, then vault the 1.05 sill.");
         }
 
         /// <summary>Corners to lean around, pillars to side step behind, a gap to crawl through.</summary>
@@ -289,6 +304,34 @@ namespace Satisfying.Game
 
             AddStation(stations, new Vector3(12f, 0f, -8f), "SHOOTING RANGE",
                 "Posts at 10 / 20 / 40 / 80 metres. 1 M4A1, 2 MP5, 3 USP45.");
+        }
+
+        /// <summary>Things to take hold of, from a light box to something you really have to lean into.</summary>
+        static void BuildDragLane(Transform t, Palette palette, int layer, List<Station> stations, WorldModel model)
+        {
+            GameObject lane = new GameObject("drag lane");
+            lane.transform.SetParent(t, false);
+            Transform l = lane.transform;
+
+            // A pen with a gap: drag something in to plug it.
+            Wall(l, palette, layer, new Vector3(-14f, 1.1f, -30f), new Vector3(12f, 2.2f, 0.5f));
+            Wall(l, palette, layer, new Vector3(-20.5f, 1.1f, -25f), new Vector3(0.5f, 2.2f, 10f));
+            Wall(l, palette, layer, new Vector3(-7.5f, 1.1f, -25f), new Vector3(0.5f, 2.2f, 10f));
+            Blockout.Box(l, "goal", new Vector3(-14f, 0.05f, -21f), new Vector3(3f, 0.1f, 3f), palette.Accent, true, layer);
+
+            float[] masses = { 14f, 45f, 95f, 165f };
+            float[] sizes = { 0.7f, 1.0f, 1.35f, 1.7f };
+            for (int i = 0; i < masses.Length; i++)
+            {
+                float x = -10f - i * 3.2f;
+                model.AddProp(new Vec3(x, 0f, -16f), new Vec3(sizes[i], sizes[i] * 0.92f, sizes[i]), masses[i]);
+            }
+
+            // A pane at the end of the pen, so you can smash your way out rather than walking round.
+            model.AddWindow(new Vec3(-14f, 1.1f, -29.9f), new Vec3(3.4f, 2f, 0.12f));
+
+            AddStation(stations, new Vector3(-14f, 0f, -17f), "DRAG LANE",
+                "E takes hold. 14 / 45 / 95 / 165 kg - heavier drags slower and slows you with it.");
         }
 
         /// <summary>A static target: blocks bullets so tracers and impacts land somewhere sensible.</summary>

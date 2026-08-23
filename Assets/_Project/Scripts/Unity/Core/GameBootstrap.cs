@@ -36,6 +36,8 @@ namespace Satisfying.Game
         bool _tuningDirty;
         GameObject _arenaRoot;
         readonly SpawnSet _spawns = new SpawnSet();
+        readonly WorldModel _worldModel = new WorldModel();
+        WorldView _scenery;
 
         /// <summary>
         /// Boots the game from any scene, including an empty one. Unity projects usually hide their
@@ -181,7 +183,10 @@ namespace Satisfying.Game
             _game = new NetGame();
             _game.World = _world;
             _game.Spawns = _spawns;
+            _game.Model = _worldModel;
             _game.OnMapRequested = BuildArena;
+            _scenery = new WorldView();
+            _game.Scenery = _scenery;
             _game.Palette = _palette;
             _game.Audio = _audio;
             _game.Sound = _sound;
@@ -204,9 +209,13 @@ namespace Satisfying.Game
                 Destroy(_arenaRoot);
             }
 
-            ArenaBuilder.Result arena = ArenaBuilder.Build(map, _spawns, _palette, LayerWorld);
+            ArenaBuilder.Result arena = ArenaBuilder.Build(map, _spawns, _palette, LayerWorld, _worldModel);
             arena.Root.transform.SetParent(transform, false);
             _arenaRoot = arena.Root;
+
+            // Glass and movable objects come from the shared model, so both machines agree on them.
+            _scenery.Build(_worldModel, _palette, LayerWorld, arena.Root.transform, _fx, _sound, _audio);
+            if (_game.Client != null) _game.Client.ResetWorld();
 
             _game.CurrentMap = map;
             _game.Stations = arena.Stations;
@@ -232,6 +241,11 @@ namespace Satisfying.Game
             _game.Feel = _feel;
             _game.Input = _input;
             _game.View = _view;
+
+            // Sound is tested against the same geometry bullets are, so a broken window opens a
+            // listening path at the moment it opens a firing one.
+            _sound.Listener = _view.Camera.transform;
+            _sound.OcclusionMask = 1 << LayerWorld;
             _sound.MasterVolume = _feel.masterVolume;
         }
 

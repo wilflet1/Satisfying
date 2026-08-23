@@ -147,6 +147,7 @@ namespace Satisfying.Game
             DrawMatchBanner();
             DrawKillFeed();
             DrawStationCaption();
+            DrawInteractPrompt(in state, move);
 
             if (Game.DamageFlashTimer > 0f)
             {
@@ -357,6 +358,29 @@ namespace Satisfying.Game
             }
         }
 
+        /// <summary>What the grab key would do right now, and what it is costing you.</summary>
+        void DrawInteractPrompt(in PlayerSimState state, MovementTuning move)
+        {
+            NetClient client = Game.Client;
+            string key = Bindings[GameAction.Grab].ToString();
+
+            if (Game.HeldProp >= 0)
+            {
+                float mass = Game.Scenery != null ? Game.Scenery.PropMass(Game.HeldProp) : state.CarryMass;
+                _skin.Text(new Rect(0f, _height * 0.58f, _width, 22f),
+                    key + "  drop     " + Mathf.RoundToInt(mass) + " kg", _centreSmall, UiSkin.Accent);
+                return;
+            }
+
+            if (!client.Alive) return;
+            int target = PropSim.FindGrabbable(client.PeerId, in state, move, client.Model, client.World);
+            if (target < 0) return;
+
+            float targetMass = Game.Scenery != null ? Game.Scenery.PropMass(target) : 0f;
+            _skin.Text(new Rect(0f, _height * 0.58f, _width, 22f),
+                key + "  drag     " + Mathf.RoundToInt(targetMass) + " kg", _centreSmall, UiSkin.Ink);
+        }
+
         /// <summary>On the test range, name whichever drill you are standing in.</summary>
         void DrawStationCaption()
         {
@@ -407,6 +431,7 @@ namespace Satisfying.Game
             Row("height", state.Height.ToString("0.00"));
             Row("lean", state.Lean.ToString("0.00") + " -> " + state.EffectiveLean(move).ToString("0.00"));
             Row("side step", state.SideStep.ToString("0.00"));
+            Row("carrying", state.CarryMass > 0f ? Mathf.RoundToInt(state.CarryMass) + " kg" : "-");
             Row("slide", state.Sliding ? state.SlideTimer.ToString("0.00") + "s left"
                 : (state.SlideCooldown > 0f ? "cooldown " + state.SlideCooldown.ToString("0.00") : "ready"));
             Row("stamina", state.Stamina.ToString("0") + (state.Exhausted ? "  winded" : ""));
@@ -559,6 +584,7 @@ namespace Satisfying.Game
                 "Q / E lean   Alt+Q / Alt+E slow lean (move the mouse for a fine lean)\n" +
                 "Alt+A / Alt+D side step   Ctrl walk   wheel speed dial\n" +
                 "sprint + tap C to slide   Space at a railing to vault it\n" +
+                "F melee with the stock (breaks glass)   E grab and drag objects\n" +
                 "V blind fire (wheel aims it)   1 M4A1   2 MP5   3 USP45\n" +
                 "F1 tuning   F2 controls   F3 net graph   Tab scoreboard   Esc menu",
                 _skin.Small);

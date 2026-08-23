@@ -42,6 +42,8 @@ namespace Satisfying.Game
         public CombatFx Fx;
         public UnityCollisionWorld World;
         public SpawnSet Spawns;
+        public WorldModel Model = new WorldModel();
+        public WorldView Scenery;
         public Transform Root;
         public int PlayerLayer;
 
@@ -69,6 +71,8 @@ namespace Satisfying.Game
         public readonly Dictionary<int, PlayerInfo> Players = new Dictionary<int, PlayerInfo>();
         public readonly List<KillFeedEntry> KillFeed = new List<KillFeedEntry>();
 
+        /// <summary>Prop this player is dragging, -1 when empty handed. Used by the HUD.</summary>
+        public int HeldProp = -1;
         public float HitMarkerTimer;
         public bool HitMarkerHeadshot;
         public float DamageFlashTimer;
@@ -82,6 +86,7 @@ namespace Satisfying.Game
         ConditionedTransport _serverTransport;
         ConditionedTransport _clientTransport;
         readonly Dictionary<int, RemotePlayerView> _remoteViews = new Dictionary<int, RemotePlayerView>();
+        RemotePlayerView _ownBody;
         readonly List<int> _scratchIds = new List<int>();
         float _lastHealth = 100f;
         float _stepDistance;
@@ -105,7 +110,7 @@ namespace Satisfying.Game
 
             _serverTransport = new ConditionedTransport(_serverSocket);
             _serverTransport.Conditions = Conditions;
-            Server = new NetServer(_serverTransport, World, Spawns, Tuning);
+            Server = new NetServer(_serverTransport, World, Spawns, Tuning, Model);
             Server.ServerName = playerName + "'s duel";
             Server.Map = HostMap;
 
@@ -139,6 +144,8 @@ namespace Satisfying.Game
             _clientTransport.Conditions = Conditions;
 
             Client = new NetClient(_clientTransport, World);
+            Client.Model = Model;
+            Client.ResetWorld();
             // The host edits the authoritative tuning directly; a client gets it pushed over the wire.
             Client.Tuning = Server != null ? Server.Tuning : Tuning;
             Client.Sink = this;
@@ -173,6 +180,7 @@ namespace Satisfying.Game
 
             foreach (KeyValuePair<int, RemotePlayerView> kv in _remoteViews) kv.Value.Destroy();
             _remoteViews.Clear();
+            if (_ownBody != null) { _ownBody.Destroy(); _ownBody = null; }
             Players.Clear();
             KillFeed.Clear();
         }
@@ -213,6 +221,7 @@ namespace Satisfying.Game
                 {
                     Phase = Client.Phase;
                     TrackDamage();
+                    if (Scenery != null) Scenery.Apply(Client.World, dt);
                     RenderRemotes(dt);
                     RenderLocal(dt);
                 }
@@ -249,8 +258,15 @@ namespace Satisfying.Game
                         Client.Tuning.Weapon(state.Weapon.Index), Client.Tuning.Sight(state.Weapon.Sight),
                         state.Yaw, state.Pitch, dt, sprinting);
 
+            RenderOwnBody(in state, dt);
+
             PlayWeaponCue(View.ConsumeWeaponCue(), View.Camera.transform.position, 0.55f);
             TrackFootsteps(in state, Client.Tuning.move, dt);
+
+            // Hands go where the object is, not where the gun is.
+            int held = Client.World.FindPropHeldBy(Client.PeerId);
+            HeldProp = held;
+            View.SetGrabTarget(held >= 0 && Scenery != null ? Scenery.GrabPoint(held) : (Vector3?)null);
         }
 
         void PlayWeaponCue(WeaponAnimator.SoundCue cue, Vector3 position, float volume)
@@ -288,6 +304,23 @@ namespace Satisfying.Game
                 Random.Range(0.9f, 1.1f));
         }
 
+        /// <summary>
+        /// You have a body like everyone else: look down and your legs and chest are there, posed from
+        /// the same replicated values an opponent would see, so what you feel and what they see agree.
+        /// </summary>
+        void RenderOwnBody(in PlayerSimState state, float dt)
+        {
+            if (_ownBody == null)
+                _ownBody = new RemotePlayerView(Root, Client.PeerId, Palette, Client.Tuning.move, PlayerLayer, true);
+
+            PlayerNetState shown = PlayerNetState.FromSim((byte)Client.PeerId, in state, Client.Alive, Client.Health);
+            shown.Position = Client.RenderPosition;
+
+            float footstep;
+            _ownBody.SetVisible(true);
+            _ownBody.Render(in shown, dt, Client.Tuning.Weapon(state.Weapon.Index), out footstep);
+        }
+
         void RenderRemotes(float dt)
         {
             _scratchIds.Clear();
@@ -314,9 +347,12 @@ namespace Satisfying.Game
                 {
                     float quiet = kv.Value.Render.Stance == Stance.Prone ? 0.25f
                                 : (kv.Value.Render.Stance == Stance.Crouch ? 0.5f : 1f);
-                    Sound.PlayAt(Audio.Footstep, where, 0.55f * footstep * quiet, Random.Range(0.92f, 1.08f));
+                    Sound.PlayOccluded(Audio.Footstep, where, 0.7f * footstep * quiet, Random.Range(0.92f, 1.08f), true);
                 }
                 PlayWeaponCue(view.ConsumeWeaponCue(), where, 0.7f);
+
+                int remoteHeld = Client.World.FindPropHeldBy(kv.Key);
+                view.SetGrabTarget(remoteHeld >= 0 && Scenery != null ? Scenery.GrabPoint(remoteHeld) : (Vector3?)null);
             }
 
             // Drop views for players who left.
@@ -350,6 +386,22 @@ namespace Satisfying.Game
             if (ev.StartedSlide) Sound.PlayAt(Audio.Land, View.Camera.transform.position, 0.55f, 0.75f);
             if (ev.EndedSlide) Sound.PlayAt(Audio.StanceChange, View.Camera.transform.position, 0.3f);
             if (ev.StartedVault) Sound.PlayAt(Audio.Jump, View.Camera.transform.position, 0.5f, 1.15f);
+            if (ev.MeleeSwing) Sound.PlayAt(Audio.MeleeSwing, View.Camera.transform.position, 0.6f);
+            if (ev.GrabbedProp) Sound.Play2D(Audio.Grab, 0.5f);
+            if (ev.ReleasedProp) Sound.Play2D(Audio.Grab, 0.35f, 0.8f);
+
+            if (ev.MeleeStrike)
+            {
+                // Local feedback for hitting the world; players are confirmed by the server.
+                Vector3 swingOrigin = Client.Predicted.EyePosition(Client.Tuning.move).ToUnity();
+                Vector3 swingAim = Client.Predicted.LookDirection().ToUnity();
+                RaycastHit hit;
+                if (World.RaycastDetailed(swingOrigin, swingAim, Client.Tuning.move.meleeRange, out hit))
+                {
+                    Sound.PlayAt(Audio.MeleeHit, hit.point, 0.7f);
+                    Fx.Impact(hit.point, hit.normal);
+                }
+            }
             if (ev.StartedMantle) Sound.PlayAt(Audio.Jump, View.Camera.transform.position, 0.5f, 0.8f);
             if (ev.Reloaded) Sound.Play2D(Audio.Reload, 0.6f);
             if (ev.DryFire) Sound.Play2D(Audio.DryFire, 0.5f);
@@ -502,6 +554,12 @@ namespace Satisfying.Game
             TuningSerializer.FromText(Tuning, tuningText);
         }
 
+        /// <summary>
+        /// The break itself arrives as replicated state, and WorldView plays the shatter when the bit
+        /// flips - so this only needs to exist for anything that cares about the moment.
+        /// </summary>
+        public void OnWindowBroken(int windowIndex, Vec3 centre) { }
+
         public void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint)
         {
             Vector3 from = origin.ToUnity();
@@ -521,7 +579,7 @@ namespace Satisfying.Game
             // Far enough away and you hear the report rather than the crack.
             float distance = Vector3.Distance(from, View.Camera.transform.position);
             AudioClip report = distance > 35f ? Audio.DistantShotFor(weaponIndex) : Audio.ShotFor(weaponIndex);
-            Sound.PlayAt(report, from, 0.8f, Random.Range(0.95f, 1.05f));
+            Sound.PlayOccluded(report, from, 0.85f, Random.Range(0.95f, 1.05f), true);
             if (hit) Fx.Impact(to, -direction.ToUnity());
         }
     }

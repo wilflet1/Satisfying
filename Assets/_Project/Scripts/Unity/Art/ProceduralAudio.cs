@@ -28,6 +28,11 @@ namespace Satisfying.Game
         public AudioClip Land;
         public AudioClip StanceChange;
         public AudioClip Lean;
+        public AudioClip GlassBreak;
+        public AudioClip MeleeSwing;
+        public AudioClip MeleeHit;
+        public AudioClip Grab;
+        public AudioClip Drag;
         public AudioClip UiClick;
         public AudioClip RoundStart;
 
@@ -63,6 +68,11 @@ namespace Satisfying.Game
             b.Land = Synth.Noise("land", 0.16f, 0.34f, 500f);
             b.StanceChange = Synth.Noise("stance", 0.16f, 0.18f, 480f);
             b.Lean = Synth.Noise("lean", 0.10f, 0.09f, 1400f);
+            b.GlassBreak = Synth.Noise("glass", 0.55f, 0.55f, 7000f);
+            b.MeleeSwing = Synth.Noise("swing", 0.16f, 0.28f, 1600f);
+            b.MeleeHit = Synth.Gunshot("melee hit", 0.16f, 90f, 0.75f);
+            b.Grab = Synth.Click("grab", 0.07f, 500f, 0.4f);
+            b.Drag = Synth.Noise("drag", 0.4f, 0.2f, 700f);
             b.UiClick = Synth.Click("ui", 0.04f, 1800f, 0.25f);
             b.RoundStart = Synth.Tone("round", 0.5f, 520f, 0.35f, 0.4f);
             return b;
@@ -188,14 +198,20 @@ namespace Satisfying.Game
     public sealed class SoundPlayer
     {
         readonly AudioSource[] _sources;
+        readonly AudioLowPassFilter[] _filters;
         readonly AudioSource _ui;
         int _next;
 
         public float MasterVolume = 0.7f;
 
+        /// <summary>Layer mask geometry is tested against for occlusion. Broken glass has no collider.</summary>
+        public int OcclusionMask;
+        public Transform Listener;
+
         public SoundPlayer(Transform parent, int voices = 12)
         {
             _sources = new AudioSource[voices];
+            _filters = new AudioLowPassFilter[voices];
             for (int i = 0; i < voices; i++)
             {
                 GameObject go = new GameObject("voice " + i);
@@ -208,6 +224,10 @@ namespace Satisfying.Game
                 source.maxDistance = 70f;
                 source.dopplerLevel = 0f;
                 _sources[i] = source;
+
+                AudioLowPassFilter filter = go.AddComponent<AudioLowPassFilter>();
+                filter.cutoffFrequency = 22000f;
+                _filters[i] = filter;
             }
 
             GameObject uiGo = new GameObject("ui voice");
@@ -219,13 +239,48 @@ namespace Satisfying.Game
 
         public void PlayAt(AudioClip clip, Vector3 position, float volume = 1f, float pitch = 1f)
         {
+            PlayOccluded(clip, position, volume, pitch, false);
+        }
+
+        /// <summary>
+        /// Distance is handled by the rolloff; this adds what is BETWEEN you and the sound. Three rays
+        /// give a soft edge rather than a switch, and anything that stops a ray stops sound - so
+        /// breaking a window opens a listening path through it at the same moment it opens a firing one.
+        /// </summary>
+        public void PlayOccluded(AudioClip clip, Vector3 position, float volume, float pitch, bool occlude)
+        {
             if (clip == null) return;
-            AudioSource source = _sources[_next];
+
+            int index = _next;
             _next = (_next + 1) % _sources.Length;
+            AudioSource source = _sources[index];
+            AudioLowPassFilter filter = _filters[index];
+
             source.transform.position = position;
             source.spatialBlend = 1f;
             source.pitch = pitch;
-            source.PlayOneShot(clip, volume * MasterVolume);
+
+            float blocked = occlude ? Occlusion(position) : 0f;
+            if (filter != null) filter.cutoffFrequency = Mathf.Lerp(22000f, 700f, blocked);
+            source.PlayOneShot(clip, volume * MasterVolume * Mathf.Lerp(1f, 0.22f, blocked));
+        }
+
+        /// <summary>0 = clear line, 1 = fully blocked.</summary>
+        public float Occlusion(Vector3 position)
+        {
+            if (Listener == null || OcclusionMask == 0) return 0f;
+
+            Vector3 ear = Listener.position;
+            Vector3 toSource = position - ear;
+            float distance = toSource.magnitude;
+            if (distance < 0.5f) return 0f;
+
+            Vector3 side = Vector3.Cross(toSource / distance, Vector3.up) * 0.45f;
+            int blocked = 0;
+            if (Physics.Linecast(ear, position, OcclusionMask, QueryTriggerInteraction.Ignore)) blocked++;
+            if (Physics.Linecast(ear + side, position + side, OcclusionMask, QueryTriggerInteraction.Ignore)) blocked++;
+            if (Physics.Linecast(ear - side, position - side, OcclusionMask, QueryTriggerInteraction.Ignore)) blocked++;
+            return blocked / 3f;
         }
 
         public void Play2D(AudioClip clip, float volume = 1f, float pitch = 1f)

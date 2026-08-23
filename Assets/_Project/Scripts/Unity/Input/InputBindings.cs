@@ -9,7 +9,7 @@ namespace Satisfying.Game
     {
         MoveForward, MoveBack, MoveLeft, MoveRight,
         Jump, Sprint, Crouch, Prone, WalkSlow,
-        Fire, Aim, Reload, BlindFire,
+        Fire, Aim, Reload, BlindFire, Melee, Grab,
         LeanLeft, LeanRight, LeanModifier,
         StepLeft, StepRight,
         Weapon1, Weapon2, Weapon3,
@@ -109,6 +109,8 @@ namespace Satisfying.Game
             Set(GameAction.Aim, KeyCode.Mouse1);
             Set(GameAction.Reload, KeyCode.R);
             Set(GameAction.BlindFire, KeyCode.V);
+            Set(GameAction.Melee, KeyCode.F);
+            Set(GameAction.Grab, KeyCode.E);
             Set(GameAction.LeanLeft, KeyCode.Q);
             Set(GameAction.LeanRight, KeyCode.E);
             Set(GameAction.LeanModifier, KeyCode.LeftAlt);
@@ -211,6 +213,8 @@ namespace Satisfying.Game
                 case GameAction.StepLeft: return "Side step left";
                 case GameAction.StepRight: return "Side step right";
                 case GameAction.BlindFire: return "Blind fire (hold)";
+                case GameAction.Melee: return "Melee with the stock";
+                case GameAction.Grab: return "Grab / drop an object";
                 case GameAction.SpeedUp: return "Speed dial up";
                 case GameAction.SpeedDown: return "Speed dial down";
                 case GameAction.TuningPanel: return "Tuning panel";

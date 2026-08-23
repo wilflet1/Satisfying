@@ -24,12 +24,22 @@ namespace Satisfying.Game
         ArmRig _leftArm;
 
         int _weaponIndex = -1;
+        Vector3? _grabTarget;
         float _reloadTimer;
         float _deathTimer;
         float _stepPhase;
 
-        public RemotePlayerView(Transform parent, int peerId, Palette palette, MovementTuning move, int layer)
+        readonly bool _firstPerson;
+
+        /// <summary>
+        /// firstPerson builds the same character for the player wearing it: look down and your own legs
+        /// and chest are there. The head comes off (the camera lives inside it) and the arms and weapon
+        /// are left to the viewmodel, which already draws them at the right scale.
+        /// </summary>
+        public RemotePlayerView(Transform parent, int peerId, Palette palette, MovementTuning move, int layer,
+                                bool firstPerson = false)
         {
+            _firstPerson = firstPerson;
             PeerId = peerId;
             _move = move;
             _palette = palette;
@@ -49,12 +59,23 @@ namespace Satisfying.Game
             _leftArm = ArmRig.Build(Character.Chest, "left arm", new Vector3(-0.24f, -0.02f, 0.0f), -1f,
                 palette, palette.RemoteArms, layer, 0.10f, 0.28f, 0.27f);
 
-            SetWeapon(0);
+            if (_firstPerson)
+            {
+                // Your own head would fill the screen, and your own arms are the viewmodel's job.
+                Character.Head.gameObject.SetActive(false);
+                _rightArm.SetVisible(false);
+                _leftArm.SetVisible(false);
+                _weaponHolder.gameObject.SetActive(false);
+            }
+            else
+            {
+                SetWeapon(0);
+            }
         }
 
         void SetWeapon(int index)
         {
-            if (index == _weaponIndex) return;
+            if (_firstPerson || index == _weaponIndex) return;
             _weaponIndex = index;
             if (Weapon != null && Weapon.Root != null) Object.Destroy(Weapon.Root);
             Weapon = WeaponModels.Build(index, _weaponHolder, _palette, _layer);
@@ -77,6 +98,9 @@ namespace Satisfying.Game
         }
 
         public WeaponAnimator.SoundCue ConsumeWeaponCue() { return _animator.ConsumeCue(); }
+
+        /// <summary>Their hand goes onto whatever they are dragging, same as yours does.</summary>
+        public void SetGrabTarget(Vector3? worldPoint) { _grabTarget = worldPoint; }
 
         public Vector3 MuzzlePosition()
         {
@@ -176,7 +200,8 @@ namespace Satisfying.Game
                 Character.Head.localPosition = new Vector3(0f, eyeHeight + 0.05f, 0f) + leanShift;
                 Character.Chest.localPosition = new Vector3(0f, eyeHeight * 0.78f, 0f) + leanShift * 0.9f;
             }
-            Character.Head.localRotation = Quaternion.Euler(state.Pitch * 0.75f, 0f, -lean * _move.leanAngle * 0.5f);
+            if (!_firstPerson)
+                Character.Head.localRotation = Quaternion.Euler(state.Pitch * 0.75f, 0f, -lean * _move.leanAngle * 0.5f);
 
             // Chest pitches with the aim so the weapon points where they are actually shooting.
             float chestPitch = state.Pitch * 0.85f;
@@ -225,14 +250,18 @@ namespace Satisfying.Game
 
         void SolveArms()
         {
-            if (Weapon == null || Weapon.Root == null) return;
+            if (_firstPerson || Weapon == null || Weapon.Root == null) return;
             Quaternion weaponRotation = Weapon.Root.transform.rotation;
             Vector3 rightPole = Character.Chest.rotation * new Vector3(0.6f, -1f, -0.25f);
             Vector3 leftPole = Character.Chest.rotation * new Vector3(-0.6f, -1f, -0.25f);
 
             if (Weapon.GripAnchor != null)
                 _rightArm.Solve(Weapon.GripAnchor.position, rightPole, weaponRotation * Quaternion.Euler(-8f, 0f, 0f));
-            _leftArm.Solve(_animator.SupportHandWorld(), leftPole, weaponRotation * Quaternion.Euler(-14f, 0f, 6f));
+            Vector3 support = _grabTarget.HasValue ? _grabTarget.Value : _animator.SupportHandWorld();
+            Quaternion handRotation = _grabTarget.HasValue
+                ? Quaternion.LookRotation((support - _leftArm.Shoulder.position).normalized, Vector3.up)
+                : weaponRotation * Quaternion.Euler(-14f, 0f, 6f);
+            _leftArm.Solve(support, leftPole, handRotation);
         }
 
         float LeanFor(in PlayerNetState state)

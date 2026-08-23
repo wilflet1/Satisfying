@@ -37,6 +37,7 @@ namespace Satisfying.Game
         Vector3 _viewmodelKickVelocity;
         float _lastYaw;
         float _lastPitch;
+        Vector3? _grabTarget;
 
         public PlayerView(Transform parent, FeelTuning feel, Palette palette, int viewmodelLayer)
         {
@@ -94,6 +95,9 @@ namespace Satisfying.Game
         }
 
         public WeaponAnimator.SoundCue ConsumeWeaponCue() { return _animator.ConsumeCue(); }
+
+        /// <summary>Where the free hand should be while dragging something, or null when empty handed.</summary>
+        public void SetGrabTarget(Vector3? worldPoint) { _grabTarget = worldPoint; }
 
         public void OnLanded(float impactSpeed)
         {
@@ -207,6 +211,18 @@ namespace Satisfying.Game
                 basePosition += new Vector3(-0.03f, 0.02f, -0.08f);
                 baseEuler += new Vector3(-6f, 10f, 16f);
             }
+            else if (state.IsSwinging)
+            {
+                // Wind the stock back over the shoulder, then drive it forward.
+                float total = MathK.Max(0.05f, move.meleeWindup + move.meleeRecover);
+                float k = Mathf.Clamp01(state.MeleeTimer / total);
+                float windup = Mathf.Clamp01(state.MeleeTimer / MathK.Max(0.02f, move.meleeWindup));
+                float follow = Mathf.Clamp01((state.MeleeTimer - move.meleeWindup) / MathK.Max(0.02f, move.meleeRecover));
+                float swing = state.MeleeTimer < move.meleeWindup ? -windup : Mathf.Lerp(1f, 0f, follow);
+
+                basePosition += new Vector3(-0.16f * Mathf.Abs(swing), 0.10f * swing, 0.14f * swing);
+                baseEuler += new Vector3(-38f * swing, 30f * swing, 55f * swing);
+            }
             else if (state.Stance == Stance.Prone) basePosition += new Vector3(0f, 0.03f, -0.06f);
             else if (state.Stance == Stance.Crouch) basePosition += new Vector3(0f, 0.012f, 0f);
 
@@ -228,6 +244,13 @@ namespace Satisfying.Game
             float bobMul = 1f - state.Ads * 0.75f;
             Vector3 bobOffset = new Vector3(bobX, bobY, 0f) * 1.6f * bobMul;
 
+            // Carrying something drops the muzzle: one hand is busy.
+            if (_grabTarget.HasValue)
+            {
+                basePosition += new Vector3(0.02f, -0.06f, -0.05f);
+                baseEuler += new Vector3(14f, -6f, -8f);
+            }
+
             ViewmodelRoot.localPosition = basePosition + _animator.PoseOffset + _swayOffset * (1f - state.Ads * 0.6f) + _viewmodelKick + bobOffset;
             ViewmodelRoot.localRotation = Quaternion.Euler(baseEuler + _animator.PoseEuler + _swayRotation * (1f - state.Ads * 0.6f));
 
@@ -247,10 +270,13 @@ namespace Satisfying.Game
             if (Weapon.GripAnchor != null)
                 _rightArm.Solve(Weapon.GripAnchor.position, rightPole, weaponRotation * Quaternion.Euler(-8f, 0f, 0f));
 
-            Vector3 support = _animator.SupportHandWorld();
-            _leftArm.Solve(support, leftPole, weaponRotation * Quaternion.Euler(-14f, 0f, 6f));
+            // Dragging pulls the support hand off the gun and onto the object.
+            Vector3 support = _grabTarget.HasValue ? _grabTarget.Value : _animator.SupportHandWorld();
+            Quaternion handRotation = _grabTarget.HasValue
+                ? Quaternion.LookRotation((support - _leftArm.Shoulder.position).normalized, Vector3.up)
+                : weaponRotation * Quaternion.Euler(-14f, 0f, 6f);
 
-            // The support hand lets go while a fresh magazine is fetched.
+            _leftArm.Solve(support, leftPole, handRotation);
             _leftArm.SetVisible(true);
         }
     }

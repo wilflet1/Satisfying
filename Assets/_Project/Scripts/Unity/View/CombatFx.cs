@@ -71,6 +71,31 @@ namespace Satisfying.Game
             _active.Add(item);
         }
 
+        /// <summary>A pane coming apart: a handful of shards that fall and fade.</summary>
+        public void Shatter(Vector3 centre, Vector3 size, int shards = 14)
+        {
+            for (int i = 0; i < shards; i++)
+            {
+                Item item = _sparkPool.Count > 0 ? _sparkPool.Pop() : CreateSpark();
+                item.Transform.gameObject.SetActive(true);
+
+                Vector3 offset = new Vector3(
+                    (Random.value - 0.5f) * size.x,
+                    (Random.value - 0.5f) * size.y,
+                    (Random.value - 0.5f) * size.z);
+                item.Transform.position = centre + offset;
+                item.Transform.rotation = Random.rotation;
+
+                float scale = Mathf.Lerp(0.06f, 0.16f, Random.value);
+                item.Transform.localScale = new Vector3(scale, scale * 1.4f, scale * 0.15f);
+                item.BaseScale = item.Transform.localScale;
+                item.Expiry = Time.time + Random.Range(0.35f, 0.8f);
+                item.ScaleDown = true;
+                if (item.Light != null) item.Light.enabled = false;
+                _active.Add(item);
+            }
+        }
+
         public void Impact(Vector3 position, Vector3 normal, float life = 0.16f)
         {
             Item item = _sparkPool.Count > 0 ? _sparkPool.Pop() : CreateSpark();
