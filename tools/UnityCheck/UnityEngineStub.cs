@@ -434,6 +434,7 @@ namespace UnityEngine
         public static bool runInBackground { get; set; }
         public static string persistentDataPath { get { return "/tmp"; } }
         public static void Quit() { }
+        public static void Quit(int exitCode) { }
     }
 
     public static class QualitySettings { public static int vSyncCount { get; set; } }

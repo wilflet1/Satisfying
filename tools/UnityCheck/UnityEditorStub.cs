@@ -119,11 +119,14 @@ namespace UnityEditor
     [Flags]
     public enum BuildOptions { None = 0, Development = 1, AutoRunPlayer = 4 }
 
+    public enum StandaloneBuildSubtarget { Default = 0, Server = 1, Player = 2 }
+
     public struct BuildPlayerOptions
     {
         public string[] scenes;
         public string locationPathName;
         public BuildTarget target;
+        public int subtarget;
         public BuildOptions options;
     }
 

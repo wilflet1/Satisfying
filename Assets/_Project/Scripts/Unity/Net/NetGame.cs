@@ -63,6 +63,13 @@ namespace Satisfying.Game
         public NetClient Client;
         public LanDiscovery Discovery;
 
+        /// <summary>
+        /// Asks the router to forward the game port while we are hosting, so that inviting someone
+        /// from outside the house does not start with a router admin page. Null when not hosting.
+        /// </summary>
+        public PortMapper Mapper;
+        public bool OpenPortAutomatically = true;
+
         public Mode CurrentMode = Mode.Offline;
         public string Status = "";
         public string PlayerName = "duellist";
@@ -95,7 +102,7 @@ namespace Satisfying.Game
         public bool IsHost { get { return Server != null; } }
 
         // ================================================================== lifecycle
-        public bool Host(int port, string playerName, out string error)
+        public bool Host(int port, string playerName, out string error, bool dedicated = false)
         {
             Leave();
             error = null;
@@ -117,6 +124,20 @@ namespace Satisfying.Game
             Discovery = new LanDiscovery(false);
             CurrentMode = Mode.Hosting;
             Status = "Hosting on port " + port + " (" + UdpTransport.LocalAddress() + ")";
+
+            if (OpenPortAutomatically)
+            {
+                Mapper = new PortMapper(port, UdpTransport.LocalAddress());
+                Mapper.Begin();
+            }
+
+            // A dedicated server has no player of its own: nobody to render, nobody to predict for.
+            // It just runs the simulation and answers everyone who turns up.
+            if (dedicated)
+            {
+                Status = "Dedicated server on UDP " + port;
+                return true;
+            }
 
             return Connect("127.0.0.1", port, playerName, out error);
         }
@@ -173,6 +194,7 @@ namespace Satisfying.Game
             if (_clientSocket != null) { _clientSocket.Dispose(); _clientSocket = null; }
             if (_serverSocket != null) { _serverSocket.Dispose(); _serverSocket = null; }
             if (Discovery != null) { Discovery.Dispose(); Discovery = null; }
+            if (Mapper != null) { Mapper.Dispose(); Mapper = null; }
 
             _clientTransport = null;
             _serverTransport = null;

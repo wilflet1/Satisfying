@@ -21,11 +21,11 @@ Everything here is rebindable in game (**F2**), including chords. Bindings are s
 | **Slow lean** | Alt + Q / Alt + E | Same lean at a fraction of the speed |
 | **Free lean** | Alt + Q/E, then move the mouse | Analog lean; your view is locked while you set it |
 | **Side step** | Alt + A / Alt + D | Shifts your body sideways without turning |
-| **Blind fire** | V | Weapon over cover, head stays hidden |
-| **Melee** | F | Bash with the stock; breaks glass and drops a man at arm's length |
-| **Grab / drop** | E | Take hold of a movable object; press again to let go |
+| **Blind fire** | B | Weapon over cover, head stays hidden |
+| **Melee** | V | Bash with the stock; breaks glass and drops a man at arm's length |
+| **Grab / drop** | F | Take hold of a movable object; press again to let go |
 | Vault | Space | Only over obstacles 0.50–1.30 m with floor beyond; anything solid gets climbed instead |
-| Blind fire angle | Mouse wheel while holding V | The only way to aim a shot you cannot see |
+| Blind fire angle | Mouse wheel while holding B | The only way to aim a shot you cannot see |
 | Weapons | 1 / 2 / 3 | M4A1, MP5, USP45 |
 | Scoreboard | Tab | |
 | Tuning panel | F1 | |
@@ -33,6 +33,13 @@ Everything here is rebindable in game (**F2**), including chords. Bindings are s
 | Gear menu | G | Fit an optic to each weapon |
 | Net graph | F3 | |
 | Menu | Esc | |
+
+## No key does two jobs
+
+Lean owns Q and E, because leaning is the point of the game - so interact, melee and blind fire sit
+where they do in most shooters instead. Two actions sharing a key do not fail loudly, they both
+fire: grab used to share E with lean-right, so every attempt to put something down also leaned you.
+The controls panel now lists any key doing two jobs at the top, and the defaults have none.
 
 ## Chords
 

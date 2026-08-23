@@ -105,22 +105,41 @@ namespace Satisfying.Game
         /// Lets a second instance join automatically, which is how you playtest netcode alone:
         ///   Satisfying -connect 127.0.0.1 -name challenger
         ///   Satisfying -host -port 7777
+        ///
+        /// And how a box with no screen runs a public server:
+        ///   Satisfying -batchmode -nographics -server -port 7777 -bots 1 -map arena -servername "..."
         /// </summary>
         void ApplyCommandLine()
         {
             string[] args = System.Environment.GetCommandLineArgs();
             string connect = null;
             string playerName = null;
+            string serverName = null;
             int port = Protocol.DefaultPort;
+            int bots = 0;
             bool host = false;
+            bool dedicated = false;
+            bool openPort = true;
+            MapId map = MapId.DuelArena;
 
             for (int i = 0; i < args.Length; i++)
             {
                 switch (args[i])
                 {
                     case "-host": host = true; break;
+                    case "-server":
+                    case "-dedicated": host = true; dedicated = true; break;
+                    case "-noupnp": openPort = false; break;
                     case "-connect": if (i + 1 < args.Length) connect = args[++i]; break;
                     case "-name": if (i + 1 < args.Length) playerName = args[++i]; break;
+                    case "-servername": if (i + 1 < args.Length) serverName = args[++i]; break;
+                    case "-map":
+                        if (i + 1 < args.Length)
+                            map = args[++i].ToLowerInvariant().StartsWith("range") ? MapId.TestRange : MapId.DuelArena;
+                        break;
+                    case "-bots":
+                        if (i + 1 < args.Length && !int.TryParse(args[++i], out bots)) bots = 0;
+                        break;
                     case "-port":
                         if (i + 1 < args.Length && !int.TryParse(args[++i], out port)) port = Protocol.DefaultPort;
                         break;
@@ -130,10 +149,50 @@ namespace Satisfying.Game
             if (!host && connect == null) return;
             if (playerName == null) playerName = host ? "host" : "challenger";
 
+            _game.OpenPortAutomatically = openPort;
+            if (host) _game.HostMap = map;
+
             string error;
-            bool started = host ? _game.Host(port, playerName, out error) : _game.Join(connect, port, playerName, out error);
-            if (started) _ui.ShowMenu = false;
-            else Debug.LogWarning("[satisfying] command line start failed: " + error);
+            bool started = host
+                ? _game.Host(port, playerName, out error, dedicated)
+                : _game.Join(connect, port, playerName, out error);
+
+            if (!started)
+            {
+                Debug.LogWarning("[satisfying] command line start failed: " + error);
+                if (dedicated) Application.Quit(1);
+                return;
+            }
+
+            _ui.ShowMenu = false;
+            if (!dedicated) return;
+
+            if (!string.IsNullOrEmpty(serverName)) _game.Server.ServerName = serverName;
+            for (int i = 0; i < bots; i++) _game.Server.AddBot("bot " + (i + 1), 0.5f);
+
+            _dedicated = true;
+            // Nothing is being drawn, so an uncapped loop would just burn a core for nothing.
+            Application.targetFrameRate = 128;
+            Debug.Log("[satisfying] dedicated server \"" + _game.Server.ServerName + "\" on UDP " + port +
+                      ", map " + map + ", " + bots + " bot(s)");
+        }
+
+        bool _dedicated;
+        float _reportTimer;
+
+        /// <summary>A line every thirty seconds, so a server left running has something in its log.</summary>
+        void ReportIfDedicated(float dt)
+        {
+            if (!_dedicated || _game.Server == null) return;
+            _reportTimer -= dt;
+            if (_reportTimer > 0f) return;
+            _reportTimer = 30f;
+
+            PortMapper mapper = _game.Mapper;
+            Debug.Log("[satisfying] tick " + _game.Server.Tick +
+                      "   players " + _game.Server.ActiveCount +
+                      "   phase " + _game.Server.Phase +
+                      (mapper != null ? "   port: " + mapper.Status : ""));
         }
 
         void ConfigureEngine()
@@ -289,6 +348,7 @@ namespace Satisfying.Game
             _ui.Update(dt);
             _game.Update(dt);
             _sound.MasterVolume = _feel.masterVolume;
+            ReportIfDedicated(dt);
 
             if (_game.Client != null && _tuningPanel.ClientNet != _game.Client.NetTuning)
             {

@@ -1,0 +1,115 @@
+# Running a server anyone can join
+
+Three ways, in order of effort.
+
+## 1. Just host, and let the game open the port
+
+Host a duel as normal. While you are hosting, the game asks your router to forward the game port
+for you — UPnP first, then NAT-PMP, because routers support one or the other and almost never
+both. The menu then shows the address to hand out, with a copy button:
+
+```
+  router is forwarding UDP 7777 (UPnP)
+  anyone can join at   203.0.113.7:7777        [copy]
+```
+
+That is the whole thing. Your friend types that into the address box and clicks join.
+
+The mapping carries a two hour lease, so it expires on its own if the game crashes, and it is
+removed when you leave the match.
+
+**If it says the router did not answer**, UPnP is off (many ISP routers ship with it disabled, and
+some disable it after a firmware update). Either turn it on — usually under *Advanced → UPnP* — or
+forward UDP 7777 to your machine by hand. `-noupnp` on the command line skips the attempt.
+
+**If you are behind carrier-grade NAT** — common on mobile broadband and some fibre ISPs — no
+amount of port forwarding will help, because you do not have a public address to forward from. You
+want option 3.
+
+## 2. A machine on your network
+
+Any spare box, including one with no monitor. Build **Satisfying → Build → Linux dedicated server**
+(or Windows), copy it over, and run:
+
+```
+SatisfyingServer -batchmode -nographics -server -port 7777 -map arena -bots 1
+```
+
+A dedicated server has no player of its own: it runs the simulation and answers everyone who turns
+up. It prints a line every thirty seconds so a server left running has something in its log.
+
+| Flag | What it does |
+|------|--------------|
+| `-server` | Run headless with no local player (`-dedicated` is a synonym) |
+| `-port N` | UDP port, default 7777 |
+| `-map arena` or `-map range` | Which map to serve |
+| `-bots N` | Training bots so the server is never empty |
+| `-servername "..."` | The name shown to anyone browsing |
+| `-noupnp` | Do not ask the gateway to forward anything |
+
+## 3. A free server on the internet
+
+This is the one that works for everybody, from anywhere, without touching a router.
+
+**Oracle Cloud Always Free** is the recommendation: the ARM instance (4 cores, 24 GB) is free
+indefinitely rather than for a trial period, and it is far more machine than a 64 Hz duel needs.
+Any small VPS works the same way — Hetzner, Fly, a Raspberry Pi on someone else's connection.
+
+1. Create an **Ubuntu 22.04 ARM (Ampere)** instance and add your SSH key.
+2. Build the server: **Satisfying → Build → Linux dedicated server**.
+   For an ARM instance, build on an ARM machine or use `-target linuxserver` with an ARM editor;
+   an x86 build will not run on Ampere.
+3. Copy it up and run the deploy script:
+
+```bash
+scp -r Builds/LinuxServer ubuntu@YOUR.SERVER.IP:~/satisfying
+scp tools/deploy-server.sh ubuntu@YOUR.SERVER.IP:~/
+ssh ubuntu@YOUR.SERVER.IP 'bash deploy-server.sh'
+```
+
+It writes a systemd unit, opens UDP 7777 in the host firewall, starts the server, sets it to come
+back after a reboot, and prints the address to give out. Re-running it upgrades in place.
+
+**Do not skip the cloud provider's own firewall.** It is separate from the one on the machine and
+it is where this usually goes wrong:
+
+- Oracle Cloud — VCN → Security Lists → Add Ingress Rule, UDP 7777, source `0.0.0.0/0`
+- AWS — the instance's security group → Inbound rules
+- Hetzner / DigitalOcean — Networking → Firewalls
+
+Then:
+
+```
+journalctl -u satisfying -f      # watch it
+sudo systemctl restart satisfying
+```
+
+## Checking it from outside
+
+The surest test is someone else joining. Failing that, from another network (a phone hotspot
+works):
+
+```
+nc -u -z -v YOUR.SERVER.IP 7777
+```
+
+UDP has no handshake, so a "succeeded" there only means nothing rejected the packet. The server's
+own log is the real answer: a join prints a line.
+
+## What it costs to run
+
+A 1v1 duel is about **10 KB/s up and 5 KB/s down per player**, and the simulation is a fixed 64 Hz
+tick that does not care how fast the machine is. Eight players is well under a megabit. Any free
+tier will carry it; bandwidth allowances are the only thing worth checking, and a month of solid
+play is a few gigabytes.
+
+## What is not here
+
+There is no master server, so there is no list of public servers to browse. On a LAN the host
+broadcasts a beacon and appears automatically; over the internet you hand out an address. A
+tracker would need somewhere permanent to run, which is a decision about hosting rather than about
+the game.
+
+There is no authentication either. Anyone with the address can join, and names are whatever people
+type. For a duel with friends that is the point; do not put anything on that server you would mind
+a stranger seeing.

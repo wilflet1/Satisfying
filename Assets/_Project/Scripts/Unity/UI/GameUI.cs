@@ -368,6 +368,47 @@ namespace Satisfying.Game
         }
 
         /// <summary>What the grab key would do right now, and what it is costing you.</summary>
+        /// <summary>
+        /// While hosting, the one thing anyone actually needs: the address to give out, and whether
+        /// the router agreed to forward the port. Copyable, because reading an IP aloud is miserable.
+        /// </summary>
+        void DrawHostingAddress()
+        {
+            PortMapper mapper = Game.Mapper;
+            if (mapper == null) return;
+
+            GUILayout.BeginVertical(_skin.PanelDim);
+
+            bool open = mapper.State == PortMapper.Result.Mapped;
+            string external = open && !string.IsNullOrEmpty(mapper.ExternalAddress)
+                ? mapper.ExternalAddress + ":" + Game.Port
+                : null;
+
+            Color previous = GUI.color;
+            GUI.color = open ? UiSkin.Good : (mapper.State == PortMapper.Result.Failed ? UiSkin.Bad : UiSkin.Ink);
+            GUILayout.Label(mapper.Status, _skin.Small);
+            GUI.color = previous;
+
+            if (external != null)
+            {
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("anyone can join at", _skin.Small, GUILayout.Width(130f));
+                GUILayout.Label(external, _skin.Value);
+                if (GUILayout.Button("copy", _skin.ButtonSmall, GUILayout.Width(52f)))
+                    GUIUtility.systemCopyBuffer = external;
+                GUILayout.EndHorizontal();
+            }
+            else if (mapper.State == PortMapper.Result.Failed)
+            {
+                GUILayout.Label("forward UDP " + Game.Port + " to " + UdpTransport.LocalAddress() +
+                                " on your router, or run a dedicated server - see docs/SERVER.md",
+                                _skin.SmallDim);
+            }
+
+            GUILayout.EndVertical();
+            GUILayout.Space(4f);
+        }
+
         void DrawInteractPrompt(in PlayerSimState state, MovementTuning move)
         {
             NetClient client = Game.Client;
@@ -509,6 +550,8 @@ namespace Satisfying.Game
                 GUILayout.Label(Game.Status, _skin.SmallDim);
                 GUILayout.Space(4f);
             }
+
+            DrawHostingAddress();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label("name", _skin.Label, GUILayout.Width(90f));

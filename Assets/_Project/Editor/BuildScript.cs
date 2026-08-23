@@ -24,6 +24,12 @@ namespace Satisfying.Editor
         [MenuItem("Satisfying/Build/Linux 64", priority = 22)]
         public static void BuildLinux() { Build(BuildTarget.StandaloneLinux64, "Linux/Satisfying", false); }
 
+        [MenuItem("Satisfying/Build/Linux dedicated server", priority = 23)]
+        public static void BuildLinuxServer()
+        {
+            Build(BuildTarget.StandaloneLinux64, "LinuxServer/SatisfyingServer", false, StandaloneBuildSubtarget.Server);
+        }
+
         [MenuItem("Satisfying/Playtest/Build a duel client", priority = 40)]
         public static string BuildPlaytestClient()
         {
@@ -70,7 +76,8 @@ namespace Satisfying.Editor
 #endif
         }
 
-        static string Build(BuildTarget target, string relativePath, bool development)
+        static string Build(BuildTarget target, string relativePath, bool development,
+                            StandaloneBuildSubtarget subtarget = StandaloneBuildSubtarget.Player)
         {
             ProjectSetup.Run();
 
@@ -81,6 +88,7 @@ namespace Satisfying.Editor
             options.scenes = new[] { ProjectSetup.ScenePath };
             options.locationPathName = path;
             options.target = target;
+            options.subtarget = (int)subtarget;      // Server strips the renderer and the audio stack
             options.options = development ? BuildOptions.Development : BuildOptions.None;
 
             var report = BuildPipeline.BuildPlayer(options);
@@ -107,6 +115,7 @@ namespace Satisfying.Editor
                 if (args[i] != "-target") continue;
                 switch (args[i + 1].ToLowerInvariant())
                 {
+                    case "linuxserver": BuildLinuxServer(); return;
                     case "windows": target = BuildTarget.StandaloneWindows64; break;
                     case "mac": target = BuildTarget.StandaloneOSX; break;
                     case "linux": target = BuildTarget.StandaloneLinux64; break;

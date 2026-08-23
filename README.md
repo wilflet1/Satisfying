@@ -50,13 +50,18 @@ the match go live so hit registration and scoring work exactly as they will agai
   with `-connect 127.0.0.1`.
 - **Same network**: the host broadcasts a LAN beacon; the other player just clicks the entry that
   appears under *on your network*.
-- **Anywhere else**: type the host's address, forward UDP **7777**.
+- **Anywhere else**: while you host, the game asks your router to forward the port for it — UPnP
+  first, then NAT-PMP — and shows the address to hand out with a copy button. If the router refuses,
+  or you are behind carrier-grade NAT, run a dedicated server instead: a headless build, a script
+  that installs it as a service, and a free-tier host that works from anywhere are all in
+  **[docs/SERVER.md](docs/SERVER.md)**.
 
 Command line, for scripted playtests:
 
 ```
 Satisfying -host -port 7777
 Satisfying -connect 192.168.1.20 -name challenger
+Satisfying -batchmode -nographics -server -port 7777 -bots 1    # no player of its own
 ```
 
 ## The movement
@@ -131,7 +136,7 @@ The simulation and netcode have **no UnityEngine dependency at all**, which mean
 Unity compiles also compiles and runs under plain .NET:
 
 ```bash
-dotnet run --project tools/SimTests    # 89 tests: movement, lean, slide, vault, melee, props, combat, netcode
+dotnet run --project tools/SimTests    # 99 tests: movement, lean, slide, vault, melee, props, combat, netcode
 dotnet build tools/UnityCheck          # type-checks the Unity layer against a stub UnityEngine
 dotnet run --project tools/Playground  # launches the real game headlessly and reports what happened
 ```
@@ -188,7 +193,7 @@ Assets/_Project/
     Input/             rebindable bindings with chords, input sampling
     UI/                menu, HUD, tuning panel, controls panel
   Editor/              project setup, builds, two-instance playtest
-docs/                  design, netcode, controls, tuning
+docs/                  design, netcode, controls, tuning, running a server
 tools/                 headless test harness and type checker (.NET, outside Unity)
 ```
 
