@@ -52,6 +52,13 @@ namespace Satisfying.Shared
         public Vec3 MantleEnd;
         public Vec3 MantlePeak;         // apex of the arc: a vault has to clear the railing
 
+        public float CarryMass;         // mass of whatever is being dragged, 0 when empty handed
+        public bool GrabHeld;
+
+        public float MeleeTimer;        // above zero while swinging
+        public float MeleeCooldown;
+        public bool MeleeHeld;
+
         public bool Sliding;
         public Stance LastStanceRequest;    // slides need a fresh crouch press, not a held one
         public float SlideTimer;
@@ -134,6 +141,7 @@ namespace Satisfying.Shared
         }
 
         public bool IsBlindFiring { get { return BlindFire > 0.5f; } }
+        public bool IsSwinging { get { return MeleeTimer > 0f; } }
     }
 
     /// <summary>One-frame outputs from a simulation step, used for effects and for server-side shot handling.</summary>
@@ -143,6 +151,10 @@ namespace Satisfying.Shared
         public bool StartedSlide;
         public bool EndedSlide;
         public bool StartedVault;
+        public bool MeleeSwing;
+        public bool MeleeStrike;
+        public bool GrabbedProp;
+        public bool ReleasedProp;
         public bool Landed;
         public float LandImpact;
         public bool StanceChanged;

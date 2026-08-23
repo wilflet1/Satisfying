@@ -64,16 +64,24 @@ namespace Satisfying.Shared
         public string ServerName = "duel";
         public MapId Map = MapId.DuelArena;
 
+        int[] _propDirty;
         double _accumulator;
         double _now;
         int _spawnCounter;
 
-        public NetServer(ITransport transport, ICollisionWorld world, SpawnSet spawns, GameTuning tuning)
+        public readonly WorldModel Model;
+        public readonly WorldState World = new WorldState();
+
+        public NetServer(ITransport transport, ICollisionWorld world, SpawnSet spawns, GameTuning tuning,
+                         WorldModel model = null)
         {
             _transport = transport;
             _world = world;
             _spawns = spawns;
             Tuning = tuning;
+            Model = model ?? new WorldModel();
+            World.Reset(Model);
+            _propDirty = new int[World.Props.Length];
         }
 
         public IReadOnlyList<ServerPlayer> Players { get { return _players; } }
@@ -139,8 +147,27 @@ namespace Satisfying.Shared
                 if (ev.ShotsFired > 0 && Phase == MatchPhase.Live)
                     ResolveShots(p, cmd, weapon, ev);
 
+                if (ev.MeleeStrike) ResolveMelee(p, cmd);
+
+                Vec3 beforeDrag = Vec3.Zero;
+                int heldBefore = World.FindPropHeldBy(p.PeerId);
+                if (heldBefore >= 0) beforeDrag = World.Props[heldBefore].Position;
+
+                PropSim.Step(p.PeerId, ref p.Sim, cmd, Tuning.move, Model, World, _world, Protocol.TickDt, ref ev);
+
+                int heldAfter = World.FindPropHeldBy(p.PeerId);
+                if (heldAfter >= 0) MarkPropDirty(heldAfter, Vec3.Distance(World.Props[heldAfter].Position, beforeDrag) > 0.001f);
+                if (ev.GrabbedProp || ev.ReleasedProp)
+                {
+                    if (heldBefore >= 0) MarkPropDirty(heldBefore, true);
+                    if (heldAfter >= 0) MarkPropDirty(heldAfter, true);
+                }
+
                 RecordHistory(p);
             }
+
+            for (int i = 0; i < _propDirty.Length; i++)
+                if (_propDirty[i] > 0) _propDirty[i]--;
 
             StepMatch();
 
@@ -279,6 +306,12 @@ namespace Satisfying.Shared
                     bool hitWorld = _world.Raycast(origin, dir, maxDist, out wallDist, out wallNormal);
                     float limit = hitWorld ? wallDist : maxDist;
 
+                    // A round through a pane takes it out, and keeps going.
+                    int glassIndex;
+                    float glassDistance;
+                    if (World.RaycastWindows(Model, origin, dir, limit, out glassIndex, out glassDistance))
+                        BreakWindow(glassIndex);
+
                     ServerPlayer victim = null;
                     HitTestResult best = new HitTestResult();
                     best.Distance = limit;
@@ -316,6 +349,67 @@ namespace Satisfying.Shared
                 BroadcastExcept(shooter.PeerId,
                     GameEvents.Shot(shooter.PeerId, origin, aim, shooter.Sim.Weapon.Index, anyImpact, firstImpact));
             }
+        }
+
+        /// <summary>
+        /// A stock swing. Glass in the way takes the hit instead of the player behind it, which is
+        /// the whole point of being able to break it first.
+        /// </summary>
+        void ResolveMelee(ServerPlayer attacker, InputCommand cmd)
+        {
+            Vec3 origin = attacker.Sim.EyePosition(Tuning.move);
+            Vec3 aim = attacker.Sim.LookDirection();
+            float range = Tuning.move.meleeRange;
+
+            int windowIndex;
+            float windowDistance;
+            bool hitWindow = World.RaycastWindows(Model, origin, aim, range, out windowIndex, out windowDistance);
+
+            ServerPlayer victim = null;
+            HitTestResult best = new HitTestResult();
+            best.Distance = range;
+
+            if (Phase == MatchPhase.Live)
+            {
+                for (int i = 0; i < _players.Count; i++)
+                {
+                    ServerPlayer target = _players[i];
+                    if (target == attacker || !target.Active || !target.Alive) continue;
+                    if (target.SpawnProtection > 0f) continue;
+
+                    PlayerSimState rewound = target.Sim;
+                    if (LagCompensation && !RewindPlayer(target, cmd.RenderTick, out rewound)) continue;
+
+                    PlayerHitbox box = PlayerHitbox.FromState(in rewound, Tuning.move);
+                    HitTestResult hit;
+                    if (!RayGeometry.TestPlayer(origin, aim, in box, best.Distance, out hit)) continue;
+                    best = hit;
+                    victim = target;
+                }
+            }
+
+            if (victim != null && (!hitWindow || best.Distance <= windowDistance))
+            {
+                float damage = Tuning.move.meleeDamage;
+                if (best.Zone == HitZone.Head) damage *= Tuning.move.meleeHeadMultiplier;
+                ApplyDamage(victim, attacker, damage, best.Zone, best.Distance);
+                return;
+            }
+
+            if (hitWindow) BreakWindow(windowIndex);
+        }
+
+        void MarkPropDirty(int index, bool moved)
+        {
+            if (index < 0 || index >= _propDirty.Length) return;
+            if (moved || _propDirty[index] <= 0) _propDirty[index] = Protocol.PropDirtyTicks;
+        }
+
+        public void BreakWindow(int index)
+        {
+            if (index < 0 || index >= World.WindowBroken.Length) return;
+            if (World.WindowBroken[index]) return;
+            World.WindowBroken[index] = true;
         }
 
         bool RewindPlayer(ServerPlayer target, float renderTick, out PlayerSimState state)
@@ -377,6 +471,7 @@ namespace Satisfying.Shared
 
             victim.Health = 0f;
             victim.Alive = false;
+            PropSim.ReleaseAll(victim.PeerId, World);
             victim.RespawnTimer = Tuning.match.respawnDelay;
             victim.Deaths++;
             shooter.Kills++;
@@ -422,6 +517,8 @@ namespace Satisfying.Shared
         void ResetScores()
         {
             Winner = -1;
+            World.Reset(Model);
+            for (int i = 0; i < _propDirty.Length; i++) _propDirty[i] = Protocol.PropDirtyTicks;
             for (int i = 0; i < _players.Count; i++)
             {
                 _players[i].Kills = 0;
@@ -594,6 +691,7 @@ namespace Satisfying.Shared
             if (p == null || !p.Active) return;
             p.Active = false;
             p.Alive = false;
+            PropSim.ReleaseAll(peerId, World);
             SendSimple(peerId, MessageType.Disconnect, (byte)reason);
             _transport.Forget(peerId);
             BroadcastExcept(peerId, GameEvents.PlayerLeft(peerId, reason));
@@ -637,10 +735,42 @@ namespace Satisfying.Shared
                 _write.WriteBits((uint)written, 4);
                 _write.SeekBits(afterPlayers);
 
+                // The changeable world is small enough to send whole every snapshot, which means it
+                // repairs itself after any lost packet and a late joiner is correct immediately.
+                int windows = MathK.Min(World.WindowBroken.Length, 255);
+                _write.WriteByte((byte)windows);
+                for (int k = 0; k < windows; k++) _write.WriteBool(World.WindowBroken[k]);
+
+                WriteProps(_write);
+
                 int budget = Protocol.MaxPacketSize - _write.BytePosition - 8;
                 p.Reliable.WritePending(_write, _now, budget);
 
                 Send(p.PeerId);
+            }
+        }
+
+        /// <summary>
+        /// Only props that are actually doing something go out, plus a full sweep twice a second so a
+        /// released object's resting place always lands even through loss.
+        /// </summary>
+        void WriteProps(NetBuffer b)
+        {
+            bool full = (Tick % Protocol.PropFullRefreshTicks) == 0;
+            int count = 0;
+            for (int i = 0; i < World.Props.Length && i < Protocol.MaxProps; i++)
+                if (full || _propDirty[i] > 0) count++;
+
+            b.WriteBits((uint)count, 6);
+            for (int i = 0; i < World.Props.Length && i < Protocol.MaxProps; i++)
+            {
+                if (!full && _propDirty[i] <= 0) continue;
+                b.WriteBits((uint)i, 5);
+                b.WriteQ(World.Props[i].Position.x, Protocol.WorldMin, Protocol.WorldMax, Protocol.PropBits);
+                b.WriteQ(World.Props[i].Position.y, Protocol.PropVerticalMin, Protocol.PropVerticalMax, Protocol.PropVerticalBits);
+                b.WriteQ(World.Props[i].Position.z, Protocol.WorldMin, Protocol.WorldMax, Protocol.PropBits);
+                b.WriteQ(MathK.Repeat(World.Props[i].Yaw, 360f), 0f, 360f, 9);
+                b.WriteBits(World.Props[i].Grabber == PropSim.Nobody ? 7u : World.Props[i].Grabber, 3);
             }
         }
 

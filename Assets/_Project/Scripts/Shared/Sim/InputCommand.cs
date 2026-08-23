@@ -55,7 +55,7 @@ namespace Satisfying.Shared
             b.WriteBits((uint)StanceRequest, 2);
             b.WriteBits(WeaponIndex, 3);
             b.WriteBits(SightIndex, 2);
-            b.WriteBits((uint)Buttons, 14);
+            b.WriteBits((uint)Buttons, 16);
             b.WriteQ(RenderTick - (baseTick - 64f), 0f, 128f, 16);
         }
 
@@ -73,7 +73,7 @@ namespace Satisfying.Shared
             c.StanceRequest = (Stance)b.ReadBits(2);
             c.WeaponIndex = (byte)b.ReadBits(3);
             c.SightIndex = (byte)b.ReadBits(2);
-            c.Buttons = (Buttons)b.ReadBits(14);
+            c.Buttons = (Buttons)b.ReadBits(16);
             c.RenderTick = b.ReadQ(0f, 128f, 16) + (baseTick - 64f);
             return c;
         }

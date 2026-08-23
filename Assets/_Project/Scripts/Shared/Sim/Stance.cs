@@ -24,6 +24,8 @@ namespace Satisfying.Shared
         Mantle = 1 << 9,
         Interact = 1 << 10,
         WalkToggle = 1 << 11,   // forces the analog speed dial to its minimum
-        BlindFire = 1 << 12     // gun over/around cover, head stays hidden
+        BlindFire = 1 << 12,    // gun over/around cover, head stays hidden
+        Melee = 1 << 13,        // bash with the stock
+        Grab = 1 << 14          // take hold of a movable object
     }
 }

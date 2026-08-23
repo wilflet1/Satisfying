@@ -60,7 +60,7 @@ namespace Satisfying.Shared
     public static class Protocol
     {
         /// <summary>Bumped whenever the packet layout or the simulation changes shape.</summary>
-        public const ushort Version = 10;
+        public const ushort Version = 11;
 
         public const int DefaultPort = 7777;
         public const int MaxPlayers = 8;
@@ -92,5 +92,14 @@ namespace Satisfying.Shared
         public const int VerticalBits = 15;
         public const float VelocityMax = 48f;
         public const int VelocityBits = 13;
+
+        /// <summary>Props are sent at 1.5cm precision, and only while they are moving.</summary>
+        public const int PropBits = 15;
+        public const float PropVerticalMin = -8f;
+        public const float PropVerticalMax = 56f;
+        public const int PropVerticalBits = 12;
+        public const int PropFullRefreshTicks = 32;
+        public const int PropDirtyTicks = 40;
+        public const int MaxProps = 32;
     }
 }

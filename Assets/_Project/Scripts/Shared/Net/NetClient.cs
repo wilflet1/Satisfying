@@ -107,6 +107,8 @@ namespace Satisfying.Shared
         readonly uint[] _stateTicks = new uint[HistorySize];
 
         public GameTuning Tuning = new GameTuning();
+        public WorldModel Model = new WorldModel();
+        public readonly WorldState World = new WorldState();
         public ClientNetTuning NetTuning = new ClientNetTuning();
         public IInputSource InputSource;
         public IEventSink Sink;
@@ -265,6 +267,7 @@ namespace Satisfying.Shared
                 WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
                 MovementCore.Step(ref _predicted, cmd, Tuning.move, weapon, Tuning.Sight(cmd.SightIndex),
                     Protocol.TickDt, _world, ref ev);
+                PropSim.Step(PeerId, ref _predicted, cmd, Tuning.move, Model, World, _world, Protocol.TickDt, ref ev);
             }
             // While dead the server does not step you either, so predicting movement here would put the
             // two sides into a fight the server wins sixty times a second.
@@ -385,9 +388,54 @@ namespace Satisfying.Shared
                 r.Push(serverTick, in state);
             }
 
+            int windows = _read.ReadByte();
+            if (World.WindowBroken.Length != windows) World.WindowBroken = new bool[windows];
+            for (int i = 0; i < windows; i++)
+            {
+                bool broken = _read.ReadBool();
+                if (broken && !World.WindowBroken[i] && Sink != null)
+                {
+                    Vec3 centre = i < Model.Windows.Count ? Model.Windows[i].Bounds.Center : Vec3.Zero;
+                    Sink.OnWindowBroken(i, centre);
+                }
+                World.WindowBroken[i] = broken;
+            }
+
+            // Self-size against the map we were told to build: nobody has to remember to call Reset.
+            if (World.Props.Length != Model.Props.Count) World.Reset(Model);
+
+            int propCount = (int)_read.ReadBits(6);
+            for (int i = 0; i < propCount; i++)
+            {
+                int index = (int)_read.ReadBits(5);
+                Vec3 position;
+                position.x = _read.ReadQ(Protocol.WorldMin, Protocol.WorldMax, Protocol.PropBits);
+                position.y = _read.ReadQ(Protocol.PropVerticalMin, Protocol.PropVerticalMax, Protocol.PropVerticalBits);
+                position.z = _read.ReadQ(Protocol.WorldMin, Protocol.WorldMax, Protocol.PropBits);
+                float yaw = _read.ReadQ(0f, 360f, 9);
+                uint grabber = _read.ReadBits(3);
+                if (_read.Overflowed) return;
+                if (index >= World.Props.Length) continue;
+
+                byte holder = grabber == 7u ? PropSim.Nobody : (byte)grabber;
+                World.Props[index].Grabber = holder;
+
+                // Anything we are dragging ourselves is predicted, exactly like our own movement:
+                // taking the server's older position back would drag it out of our hands every packet.
+                if (holder == (byte)PeerId) continue;
+                World.Props[index].Position = position;
+                World.Props[index].Yaw = yaw;
+            }
+
             _reliable.ReadInto(_read, _events);
             if (_events.Count > 0 && Sink != null) GameEvents.DispatchAll(_events, Sink);
             else _events.Clear();
+        }
+
+        /// <summary>Called once the world model is known, so the state arrays are the right size.</summary>
+        public void ResetWorld()
+        {
+            World.Reset(Model);
         }
 
         public RemotePlayer GetOrCreateRemote(int peerId)

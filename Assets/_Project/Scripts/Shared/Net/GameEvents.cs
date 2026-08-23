@@ -14,6 +14,8 @@ namespace Satisfying.Shared
         void OnMatchPhase(MatchPhase phase, float timer, int winner);
         void OnTuning(string tuningText);
         void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint);
+        /// <summary>A pane just went from intact to broken - the state itself arrives in the snapshot.</summary>
+        void OnWindowBroken(int windowIndex, Vec3 centre);
     }
 
     public static class GameEvents

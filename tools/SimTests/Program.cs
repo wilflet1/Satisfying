@@ -73,6 +73,8 @@ namespace Satisfying.Tests
             NetIntegrationTests.Register();
             CombatTests.Register();
             TraversalTests.Register();
+            MeleeTests.Register();
+            PropTests.Register();
 
             int passed = 0;
             List<string> failures = new List<string>();

@@ -58,6 +58,13 @@ namespace Satisfying.Tests
         {
             RemoteShots++;
         }
+
+        public int WindowsBroken;
+        public void OnWindowBroken(int windowIndex, Vec3 centre)
+        {
+            WindowsBroken++;
+            Log.Add("window " + windowIndex);
+        }
     }
 
     /// <summary>Bot input: a delegate per tick, so a test can describe behaviour in one lambda.</summary>
@@ -87,8 +94,11 @@ namespace Satisfying.Tests
 
         public double Now;
 
-        public NetHarness(BoxWorld world = null, SpawnSet spawnSet = null)
+        public readonly WorldModel Model = new WorldModel();
+
+        public NetHarness(BoxWorld world = null, SpawnSet spawnSet = null, WorldModel model = null)
         {
+            if (model != null) { Model.Windows.AddRange(model.Windows); Model.Props.AddRange(model.Props); }
             World = world ?? BoxWorld.FlatGround(80f);
             SpawnSet spawns = spawnSet;
             if (spawns == null)
@@ -101,7 +111,7 @@ namespace Satisfying.Tests
             }
 
             ServerTransport = new ConditionedTransport(Network.CreateEndpoint(0));
-            Server = new NetServer(ServerTransport, World, spawns, new GameTuning());
+            Server = new NetServer(ServerTransport, World, spawns, new GameTuning(), Model);
         }
 
         public NetClient AddClient(string name)
@@ -109,6 +119,7 @@ namespace Satisfying.Tests
             int id = Clients.Count + 1;
             ConditionedTransport transport = new ConditionedTransport(Network.CreateEndpoint(id));
             NetClient client = new NetClient(transport, World);
+            client.Model = Model;
             TestSink sink = new TestSink();
             sink.Client = client;
             client.Sink = sink;

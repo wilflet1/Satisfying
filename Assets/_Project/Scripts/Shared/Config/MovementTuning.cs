@@ -187,6 +187,50 @@ namespace Satisfying.Shared
         [Tune("SideStep", 0f, 20f, Tip = "Extra camera roll (deg) at full side step.")]
         public float sideStepRoll = 4.5f;
 
+        // ---------------------------------------------------------------- dragging
+        [Tune("Dragging", 0.5f, 5f, Tip = "How far you can reach to take hold of something.")]
+        public float grabRange = 2.3f;
+
+        [Tune("Dragging", 0.4f, 3f, Tip = "How far in front of you the object is held.")]
+        public float grabHoldDistance = 1.15f;
+
+        [Tune("Dragging", 1f, 15f, Tip = "Drag speed for a weightless object.")]
+        public float dragSpeedBase = 6f;
+
+        [Tune("Dragging", 0f, 0.3f, Tip = "How much each kilo slows the object down.")]
+        public float dragMassFactor = 0.06f;
+
+        [Tune("Dragging", 0f, 0.06f, Tip = "How much each kilo slows YOU down while dragging.")]
+        public float carrySlowFactor = 0.012f;
+
+        [Tune("Dragging", 1f, 8f, Tip = "Get this far from it and the grip breaks.")]
+        public float grabBreakDistance = 3.4f;
+
+        // ---------------------------------------------------------------- melee
+        [Tune("Melee", 0.02f, 0.6f, Tip = "Wind up before the stock actually lands.")]
+        public float meleeWindup = 0.13f;
+
+        [Tune("Melee", 0.05f, 1.2f, Tip = "Recovery after the strike, during which you cannot shoot.")]
+        public float meleeRecover = 0.32f;
+
+        [Tune("Melee", 0.5f, 4f, Tip = "How far the stock reaches.")]
+        public float meleeRange = 2.1f;
+
+        [Tune("Melee", 1f, 200f)]
+        public float meleeDamage = 58f;
+
+        [Tune("Melee", 1f, 3f, Tip = "Damage multiplier for a stock to the head.")]
+        public float meleeHeadMultiplier = 1.6f;
+
+        [Tune("Melee", 0f, 2f, Tip = "Cooldown before you can swing again.")]
+        public float meleeCooldown = 0.42f;
+
+        [Tune("Melee", 0f, 60f)]
+        public float meleeStaminaCost = 14f;
+
+        [Tune("Melee", 0.1f, 1f, Tip = "Movement speed multiplier during a swing.")]
+        public float meleeSpeedMul = 0.72f;
+
         // ---------------------------------------------------------------- slide
         [Tune("Slide", 0f, 1f, Tip = "0 disables sprint sliding entirely.")]
         public float slideEnabled = 1f;

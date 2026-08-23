@@ -39,6 +39,7 @@ namespace Satisfying.Shared
             bool wantsSprint = ResolveSprint(ref s, cmd, t, world);
             StepSlide(ref s, cmd, t, world, dt, ref wantsSprint, ref ev);
             StepBlindFire(ref s, cmd, t, dt, wantsSprint);
+            StepMelee(ref s, cmd, t, dt, ref ev);
             StepStance(ref s, cmd, t, world, dt, wantsSprint, ref ev);
             StepLean(ref s, cmd, t, world, dt, wantsSprint);
             StepAds(ref s, cmd, t, w, sight, dt, wantsSprint);
@@ -200,11 +201,49 @@ namespace Satisfying.Shared
             s.BlindAngle = MathK.MoveTowards(s.BlindAngle, MathK.Clamp(cmd.BlindAngle, -1f, 1f), rate * 2f);
         }
 
+        // ------------------------------------------------------------------ melee
+        /// <summary>
+        /// A stock to the face. It commits you: no firing, no aiming, reduced movement, and a fresh
+        /// press each time. The strike lands on one exact tick so the server has a single moment to
+        /// test rather than a smear of frames.
+        /// </summary>
+        static void StepMelee(ref PlayerSimState s, InputCommand cmd, MovementTuning t, float dt, ref SimEvents ev)
+        {
+            s.MeleeCooldown = MathK.Max(0f, s.MeleeCooldown - dt);
+
+            bool held = cmd.Has(Buttons.Melee);
+            bool fresh = held && !s.MeleeHeld;
+            s.MeleeHeld = held;
+
+            if (s.MeleeTimer > 0f)
+            {
+                float before = s.MeleeTimer;
+                s.MeleeTimer += dt;
+                if (before < t.meleeWindup && s.MeleeTimer >= t.meleeWindup) ev.MeleeStrike = true;
+                if (s.MeleeTimer >= t.meleeWindup + t.meleeRecover)
+                {
+                    s.MeleeTimer = 0f;
+                    s.MeleeCooldown = t.meleeCooldown;
+                }
+                return;
+            }
+
+            if (!fresh) return;
+            if (s.MeleeCooldown > 0f || s.Mantling || s.Sliding) return;
+            if (s.Stamina < t.meleeStaminaCost) return;
+
+            s.MeleeTimer = 1e-5f;
+            s.Ads = 0f;
+            s.BlindFire = 0f;
+            SpendStamina(ref s, t, t.meleeStaminaCost);
+            ev.MeleeSwing = true;
+        }
+
         // ------------------------------------------------------------------ aim
         static void StepAds(ref PlayerSimState s, InputCommand cmd, MovementTuning t, WeaponTuning w,
                             SightTuning sight, float dt, bool sprinting)
         {
-            bool wantsAds = cmd.Has(Buttons.Ads) && !sprinting && !s.Mantling && s.BlindFire < 0.5f;
+            bool wantsAds = cmd.Has(Buttons.Ads) && !sprinting && !s.Mantling && s.BlindFire < 0.5f && !s.IsSwinging;
             float time = MathK.Max(0.02f, w != null ? w.adsTime : t.adsTime);
             if (sight != null) time *= MathK.Max(0.1f, sight.adsTimeMul);
             s.Ads = MathK.MoveTowards(s.Ads, wantsAds ? 1f : 0f, dt / time);
@@ -236,6 +275,8 @@ namespace Satisfying.Shared
                 speed *= MathK.Lerp(1f, t.adsSpeedMul, s.Ads);
                 speed *= MathK.Lerp(1f, t.sideStepSpeedMul, MathK.Abs(s.SideStep));
                 speed *= MathK.Lerp(1f, t.blindFireSpeedMul, s.BlindFire);
+                if (s.IsSwinging) speed *= t.meleeSpeedMul;
+                if (s.CarryMass > 0f) speed /= 1f + s.CarryMass * MathK.Max(0f, t.carrySlowFactor);
             }
             if (IsChangingStance(in s, t)) speed *= t.stanceChangeSpeedMul;
             if (s.Exhausted) speed *= t.exhaustedSpeedMul;
@@ -744,7 +785,7 @@ namespace Satisfying.Shared
                 s.Weapon.ReloadTimer = w.reloadTime;
             }
 
-            bool trigger = cmd.Has(Buttons.Fire) && !s.Mantling;
+            bool trigger = cmd.Has(Buttons.Fire) && !s.Mantling && !s.IsSwinging;
             bool freshPull = trigger && !s.Weapon.TriggerHeld;
 
             if (trigger && !s.Weapon.Reloading)
