@@ -70,7 +70,10 @@ namespace Satisfying.Shared
         public const float TickDt = 1f / TickRate;
 
         /// <summary>How many recent commands ride in every input packet, so one lost packet costs nothing.</summary>
-        public const int InputRedundancy = 12;
+        // Ten copies covers 156 ms of solid loss. It used to be twelve, from when a button edge that
+        // fell in a hole was gone for good; presses now ride as counters that every later command
+        // repeats, so the deep window is no longer what protects them.
+        public const int InputRedundancy = 10;
 
         /// <summary>Ticks of history the server keeps for lag compensation (1 second).</summary>
         public const int HistoryTicks = 64;

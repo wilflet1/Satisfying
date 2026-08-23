@@ -73,7 +73,7 @@ namespace Satisfying.Game
     /// <summary>The whole control scheme: rebindable, persisted, and conflict aware.</summary>
     public sealed class InputBindings
     {
-        const string PrefsKey = "satisfying.bindings.v1";
+        const string PrefsKey = "satisfying.bindings.v2";
 
         public readonly Binding[] Bindings = new Binding[(int)GameAction.Count];
 
@@ -108,9 +108,12 @@ namespace Satisfying.Game
             Set(GameAction.Fire, KeyCode.Mouse0);
             Set(GameAction.Aim, KeyCode.Mouse1);
             Set(GameAction.Reload, KeyCode.R);
-            Set(GameAction.BlindFire, KeyCode.V);
-            Set(GameAction.Melee, KeyCode.F);
-            Set(GameAction.Grab, KeyCode.E);
+            // Lean owns Q/E - it is the point of the game - so interact and melee go where they do in
+            // every other shooter, and blind fire takes the free key. Nothing may share a key with
+            // anything else: see AllConflicts().
+            Set(GameAction.BlindFire, KeyCode.B);
+            Set(GameAction.Melee, KeyCode.V);
+            Set(GameAction.Grab, KeyCode.F);
             Set(GameAction.LeanLeft, KeyCode.Q);
             Set(GameAction.LeanRight, KeyCode.E);
             Set(GameAction.LeanModifier, KeyCode.LeftAlt);
@@ -226,6 +229,28 @@ namespace Satisfying.Game
                 case GameAction.Weapon3: return "Weapon 3";
                 default: return action.ToString();
             }
+        }
+
+        /// <summary>
+        /// Two actions on the same key and modifier both fire, every time. That is how grab spent a
+        /// release also leaning you to the right, so the controls panel now shows this list rather
+        /// than leaving you to work it out from the symptoms.
+        /// </summary>
+        public List<string> AllConflicts()
+        {
+            List<string> clashes = new List<string>();
+            for (int a = 0; a < Bindings.Length; a++)
+            {
+                if (Bindings[a].Key == KeyCode.None) continue;
+                for (int b = a + 1; b < Bindings.Length; b++)
+                {
+                    if (Bindings[b].Key != Bindings[a].Key) continue;
+                    if (Bindings[b].Modifier != Bindings[a].Modifier) continue;   // a chord is not a clash
+                    clashes.Add(Label((GameAction)a) + "  and  " + Label((GameAction)b) +
+                                "  share  " + Bindings[a]);
+                }
+            }
+            return clashes;
         }
 
         // ------------------------------------------------------------------ persistence

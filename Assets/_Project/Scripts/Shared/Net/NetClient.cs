@@ -527,7 +527,9 @@ namespace Satisfying.Shared
         /// <summary>Called by the event sink when the server respawns us - prediction restarts from the truth.</summary>
         public void ForceSpawn(Vec3 position, float yaw)
         {
+            PlayerSimState before = _predicted;
             _predicted = PlayerSimState.Spawn(position, yaw, Tuning.move, Tuning.Weapon(_predicted.Weapon.Index));
+            _predicted.CarryInputEdges(in before);
             _renderError = Vec3.Zero;
             _renderErrorTimer = 0f;
             _hasSpawned = true;

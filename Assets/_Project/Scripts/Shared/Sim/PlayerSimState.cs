@@ -53,11 +53,11 @@ namespace Satisfying.Shared
         public Vec3 MantlePeak;         // apex of the arc: a vault has to clear the railing
 
         public float CarryMass;         // mass of whatever is being dragged, 0 when empty handed
-        public bool GrabHeld;
+        public byte GrabSeqSeen;
 
         public float MeleeTimer;        // above zero while swinging
         public float MeleeCooldown;
-        public bool MeleeHeld;
+        public byte MeleeSeqSeen;
 
         public bool Sliding;
         public Stance LastStanceRequest;    // slides need a fresh crouch press, not a held one
@@ -66,6 +66,17 @@ namespace Satisfying.Shared
         public Vec3 GroundNormal;
 
         public WeaponSimState Weapon;
+
+        /// <summary>
+        /// The press counters are bookkeeping about the input stream, not about the body, so they have
+        /// to survive a respawn. Reset them and the first command after you come back looks like a
+        /// fresh press of whatever you happened to be holding when you died.
+        /// </summary>
+        public void CarryInputEdges(in PlayerSimState previous)
+        {
+            GrabSeqSeen = previous.GrabSeqSeen;
+            MeleeSeqSeen = previous.MeleeSeqSeen;
+        }
 
         public static PlayerSimState Spawn(Vec3 position, float yaw, MovementTuning t, WeaponTuning w)
         {

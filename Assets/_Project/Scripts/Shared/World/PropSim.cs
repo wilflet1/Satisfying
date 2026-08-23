@@ -16,13 +16,12 @@ namespace Satisfying.Shared
             if (model == null || world == null || world.Props.Length == 0)
             {
                 s.CarryMass = 0f;
-                s.GrabHeld = cmd.Has(Buttons.Grab);
+                s.GrabSeqSeen = cmd.GrabSeq;
                 return;
             }
 
-            bool held = cmd.Has(Buttons.Grab);
-            bool fresh = held && !s.GrabHeld;
-            s.GrabHeld = held;
+            bool fresh = InputCommand.Advanced(cmd.GrabSeq, s.GrabSeqSeen);
+            if (fresh) s.GrabSeqSeen = cmd.GrabSeq;
 
             int current = world.FindPropHeldBy(playerId);
             bool busy = s.Mantling || s.Sliding || s.IsSwinging || !s.Grounded;

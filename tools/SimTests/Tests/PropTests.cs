@@ -40,7 +40,7 @@ namespace Satisfying.Tests
 
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
                 InputCommand c = InputCommand.Default(0);
-                c.Buttons |= Buttons.Grab;
+                c.PressGrab();
 
                 SimEvents total = new SimEvents();
                 Run(ref s, c, t, w, model, world, 0.2f, ref total);
@@ -57,7 +57,7 @@ namespace Satisfying.Tests
 
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
                 InputCommand c = InputCommand.Default(0);
-                c.Buttons |= Buttons.Grab;
+                c.PressGrab();
 
                 SimEvents total = new SimEvents();
                 Run(ref s, c, t, w, model, world, 0.3f, ref total);
@@ -73,7 +73,7 @@ namespace Satisfying.Tests
 
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
                 InputCommand c = InputCommand.Default(0);
-                c.Buttons |= Buttons.Grab;
+                c.PressGrab();
                 SimEvents total = new SimEvents();
                 Run(ref s, c, t, w, model, world, 0.2f, ref total);
 
@@ -96,7 +96,7 @@ namespace Satisfying.Tests
 
                     PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
                     InputCommand c = InputCommand.Default(0);
-                    c.Buttons |= Buttons.Grab;
+                    c.PressGrab();
                     SimEvents total = new SimEvents();
                     Run(ref s, c, t, w, model, world, 0.2f, ref total);
 
@@ -122,14 +122,16 @@ namespace Satisfying.Tests
 
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
                 InputCommand hold = InputCommand.Default(0);
-                hold.Buttons |= Buttons.Grab;
+                hold.PressGrab();
                 SimEvents total = new SimEvents();
                 Run(ref s, hold, t, w, model, world, 0.2f, ref total);
                 Assert.True(world.Props[0].IsHeld, "held");
 
-                // Release the key, then press it again.
-                InputCommand idle = InputCommand.Default(0);
+                // Let the key up - which changes nothing on its own - then press it again.
+                InputCommand idle = hold;
+                idle.Buttons &= ~Buttons.Grab;
                 Run(ref s, idle, t, w, model, world, 0.1f, ref total);
+                hold.PressGrab();
                 Run(ref s, hold, t, w, model, world, 0.1f, ref total);
 
                 Assert.False(world.Props[0].IsHeld, "let go on the second press");
@@ -148,7 +150,7 @@ namespace Satisfying.Tests
 
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
                 InputCommand c = InputCommand.Default(0);
-                c.Buttons |= Buttons.Grab;
+                c.PressGrab();
                 SimEvents total = new SimEvents();
                 Run(ref s, c, t, w, model, world, 0.2f, ref total);
                 Assert.True(world.Props[0].IsHeld, "held it");
@@ -168,7 +170,7 @@ namespace Satisfying.Tests
 
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
                 InputCommand c = InputCommand.Default(0);
-                c.Buttons |= Buttons.Grab;
+                c.PressGrab();
                 SimEvents total = new SimEvents();
                 Run(ref s, c, t, w, model, world, 0.2f, ref total);
                 Assert.True(world.Props[0].IsHeld, "held it");
@@ -205,7 +207,7 @@ namespace Satisfying.Tests
                 {
                     InputCommand c = InputCommand.Default(tick);
                     c.Yaw = 0f;
-                    if (tick > 100) c.Buttons |= Buttons.Grab;      // grab, then walk sideways
+                    if (tick > 100) c.PressGrab();      // grab, then walk sideways
                     if (tick > 140) c.MoveX = 1f;
                     return c;
                 };
@@ -216,6 +218,50 @@ namespace Satisfying.Tests
                 Assert.Less(Vec3.Distance(h.Clients[1].World.Props[0].Position, h.Server.World.Props[0].Position), 0.2f,
                     "and the other player sees it in the same place");
                 Assert.Equal(h.Clients[1].World.Props[0].Grabber, h.Clients[0].PeerId, "and knows who has it");
+            });
+
+            TestRunner.Add("net/a press survives heavy loss, and a starved server invents none", () =>
+            {
+                // The failure this covers: a button edge only exists on the one tick it happened on, so
+                // a lost packet swallowed the press outright, and once the starved server started
+                // repeating a held button the real press that arrived later produced no edge at all.
+                // Both ends now compare a counter that every later command carries.
+                WorldModel model = new WorldModel();
+                model.AddProp(new Vec3(0f, 0f, -6.4f), new Vec3(0.9f, 0.9f, 0.9f), 30f);
+
+                SpawnSet spawns = new SpawnSet();
+                spawns.Add(new Vec3(0f, 0f, -8f), 0f);
+                spawns.Add(new Vec3(10f, 0f, 10f), 0f);
+
+                NetHarness h = new NetHarness(BoxWorld.FlatGround(), spawns, model);
+                h.Server.Tuning.match.warmupTime = 0f;
+                NetClient client = h.AddClient("alpha");
+
+                byte seq = 0;
+                h.Bots[0].Behaviour = tick =>
+                {
+                    InputCommand c = InputCommand.Default(tick);
+                    c.Yaw = 0f;
+                    c.GrabSeq = seq;
+                    if (seq > 0) c.Buttons |= Buttons.Grab;
+                    return c;
+                };
+
+                h.SetConditions(80f, 40f, 60f);          // most of it on the floor: the server starves and repeats
+                Assert.True(h.WaitForConnect(), "connected despite the link");
+                h.Advance(1f);
+
+                seq = 1;                                  // one press
+                h.Advance(3f);
+                Assert.Equal(h.Server.World.Props[0].Grabber, client.PeerId, "the server saw the grab");
+
+                h.Advance(3f);                            // hold it there: no further presses
+                Assert.Equal(h.Server.World.Props[0].Grabber, client.PeerId, "and did not toggle it again");
+
+                seq = 2;                                  // press again to let go
+                h.Advance(3f);
+                Assert.Equal(h.Server.World.Props[0].Grabber, PropSim.Nobody, "the release landed too");
+                Assert.Near(h.ServerPlayerOf(client).Sim.CarryMass, 0f, 0.001f, "and the weight came off");
             });
         }
     }

@@ -406,7 +406,7 @@ namespace Satisfying.Playground
                 c.Yaw = ViewMath.YawOf(toPane.Normalized);
                 c.Pitch = ViewMath.PitchOf(toPane.Normalized);
                 c.MoveY = toPane.Flat.Magnitude > _client.Tuning.move.meleeRange * 0.55f ? 1f : 0f;
-                if (tick % 24 < 3) c.Buttons |= Buttons.Melee;
+                if (tick % 24 == 0) c.PressMelee();
             }
 
             if (leg.Drag >= 0)
@@ -420,7 +420,7 @@ namespace Satisfying.Playground
                     c.Pitch = ViewMath.PitchOf(toProp.Normalized);
                     if (toProp.Flat.Magnitude < _client.Tuning.move.grabRange * 0.7f)
                     {
-                        c.Buttons |= Buttons.Grab;
+                        c.PressGrab();
                         _grabPressed = true;
                     }
                     c.MoveY = 1f;
@@ -454,7 +454,7 @@ namespace Satisfying.Playground
             bool arrived = done || _legTime > leg.Timeout || _stuckTime > 1.5f;
 
             // A dragged object is not luggage: let go before moving on to the next lane.
-            if (arrived && _client.World.FindPropHeldBy(_client.PeerId) >= 0) c.Buttons |= Buttons.Grab;
+            if (arrived && _client.World.FindPropHeldBy(_client.PeerId) >= 0) c.PressGrab();
             if (!arrived) return c;
 
             _leg++;

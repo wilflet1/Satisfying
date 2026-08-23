@@ -14,7 +14,7 @@ namespace Satisfying.Tests
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
 
                 InputCommand c = InputCommand.Default(0);
-                c.Buttons |= Buttons.Melee;
+                c.PressMelee();
 
                 int swings = 0, strikes = 0;
                 for (int i = 0; i < 64; i++)
@@ -38,7 +38,8 @@ namespace Satisfying.Tests
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
 
                 InputCommand c = InputCommand.Default(0);
-                c.Buttons |= Buttons.Melee | Buttons.Fire | Buttons.Ads;
+                c.PressMelee();
+                c.Buttons |= Buttons.Fire | Buttons.Ads;
 
                 int shots = 0;
                 float peakAds = 0f;
@@ -68,7 +69,7 @@ namespace Satisfying.Tests
                 for (int i = 0; i < 64; i++)
                 {
                     // Tap it every other tick: without a cooldown this would be a blender.
-                    c.Buttons = (i % 2 == 0) ? (c.Buttons | Buttons.Melee) : (c.Buttons & ~Buttons.Melee);
+                    if (i % 2 == 0) c.PressMelee();
                     SimEvents ev = new SimEvents();
                     c.Tick = (uint)i;
                     MovementCore.Step(ref s, c, t, gun, Sim.Dt, w, ref ev);
@@ -122,7 +123,7 @@ namespace Satisfying.Tests
                 {
                     InputCommand c = InputCommand.Default(tick);
                     c.Yaw = 180f;
-                    if (tick % 40 == 0) { c.Buttons |= Buttons.Melee; swung = true; }
+                    if (tick % 40 == 0) { c.PressMelee(); swung = true; }
                     return c;
                 };
                 h.Advance(2.5f);

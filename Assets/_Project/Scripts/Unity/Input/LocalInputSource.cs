@@ -58,6 +58,8 @@ namespace Satisfying.Game
         bool _latchMantle;
         bool _latchMelee;
         bool _latchGrab;
+        byte _meleeSeq;
+        byte _grabSeq;
         float _smoothX;
         float _smoothY;
 
@@ -296,6 +298,12 @@ namespace Satisfying.Game
             if (_blindFiring) buttons |= Buttons.BlindFire;
             if (LookEnabled && (Bindings.Held(GameAction.Melee) || _latchMelee)) buttons |= Buttons.Melee;
             if (Bindings.Held(GameAction.Grab) || _latchGrab) buttons |= Buttons.Grab;
+            // The press itself travels as a counter, not as the button edge, so a lost packet cannot
+            // swallow a grab or leave the server thinking you never let go.
+            if (_latchMelee && LookEnabled) _meleeSeq = (byte)((_meleeSeq + 1) & 7);
+            if (_latchGrab) _grabSeq = (byte)((_grabSeq + 1) & 7);
+            c.MeleeSeq = _meleeSeq;
+            c.GrabSeq = _grabSeq;
             if (Bindings.Held(GameAction.LeanModifier)) buttons |= Buttons.SlowLean;
             if (_freeLeaning) buttons |= Buttons.FreeLean;
             if (Bindings.Held(GameAction.StepLeft) || _latchStepLeft) buttons |= Buttons.StepLeft;

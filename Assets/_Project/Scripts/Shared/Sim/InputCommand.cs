@@ -3,7 +3,7 @@ namespace Satisfying.Shared
     /// <summary>
     /// One tick of player intent. This is the only thing a client is trusted to send;
     /// the server runs the identical simulation over it and owns the result.
-    /// Packed size is 17 bytes, so a 12-command redundant burst still fits comfortably in one datagram.
+    /// Packed size is 18 bytes, so a 12-command redundant burst still fits comfortably in one datagram.
     /// </summary>
     public struct InputCommand
     {
@@ -19,10 +19,31 @@ namespace Satisfying.Shared
         public byte WeaponIndex;
         public byte SightIndex;     // optic fitted to the weapon in hand
         public Buttons Buttons;
+
+        // Press counters, not button edges. A button edge is only visible if the exact tick it
+        // happened on arrives: lose that packet and the server never sees the press, or repeats the
+        // held state and never sees the release. A counter rides in every later command too, so the
+        // press survives loss, and a repeated tick cannot invent one.
+        public byte GrabSeq;
+        public byte MeleeSeq;
         /// <summary>Server tick (fractional, x256) this client was rendering other players at - drives lag compensation.</summary>
         public float RenderTick;
 
         public bool Has(Buttons b) { return (Buttons & b) != 0; }
+
+        public void PressGrab()  { GrabSeq  = (byte)((GrabSeq  + 1) & 7); Buttons |= Buttons.Grab; }
+        public void PressMelee() { MeleeSeq = (byte)((MeleeSeq + 1) & 7); Buttons |= Buttons.Melee; }
+
+        /// <summary>
+        /// True when the counter has moved forward, in the wrapping sense. Half the space counts as
+        /// ahead and half as behind, so a stale or duplicated packet is ignored rather than read as a
+        /// press - you would have to hit the key four times inside one round trip to fool it.
+        /// </summary>
+        public static bool Advanced(byte incoming, byte seen)
+        {
+            int delta = (incoming - seen) & 7;
+            return delta > 0 && delta < 4;
+        }
 
         public static InputCommand Default(uint tick)
         {
@@ -56,7 +77,9 @@ namespace Satisfying.Shared
             b.WriteBits(WeaponIndex, 3);
             b.WriteBits(SightIndex, 2);
             b.WriteBits((uint)Buttons, 16);
-            b.WriteQ(RenderTick - (baseTick - 64f), 0f, 128f, 16);
+            b.WriteBits(GrabSeq, 3);
+            b.WriteBits(MeleeSeq, 3);
+            b.WriteQ(RenderTick - (baseTick - 64f), 0f, 128f, 12);
         }
 
         public static InputCommand Read(NetBuffer b, uint baseTick)
@@ -74,7 +97,9 @@ namespace Satisfying.Shared
             c.WeaponIndex = (byte)b.ReadBits(3);
             c.SightIndex = (byte)b.ReadBits(2);
             c.Buttons = (Buttons)b.ReadBits(16);
-            c.RenderTick = b.ReadQ(0f, 128f, 16) + (baseTick - 64f);
+            c.GrabSeq = (byte)b.ReadBits(3);
+            c.MeleeSeq = (byte)b.ReadBits(3);
+            c.RenderTick = b.ReadQ(0f, 128f, 12) + (baseTick - 64f);
             return c;
         }
     }

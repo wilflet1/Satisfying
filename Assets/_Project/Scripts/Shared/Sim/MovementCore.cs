@@ -211,9 +211,8 @@ namespace Satisfying.Shared
         {
             s.MeleeCooldown = MathK.Max(0f, s.MeleeCooldown - dt);
 
-            bool held = cmd.Has(Buttons.Melee);
-            bool fresh = held && !s.MeleeHeld;
-            s.MeleeHeld = held;
+            bool fresh = InputCommand.Advanced(cmd.MeleeSeq, s.MeleeSeqSeen);
+            if (fresh) s.MeleeSeqSeen = cmd.MeleeSeq;
 
             if (s.MeleeTimer > 0f)
             {

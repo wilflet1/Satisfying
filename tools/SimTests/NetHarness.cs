@@ -159,6 +159,25 @@ namespace Satisfying.Tests
             }
         }
 
+        /// <summary>
+        /// Runs the clock until every client has finished its handshake. On a badly degraded link that
+        /// can take several seconds, and a test that assumes otherwise measures the handshake instead
+        /// of whatever it meant to measure.
+        /// </summary>
+        public bool WaitForConnect(float timeoutSeconds = 12f)
+        {
+            float waited = 0f;
+            while (waited < timeoutSeconds)
+            {
+                bool all = Clients.Count > 0;
+                for (int i = 0; i < Clients.Count; i++) if (Clients[i].State != NetClient.Status.Connected) all = false;
+                if (all) return true;
+                Advance(0.1f);
+                waited += 0.1f;
+            }
+            return false;
+        }
+
         public NetServer.ServerPlayer ServerPlayerOf(NetClient client)
         {
             return Server.Find(client.PeerId);

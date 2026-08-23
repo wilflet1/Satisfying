@@ -20,6 +20,7 @@ namespace Satisfying.Shared
             public InputCommand LastInput;
             public readonly Dictionary<uint, InputCommand> Pending = new Dictionary<uint, InputCommand>();
             public uint NextClientTick;
+            public bool InputStarted;       // false until we have adopted this client's tick numbering
             public uint LastExecutedTick;
             public int StarvedTicks;
             public int BufferHealth;
@@ -144,8 +145,10 @@ namespace Satisfying.Shared
                 SightTuning sight = Tuning.Sight(cmd.SightIndex);
                 MovementCore.Step(ref p.Sim, cmd, Tuning.move, weapon, sight, Protocol.TickDt, _world, ref ev);
 
-                if (ev.ShotsFired > 0 && Phase == MatchPhase.Live)
-                    ResolveShots(p, cmd, weapon, ev);
+                // Always resolve the shot, live or not. Only damage waits for the match: a round still
+                // travels, still takes out a pane and still cracks off a wall while you are warming up,
+                // and being alone in the arena is exactly when you want to be able to test that.
+                if (ev.ShotsFired > 0) ResolveShots(p, cmd, weapon, ev);
 
                 if (ev.MeleeStrike) ResolveMelee(p, cmd);
 
@@ -316,7 +319,7 @@ namespace Satisfying.Shared
                     HitTestResult best = new HitTestResult();
                     best.Distance = limit;
 
-                    for (int i = 0; i < _players.Count; i++)
+                    for (int i = 0; i < _players.Count && Phase == MatchPhase.Live; i++)
                     {
                         ServerPlayer target = _players[i];
                         if (target == shooter || !target.Active || !target.Alive) continue;
@@ -542,7 +545,9 @@ namespace Satisfying.Shared
                 if (_players[i] != p && _players[i].Active && _players[i].Alive) _avoid.Add(_players[i].Sim.Position);
 
             SpawnPoint sp = _spawns.Pick(_spawnCounter++, _avoid);
+            PlayerSimState before = p.Sim;
             p.Sim = PlayerSimState.Spawn(sp.Position, sp.Yaw, Tuning.move, Tuning.Weapon(p.Sim.Weapon.Index));
+            p.Sim.CarryInputEdges(in before);
             p.Health = Tuning.match.maxHealth;
             p.Alive = true;
             p.SpawnProtection = Tuning.match.spawnProtection;
@@ -611,6 +616,7 @@ namespace Satisfying.Shared
             p.Reliable.Reset();
             p.Pending.Clear();
             p.NextClientTick = 0;
+            p.InputStarted = false;
             p.LastInput = InputCommand.Default(0);
             p.Kills = 0;
             p.Deaths = 0;
@@ -662,16 +668,24 @@ namespace Satisfying.Shared
             {
                 InputCommand cmd = InputCommand.Read(_read, headTick);
                 if (_read.Overflowed) break;
-                if (cmd.Tick < p.NextClientTick) continue;                  // already executed
-                if (cmd.Tick > p.NextClientTick + 128) continue;            // absurd: ignore
+                // The sanity window is relative to where this client's stream actually is, and we do
+                // not have that until the first command arrives. Applying it beforehand rejected every
+                // input from anyone who joined more than two seconds after the server started - their
+                // clock begins at the server's tick, which by then is far past the window.
+                if (p.InputStarted)
+                {
+                    if (cmd.Tick < p.NextClientTick) continue;              // already executed
+                    if (cmd.Tick > p.NextClientTick + 128) continue;        // absurd: ignore
+                }
                 if (!p.Pending.ContainsKey(cmd.Tick)) p.Pending[cmd.Tick] = cmd;
             }
 
-            if (p.NextClientTick == 0 && p.Pending.Count > 0)
+            if (!p.InputStarted && p.Pending.Count > 0)
             {
                 uint earliest = uint.MaxValue;
                 foreach (uint k in p.Pending.Keys) if (k < earliest) earliest = k;
                 p.NextClientTick = earliest;
+                p.InputStarted = true;
             }
         }
 

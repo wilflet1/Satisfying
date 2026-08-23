@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Satisfying.Shared;
 
@@ -33,6 +34,18 @@ namespace Satisfying.Game
             else if (_message.Length > 0)
             {
                 GUILayout.Label(_message, Skin.SmallDim);
+            }
+
+            // A clash does not fail loudly - both actions simply fire together - so say it out loud
+            // here rather than leaving it to be inferred from the symptoms.
+            List<string> clashes = Bindings.AllConflicts();
+            if (clashes.Count > 0)
+            {
+                Color previousWarn = GUI.color;
+                GUI.color = new Color(1f, 0.6f, 0.55f);
+                GUILayout.Label(clashes.Count == 1 ? "one key does two jobs:" : clashes.Count + " keys do two jobs:", Skin.Value);
+                for (int i = 0; i < clashes.Count && i < 6; i++) GUILayout.Label("   " + clashes[i], Skin.Small);
+                GUI.color = previousWarn;
             }
 
             _scroll = GUILayout.BeginScrollView(_scroll);

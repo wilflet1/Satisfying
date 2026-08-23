@@ -308,6 +308,30 @@ namespace Satisfying.Tests
                 Assert.Less(perDeath, 4f, "corrections per death stayed low, got " + perDeath);
             });
 
+            TestRunner.Add("net/someone joining a server that has been up a while can still move", () =>
+            {
+                // A client starts its tick counter at the server's, so a late joiner's first command is
+                // numbered in the thousands. The server used to sanity check that against a counter
+                // still sitting at zero and throw every one of them away: you connected, you saw the
+                // map, and nothing you pressed did anything.
+                NetHarness h = new NetHarness();
+                h.Server.Tuning.match.warmupTime = 0f;
+                h.Advance(45f);                                   // let the server get well under way
+                Assert.Greater(h.Server.Tick, 2000f, "server has a high tick");
+
+                NetClient late = h.AddClient("latecomer");
+                Assert.True(h.WaitForConnect(), "connected");
+                h.Advance(0.5f);
+
+                Vec3 start = h.ServerPlayerOf(late).Sim.Position;
+                h.Bots[0].Behaviour = tick => { InputCommand c = InputCommand.Default(tick); c.MoveY = 1f; return c; };
+                h.Advance(2f);
+
+                Assert.Greater(Vec3.Distance(h.ServerPlayerOf(late).Sim.Position, start), 2f,
+                    "the server acted on their input");
+                Assert.True(h.ServerPlayerOf(late).InputStarted, "and adopted their tick numbering");
+            });
+
             TestRunner.Add("net/a leaving player is cleaned up", () =>
             {
                 NetHarness h = Duel(20f, 0f, 0f);
