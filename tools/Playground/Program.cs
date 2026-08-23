@@ -36,7 +36,7 @@ namespace Satisfying.Playground
             spawns.Add(new Vec3(-6f, 0f, 6f), 180f);
             spawns.Add(new Vec3(6f, 0f, 6f), 180f);
 
-            NetHarness harness = new NetHarness(BuildDrillCourse(), spawns);
+            NetHarness harness = new NetHarness(BuildDrillCourse(), spawns, BuildDrillProps());
             harness.Server.Tuning.match.warmupTime = 0f;
             harness.Server.Tuning.match.spawnProtection = 0.5f;
             harness.Server.Tuning.match.killsToWin = 99f;
@@ -69,6 +69,9 @@ namespace Satisfying.Playground
                 else if (ev.StartedVault) lastEvent = "VAULT";
                 else if (ev.StartedMantle) lastEvent = "mantle";
                 else if (ev.Jumped) lastEvent = "jump";
+                else if (ev.MeleeSwing) lastEvent = "BASH";
+                else if (ev.GrabbedProp) lastEvent = "grab";
+                else if (ev.ReleasedProp) lastEvent = "drop";
                 else if (ev.ShotsFired > 0) lastEvent = "fire";
             };
 
@@ -77,6 +80,7 @@ namespace Satisfying.Playground
             {
                 harness.Advance(0.25f);
                 elapsed += 0.25f;
+                counters.ObserveWorld(player, 0.25f);
 
                 if (elapsed < reportAt) continue;
                 reportAt = elapsed + 1f;
@@ -98,23 +102,36 @@ namespace Satisfying.Playground
             Report("mantles", counters.Mantles.ToString());
             Report("jumps", counters.Jumps.ToString());
             Report("shots fired", counters.Shots.ToString());
+            Report("panes broken", counters.Smashed + " of " + player.World.WindowBroken.Length);
+            Report("objects dragged", MovedProps(player).ToString("0.0") + " m moved over " +
+                                     counters.CarryTime.ToString("0.0") + " s, grip let go " + counters.GripsLost + "x");
             Report("hits confirmed", harness.Sinks[0].HitsConfirmed + "  (" + harness.Sinks[0].HeadshotsConfirmed + " head)");
             Report("kills / deaths", harness.Sinks[0].Kills + " / " + harness.Sinks[0].Deaths);
             Report("round trip", (player.Rtt * 1000f).ToString("0") + " ms");
-            Report("prediction corrections", player.Corrections + "  (last " + (player.LastCorrectionError * 100f).ToString("0.0") + " cm)");
+            Report("prediction corrections", player.Corrections + "  (last " + (player.LastCorrectionError * 100f).ToString("0.0") + " cm"
+                                             + (player.HistoryMisses > 0 ? ", " + player.HistoryMisses + " past the buffer" : "") + ")");
             Report("bandwidth", (player.BytesInPerSecond / 1024f).ToString("0.0") + " KB/s down, " +
                                 (player.BytesOutPerSecond / 1024f).ToString("0.0") + " KB/s up");
             Report("players on server", harness.Server.ActiveCount + " (" + harness.Server.BotCount + " bots)");
 
             bool healthy = player.Connected && (duel
                 ? harness.Sinks[0].HitsConfirmed > 0
-                : counters.Slides > 0 && counters.Vaults > 0);
+                : counters.Slides > 0 && counters.Vaults > 0 && counters.Smashed > 0 && MovedProps(player) > 0.5f);
             Console.WriteLine();
             Console.WriteLine(healthy
                 ? "  the game ran: movement, abilities, shooting and netcode all live."
                 : "  something did not fire - see the counters above.");
             Console.WriteLine();
             return healthy ? 0 : 1;
+        }
+
+        /// <summary>Total distance the movable objects have travelled from their spawns.</summary>
+        static float MovedProps(NetClient client)
+        {
+            float total = 0f;
+            for (int i = 0; i < client.World.Props.Length && i < client.Model.Props.Count; i++)
+                total += Vec3.Distance(client.World.Props[i].Position, client.Model.Props[i].SpawnPosition);
+            return total;
         }
 
         static string StanceLabel(in PlayerSimState s)
@@ -171,13 +188,34 @@ namespace Satisfying.Playground
             // Something solid to climb, so mantling has somewhere to happen too.
             w.AddBox(new Vec3(14f, 0.45f, 0f), new Vec3(3.5f, 0.9f, 7f));
 
+            // Glass station: two wall stubs with a gap between them. The pane fills the gap, and the
+            // wall is real geometry so a shot that misses the pane is stopped like any other.
+            w.AddBox(new Vec3(-13.4f, 1.5f, 2f), new Vec3(2.4f, 3f, 0.3f));
+            w.AddBox(new Vec3(-8.6f, 1.5f, 2f), new Vec3(2.4f, 3f, 0.3f));
+
             return w;
+        }
+
+        /// <summary>
+        /// The changeable half of the drill: one pane to break and three objects of rising mass, so
+        /// the drag speed falls off visibly between them.
+        /// </summary>
+        static WorldModel BuildDrillProps()
+        {
+            WorldModel m = new WorldModel();
+            m.AddWindow(new Vec3(-11f, 1.5f, 2f), new Vec3(2.4f, 2.2f, 0.08f));
+            m.AddProp(new Vec3(-11f, 0.18f, -2.5f), new Vec3(1.2f, 0.36f, 1.2f), 14f);    // pallet
+            m.AddProp(new Vec3(-14f, 0.35f, -2.5f), new Vec3(0.9f, 0.7f, 0.9f), 65f);     // crate
+            m.AddProp(new Vec3(-17f, 0.5f, -2.5f), new Vec3(1.1f, 1f, 1.1f), 185f);       // heavy crate
+            return m;
         }
     }
 
     sealed class Counters
     {
-        public int Slides, Vaults, Mantles, Jumps, Shots;
+        public int Slides, Vaults, Mantles, Jumps, Shots, Smashed, GripsLost;
+        public float CarryTime;
+        bool _wasCarrying;
 
         public void Observe(in SimEvents ev)
         {
@@ -186,6 +224,22 @@ namespace Satisfying.Playground
             if (ev.StartedMantle) Mantles++;
             if (ev.Jumped) Jumps++;
             Shots += ev.ShotsFired;
+        }
+
+        /// <summary>
+        /// Sampled from state rather than counted from events, because a predicted event is re-raised
+        /// every time reconciliation replays the tick it happened on - a grab would read as twenty.
+        /// </summary>
+        public void ObserveWorld(NetClient client, float dt)
+        {
+            int broken = 0;
+            for (int i = 0; i < client.World.WindowBroken.Length; i++) if (client.World.WindowBroken[i]) broken++;
+            Smashed = broken;
+
+            bool carrying = client.Predicted.CarryMass > 0f;
+            if (carrying) CarryTime += dt;
+            else if (_wasCarrying) GripsLost++;
+            _wasCarrying = carrying;
         }
     }
 
@@ -261,6 +315,8 @@ namespace Satisfying.Playground
             public bool Sprint;
             public bool Slide;
             public bool Traverse;
+            public int Smash;       // window to put the stock through, -1 for none
+            public int Drag;        // object to take hold of and shift, -1 for none
             public float Timeout;
             public string Name;
         }
@@ -276,7 +332,11 @@ namespace Satisfying.Playground
             Leg2(new Vec3(0f, 0f, 8f),   false, false, true,  12f, "vault back"),
             Leg2(new Vec3(13f, 0f, 0f),  true,  false, false, 8f,  "approach the block"),
             Leg2(new Vec3(17f, 0f, 0f),  false, false, true,  6f,  "climb it"),
-            Leg2(new Vec3(0f, 0f, 4f),   true,  false, false, 10f, "home")
+            Leg2(new Vec3(-11f, 0f, 0f), true,  false, false, 9f,  "approach the glass"),
+            Smash(0, 5f),
+            Leg2(new Vec3(-13f, 0f, -2.5f), false, false, false, 7f, "approach the crate"),
+            Drag(1, new Vec3(-13f, 0f, -9f), 14f),
+            Leg2(new Vec3(0f, 0f, 4f),   true,  false, false, 12f, "home")
         };
 
         static Leg Leg2(Vec3 target, bool sprint, bool slide, bool traverse, float timeout, string name)
@@ -286,8 +346,24 @@ namespace Satisfying.Playground
             l.Sprint = sprint;
             l.Slide = slide;
             l.Traverse = traverse;
+            l.Smash = -1;
+            l.Drag = -1;
             l.Timeout = timeout;
             l.Name = name;
+            return l;
+        }
+
+        static Leg Smash(int window, float timeout)
+        {
+            Leg l = Leg2(Vec3.Zero, false, false, false, timeout, "smash the pane");
+            l.Smash = window;
+            return l;
+        }
+
+        static Leg Drag(int prop, Vec3 dropAt, float timeout)
+        {
+            Leg l = Leg2(dropAt, false, false, false, timeout, "drag the crate");
+            l.Drag = prop;
             return l;
         }
 
@@ -296,6 +372,7 @@ namespace Satisfying.Playground
         float _legTime;
         float _stuckTime;
         bool _slidePressed;
+        bool _grabPressed;
 
         public DrillRunner(NetClient client) { _client = client; }
 
@@ -320,6 +397,40 @@ namespace Satisfying.Playground
                 if (tick % 22 < 5) c.Buttons |= Buttons.Fire;
             }
 
+            if (leg.Smash >= 0)
+            {
+                // Walk up to the pane, look at it, and pulse the stock - melee is edge triggered, so a
+                // held button would only ever swing once.
+                Vec3 pane = _client.Model.Windows[leg.Smash].Bounds.Center;
+                Vec3 toPane = pane - s.EyePosition(_client.Tuning.move);
+                c.Yaw = ViewMath.YawOf(toPane.Normalized);
+                c.Pitch = ViewMath.PitchOf(toPane.Normalized);
+                c.MoveY = toPane.Flat.Magnitude > _client.Tuning.move.meleeRange * 0.55f ? 1f : 0f;
+                if (tick % 24 < 3) c.Buttons |= Buttons.Melee;
+            }
+
+            if (leg.Drag >= 0)
+            {
+                bool holding = _client.World.FindPropHeldBy(_client.PeerId) == leg.Drag;
+                if (!holding && !_grabPressed)
+                {
+                    // Face the object first: the grab reaches along your look direction.
+                    Vec3 toProp = _client.World.Props[leg.Drag].Position - s.EyePosition(_client.Tuning.move);
+                    c.Yaw = ViewMath.YawOf(toProp.Normalized);
+                    c.Pitch = ViewMath.PitchOf(toProp.Normalized);
+                    if (toProp.Flat.Magnitude < _client.Tuning.move.grabRange * 0.7f)
+                    {
+                        c.Buttons |= Buttons.Grab;
+                        _grabPressed = true;
+                    }
+                    c.MoveY = 1f;
+                }
+                else
+                {
+                    _grabPressed = false;   // one tick of the button is a press; let it go again
+                }
+            }
+
             if (leg.Slide)
             {
                 // One press, once we are actually fast enough for it to become a slide.
@@ -337,13 +448,20 @@ namespace Satisfying.Playground
             // Give up on a leg if we are wedged: a drill that can get stuck is not a useful smoke test.
             _stuckTime = s.Velocity.Flat.Magnitude < 0.3f && !s.Mantling ? _stuckTime + Protocol.TickDt : 0f;
 
-            bool arrived = distance < 2.5f || _legTime > leg.Timeout || _stuckTime > 1.5f;
+            bool done = leg.Smash >= 0
+                ? _client.World.IsBroken(leg.Smash)
+                : distance < 2.5f;
+            bool arrived = done || _legTime > leg.Timeout || _stuckTime > 1.5f;
+
+            // A dragged object is not luggage: let go before moving on to the next lane.
+            if (arrived && _client.World.FindPropHeldBy(_client.PeerId) >= 0) c.Buttons |= Buttons.Grab;
             if (!arrived) return c;
 
             _leg++;
             _legTime = 0f;
             _stuckTime = 0f;
             _slidePressed = false;
+            _grabPressed = false;
             return c;
         }
 
