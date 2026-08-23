@@ -373,6 +373,10 @@ namespace Satisfying.Playground
         float _stuckTime;
         bool _slidePressed;
         bool _grabPressed;
+        // Press counters live with the runner, not with the command: a fresh command every tick can
+        // never advance one, which is exactly the point of them.
+        byte _meleeSeq;
+        byte _grabSeq;
 
         public DrillRunner(NetClient client) { _client = client; }
 
@@ -406,7 +410,7 @@ namespace Satisfying.Playground
                 c.Yaw = ViewMath.YawOf(toPane.Normalized);
                 c.Pitch = ViewMath.PitchOf(toPane.Normalized);
                 c.MoveY = toPane.Flat.Magnitude > _client.Tuning.move.meleeRange * 0.55f ? 1f : 0f;
-                if (tick % 24 == 0) c.PressMelee();
+                if (tick % 24 == 0) _meleeSeq = (byte)((_meleeSeq + 1) & 7);
             }
 
             if (leg.Drag >= 0)
@@ -420,7 +424,7 @@ namespace Satisfying.Playground
                     c.Pitch = ViewMath.PitchOf(toProp.Normalized);
                     if (toProp.Flat.Magnitude < _client.Tuning.move.grabRange * 0.7f)
                     {
-                        c.PressGrab();
+                        _grabSeq = (byte)((_grabSeq + 1) & 7);
                         _grabPressed = true;
                     }
                     c.MoveY = 1f;
@@ -454,7 +458,9 @@ namespace Satisfying.Playground
             bool arrived = done || _legTime > leg.Timeout || _stuckTime > 1.5f;
 
             // A dragged object is not luggage: let go before moving on to the next lane.
-            if (arrived && _client.World.FindPropHeldBy(_client.PeerId) >= 0) c.PressGrab();
+            if (arrived && _client.World.FindPropHeldBy(_client.PeerId) >= 0) _grabSeq = (byte)((_grabSeq + 1) & 7);
+            c.MeleeSeq = _meleeSeq;
+            c.GrabSeq = _grabSeq;
             if (!arrived) return c;
 
             _leg++;
