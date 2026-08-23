@@ -22,12 +22,15 @@ Everything here is rebindable in game (**F2**), including chords. Bindings are s
 | **Free lean** | Alt + Q/E, then move the mouse | Analog lean; your view is locked while you set it |
 | **Side step** | Alt + A / Alt + D | Shifts your body sideways without turning |
 | **Blind fire** | V | Weapon over cover, head stays hidden |
+| **Melee** | F | Bash with the stock; breaks glass and drops a man at arm's length |
+| **Grab / drop** | E | Take hold of a movable object; press again to let go |
 | Vault | Space | Only over obstacles 0.50–1.30 m with floor beyond; anything solid gets climbed instead |
 | Blind fire angle | Mouse wheel while holding V | The only way to aim a shot you cannot see |
 | Weapons | 1 / 2 / 3 | M4A1, MP5, USP45 |
 | Scoreboard | Tab | |
 | Tuning panel | F1 | |
 | Controls panel | F2 | |
+| Gear menu | G | Fit an optic to each weapon |
 | Net graph | F3 | |
 | Menu | Esc | |
 

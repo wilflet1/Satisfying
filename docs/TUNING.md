@@ -41,6 +41,12 @@ only if you are the host.
 | `move.slideHeight` | What you can slide under. The test range tunnels are 1.0 m |
 | `move.vaultMaxHeight` / `vaultDropThreshold` | Which obstacles read as railings to go over instead of platforms to climb |
 | `move.blindFireSpreadMul` | Whether blind fire is suppression or a real threat |
+| `move.meleeWindup` / `meleeRecover` | How committed a stock bash is — the whole risk of the move lives in these two |
+| `move.meleeRange` / `meleeDamage` | Whether the stock is a panic button or a real option |
+| `move.dragSpeedBase` / `dragMassFactor` | How much a heavy object punishes you for moving it |
+| `move.carrySlowFactor` | How slow *you* get per kilo you are dragging |
+| `move.grabRange` / `grabBreakDistance` | How forgiving taking hold of something is |
+| `Sight: *.adsTimeMul` / `spreadMul` / `zoomMul` | What an optic costs and what it buys |
 | `move.speedDialMin` | How slow the slowest creep is |
 | `Network.interpolationDelayMs` | Smoothness of the opponent against how far in the past they are |
 | `Weapon: *.recoilRecoverFraction` | How much of the recoil the game pulls back down for you |

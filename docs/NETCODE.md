@@ -63,6 +63,27 @@ repeats them until acked, drops duplicates, and fragments anything larger than 7
 The ack is the highest **contiguous** sequence received, not the highest seen — acking the highest
 seen would silently drop a payload that fell in a hole.
 
+## The changeable world
+
+Windows and draggable objects are part of the same snapshot, because a duel where one player thinks
+a pane is intact and the other has already shot through it is not a duel.
+
+**Windows** are one bit each, written whole in every snapshot. A pane only ever goes from intact to
+broken, so the entire set costs a handful of bits — cheap enough that it is not worth a delta, and
+sending it whole means the state repairs itself after any lost packet and a joiner is correct on
+their first snapshot rather than after a resync.
+
+**Objects** are the opposite: about seven bytes of quantised position, yaw and holder each, and
+most of them are not moving. So only objects that are actually doing something go out, marked dirty for
+`PropDirtyTicks` (40) after they move, plus a full sweep every 32 ticks — twice a second — so a
+released object's resting place always arrives even through a burst of loss.
+
+The client predicts the object it is holding itself, through the same `PropSim.Step` the server
+runs. That means it also has to *ignore* the server's copy of that object: a snapshot showing where
+your crate was 80 ms ago is older information than your own prediction, so props whose holder is
+you are skipped during apply. Every other object is interpolated toward the replicated position
+like a remote player.
+
 ## Prediction and reconciliation
 
 The client keeps the last 256 ticks of `(input, resulting state)`. When a snapshot says "at your
@@ -77,6 +98,18 @@ Re-simulation is why the collision code is a plain function over an interface ra
 A correction that would visibly jolt the camera is smoothed instead: the positional error is kept
 as a decaying render-only offset (`errorSmoothTime`), so the camera glides the last few
 centimetres while the simulation is already correct.
+
+**Across a respawn**, prediction restarts from the server's spawn state, and for about half a round
+trip afterwards the server is still acking inputs from the life that just ended. Those acks
+describe a body that no longer exists, so reconciliation records the tick prediction restarted at
+and refuses to compare against anything older. The history buffer itself is kept — throwing it away
+also empties the redundant input window, which is the last thing you want in the second after you
+respawn. Getting this wrong is expensive and quiet: it cost a dozen full snaps per death and showed
+up only as a suspiciously large "last correction" on the net graph.
+
+That number is now a measurement or nothing. An ack for a tick that has aged out of the buffer has
+no error to report, so it is counted separately as a history miss rather than folded in as a
+several-hundred-metre correction.
 
 ## Remote players
 
