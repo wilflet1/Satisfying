@@ -276,8 +276,22 @@ namespace Satisfying.Shared
                 speed *= MathK.Lerp(1f, t.sideStepSpeedMul, MathK.Abs(s.SideStep));
                 speed *= MathK.Lerp(1f, t.blindFireSpeedMul, s.BlindFire);
                 if (s.IsSwinging) speed *= t.meleeSpeedMul;
-                if (s.CarryMass > 0f) speed /= 1f + s.CarryMass * MathK.Max(0f, t.carrySlowFactor);
             }
+
+            // Dragging applies to a sprint too, unlike the rest of these: the sprint key is not a way
+            // to run off with two hundred kilos.
+            if (s.CarryMass > 0f)
+            {
+                speed /= 1f + s.CarryMass * MathK.Max(0f, t.carrySlowFactor);
+
+                // You can never walk faster than the thing you are dragging. Without this you walk out
+                // to the end of the grip and stay there, and the object trails at well under its own
+                // drag speed: the headless drill covers 2.9 m in 4 s uncapped against 5.6 m in 5 s
+                // capped. Letting the mass set your pace makes the object feel attached to your hands
+                // rather than tethered to them.
+                speed = MathK.Min(speed, PropSim.DragSpeed(s.CarryMass, t) * 0.95f);
+            }
+
             if (IsChangingStance(in s, t)) speed *= t.stanceChangeSpeedMul;
             if (s.Exhausted) speed *= t.exhaustedSpeedMul;
             return MathK.Max(0f, speed);

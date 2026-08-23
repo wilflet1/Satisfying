@@ -70,8 +70,7 @@ namespace Satisfying.Shared
             Vec3 position = world.Props[current].Position;
             Vec3 target = new Vec3(hold.x, position.y, hold.z);
 
-            float speed = t.dragSpeedBase / (1f + MathK.Max(0f, def.Mass) * t.dragMassFactor);
-            Vec3 next = Vec3.MoveTowards(position, target, speed * dt);
+            Vec3 next = Vec3.MoveTowards(position, target, DragSpeed(def.Mass, t) * dt);
 
             // Push it into geometry and it simply stops - the player keeps walking, the grip stretches.
             float radius = MathK.Max(0.1f, MathK.Max(def.Size.x, def.Size.z) * 0.5f);
@@ -81,6 +80,15 @@ namespace Satisfying.Shared
 
             world.Props[current].Yaw = s.Yaw;
             s.CarryMass = def.Mass;
+        }
+
+        /// <summary>
+        /// How fast an object of this mass follows your hands. The movement core reads the same
+        /// number to cap your own speed, so walking in a straight line can never outrun your grip.
+        /// </summary>
+        public static float DragSpeed(float mass, MovementTuning t)
+        {
+            return t.dragSpeedBase / (1f + MathK.Max(0f, mass) * MathK.Max(0f, t.dragMassFactor));
         }
 
         /// <summary>Nearest thing in front of you, within reach of where you are looking.</summary>

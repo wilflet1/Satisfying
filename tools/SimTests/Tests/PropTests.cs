@@ -136,11 +136,15 @@ namespace Satisfying.Tests
                 Assert.Near(s.CarryMass, 0f, 0.001f, "and the weight came off you");
             });
 
-            TestRunner.Add("props/the grip breaks if you walk off with it stuck", () =>
+            TestRunner.Add("props/the grip breaks when the object snags and you keep going", () =>
             {
                 MovementTuning t; BoxWorld w; WorldModel model; WorldState world;
-                Setup(out t, out w, out model, out world, 400f, new Vec3(0f, 0f, 1.6f));
-                t.dragSpeedBase = 0.2f;      // effectively immovable
+                Setup(out t, out w, out model, out world, 30f, new Vec3(0f, 0f, 1.6f));
+
+                // A slot the object cannot be pulled sideways out of. Walking round it is exactly what
+                // the break distance is for: the grip should give rather than drag it through concrete.
+                w.AddBox(new Vec3(0.9f, 1f, 1.6f), new Vec3(0.3f, 2f, 2f));
+                w.AddBox(new Vec3(-0.9f, 1f, 1.6f), new Vec3(0.3f, 2f, 2f));
 
                 PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
                 InputCommand c = InputCommand.Default(0);
@@ -149,11 +153,35 @@ namespace Satisfying.Tests
                 Run(ref s, c, t, w, model, world, 0.2f, ref total);
                 Assert.True(world.Props[0].IsHeld, "held it");
 
-                c.MoveY = -1f;               // walk away from it
+                c.MoveX = 1f;                // walk out sideways past the slot
                 Run(ref s, c, t, w, model, world, 8f, ref total);
 
                 Assert.False(world.Props[0].IsHeld, "the grip broke");
                 Assert.True(total.ReleasedProp, "and said so");
+                Assert.Less(world.Props[0].Position.x, 0.6f, "and the object stayed in the slot");
+            });
+
+            TestRunner.Add("props/you never walk faster than what you are dragging", () =>
+            {
+                MovementTuning t; BoxWorld w; WorldModel model; WorldState world;
+                Setup(out t, out w, out model, out world, 120f, new Vec3(0f, 0f, 1.6f));
+
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+                InputCommand c = InputCommand.Default(0);
+                c.Buttons |= Buttons.Grab;
+                SimEvents total = new SimEvents();
+                Run(ref s, c, t, w, model, world, 0.2f, ref total);
+                Assert.True(world.Props[0].IsHeld, "held it");
+
+                c.Buttons |= Buttons.Sprint;   // and try to run off with 120 kg
+                c.MoveY = 1f;
+                Run(ref s, c, t, w, model, world, 6f, ref total);
+
+                Assert.True(world.Props[0].IsHeld, "still holding it six seconds later");
+                Assert.Less(s.Velocity.Flat.Magnitude, PropSim.DragSpeed(120f, t) + 0.05f,
+                    "capped to the pace the object can manage");
+                Assert.Less(Vec3.Distance(world.Props[0].Position.Flat, s.Position.Flat), t.grabBreakDistance,
+                    "so the grip never stretches to breaking on a straight line");
             });
 
             TestRunner.Add("net/a dragged object is replicated to the other player", () =>
