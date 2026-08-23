@@ -136,6 +136,8 @@ namespace Satisfying.Shared
         // diagnostics for the net graph
         public int Corrections;
         public float LastCorrectionError;
+        public int HistoryMisses;       // corrections forced because the acked tick had aged out of the buffer
+        uint _spawnTick;                // prediction restarted here; acks older than this mean nothing
         public int PacketsIn;
         public int PacketsOut;
         public int BytesInPerSecond;
@@ -461,6 +463,11 @@ namespace Satisfying.Shared
 
             if (ackTick == 0 || ackTick <= _lastAckTick) return;
             _lastAckTick = ackTick;
+
+            // Inputs from before the respawn: the server's state for those ticks is the old life, and
+            // comparing it against a prediction that restarted at the spawn point would report a
+            // correction the size of the map on every packet until the ack caught up.
+            if (ackTick < _spawnTick) return;
             if (ackTick > ClientTick) return;                     // server is ahead of us: next tick sorts it out
 
             int slot = (int)(ackTick % HistorySize);
@@ -496,7 +503,10 @@ namespace Satisfying.Shared
 
             _predicted = corrected;
             Corrections++;
-            LastCorrectionError = posError;
+            // Without history there is no error to measure - only a tick too old to compare against.
+            // Reporting the sentinel here would put a 999 m correction on the net graph.
+            if (haveHistory) LastCorrectionError = posError;
+            else HistoryMisses++;
 
             if (NetTuning.smoothCorrections > 0.5f)
             {
@@ -521,7 +531,11 @@ namespace Satisfying.Shared
             _renderError = Vec3.Zero;
             _renderErrorTimer = 0f;
             _hasSpawned = true;
-            for (int i = 0; i < HistorySize; i++) _stateTicks[i] = uint.MaxValue;
+
+            // Everything before this tick belongs to the life that just ended. The history stays -
+            // wiping it would also empty the redundant input window, which is the last thing you want
+            // in the second after a respawn - and Reconcile simply refuses to compare across the line.
+            _spawnTick = ClientTick;
         }
 
         /// <summary>Lets the view push the mouse-driven aim straight into the predicted state (no round trip).</summary>

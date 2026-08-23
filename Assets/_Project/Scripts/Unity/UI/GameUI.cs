@@ -415,7 +415,8 @@ namespace Satisfying.Game
             Row("jitter", Mathf.RoundToInt(c.Jitter * 1000f) + " ms");
             Row("tick", c.ClientTick + " / " + c.ServerTick);
             Row("input buffer", c.BufferHealth.ToString());
-            Row("corrections", c.Corrections + "  (" + (c.LastCorrectionError * 100f).ToString("0.0") + " cm)");
+            Row("corrections", c.Corrections + "  (" + (c.LastCorrectionError * 100f).ToString("0.0") + " cm)" +
+                               (c.HistoryMisses > 0 ? "   " + c.HistoryMisses + " past the buffer" : ""));
             Row("down / up", (c.BytesInPerSecond / 1024f).ToString("0.0") + " / " + (c.BytesOutPerSecond / 1024f).ToString("0.0") + " KB/s");
             Row("interp", Mathf.RoundToInt(c.NetTuning.interpolationDelayMs) + " ms");
             GUILayout.EndArea();

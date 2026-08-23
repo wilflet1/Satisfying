@@ -274,6 +274,40 @@ namespace Satisfying.Tests
                     "match ended with a winner, phase=" + h.Server.Phase + " winner=" + h.Server.Winner);
             });
 
+            TestRunner.Add("net/a respawn does not cost a burst of corrections", () =>
+            {
+                // The server keeps acking inputs from the life that just ended for about half a round
+                // trip. Those acks describe a body that no longer exists, so comparing the prediction
+                // against them used to force a full snap on every packet until the ack caught up.
+                NetHarness h = Duel(90f, 10f, 2f, false);
+                h.Server.Tuning.match.killsToWin = 99f;
+                h.Server.Tuning.match.respawnDelay = 0.6f;
+                h.Server.Tuning.match.spawnProtection = 0f;
+                for (int i = 0; i < h.Server.Tuning.weapons.Length; i++)
+                {
+                    h.Server.Tuning.weapons[i].spreadBase = 0f;
+                    h.Server.Tuning.weapons[i].spreadPerShot = 0f;
+                    h.Server.Tuning.weapons[i].spreadMovePerSpeed = 0f;
+                    h.Server.Tuning.weapons[i].damage = 200f;
+                }
+                h.Server.PushTuning();
+                h.Advance(0.6f);
+
+                h.Bots[0].Behaviour = tick => { InputCommand c = InputCommand.Default(tick); c.MoveX = 0.6f; return c; };
+                h.Bots[1].Behaviour = tick => AimAtEnemy(h.Clients[1], tick, tick % 24 == 0);
+                h.Advance(1.5f);
+
+                int before = h.Clients[0].Corrections;
+                int deathsBefore = h.Sinks[0].Deaths;
+                h.Advance(8f);
+
+                Assert.Greater(h.Sinks[0].Deaths - deathsBefore, 1.5f, "the victim died more than once");
+                Assert.Equal(h.Clients[0].HistoryMisses, 0, "no ack landed outside the prediction history");
+
+                float perDeath = (h.Clients[0].Corrections - before) / (float)MathK.Max(1, h.Sinks[0].Deaths - deathsBefore);
+                Assert.Less(perDeath, 4f, "corrections per death stayed low, got " + perDeath);
+            });
+
             TestRunner.Add("net/a leaving player is cleaned up", () =>
             {
                 NetHarness h = Duel(20f, 0f, 0f);
