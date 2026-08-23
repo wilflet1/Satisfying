@@ -524,6 +524,11 @@ namespace UnityEngine
 
     public class GUILayoutOption { }
 
+    public static class GUIUtility
+    {
+        public static string systemCopyBuffer { get; set; }
+    }
+
     public static class GUI
     {
         public static Color color { get; set; }

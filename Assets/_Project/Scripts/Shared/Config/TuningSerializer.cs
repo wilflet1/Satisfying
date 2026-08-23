@@ -121,6 +121,8 @@ namespace Satisfying.Shared
         {
             WeaponTuning w = target as WeaponTuning;
             if (w != null && category == "Weapon") return "Weapon: " + w.name;
+            SightTuning sight = target as SightTuning;
+            if (sight != null && category == "Sight") return "Sight: " + sight.name;
             return category;
         }
 

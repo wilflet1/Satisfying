@@ -56,6 +56,9 @@ namespace Satisfying.Shared
         [Tune("Acceleration", 0f, 20f, Tip = "Drag applied to horizontal air velocity.")]
         public float airFriction = 0.6f;
 
+        [Tune("Acceleration", 0f, 1f, Tip = "How much of the gap to sprint speed is closed the instant sprint engages. 1 = no ramp at all.")]
+        public float sprintSnap = 1f;
+
         [Tune("Acceleration", 0f, 1f, Tip = "Extra responsiveness when reversing direction (counter-strafe).")]
         public float counterStrafeBoost = 0.55f;
 

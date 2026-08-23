@@ -49,7 +49,7 @@ namespace Satisfying.Shared
 
             GroundCheck(ref s, t, world, dt, ref ev);
             StepJump(ref s, cmd, t, world, dt, ref ev);
-            Accelerate(ref s, wish, targetSpeed, t, dt);
+            Accelerate(ref s, wish, targetSpeed, t, dt, wantsSprint);
             ApplyGravity(ref s, cmd, t, dt);
 
             Vec3 sideStepDelta = StepSideStep(ref s, cmd, t, dt, ref ev);
@@ -296,7 +296,7 @@ namespace Satisfying.Shared
             return MathK.Max(0f, speed);
         }
 
-        static void Accelerate(ref PlayerSimState s, Vec3 wish, float targetSpeed, MovementTuning t, float dt)
+        static void Accelerate(ref PlayerSimState s, Vec3 wish, float targetSpeed, MovementTuning t, float dt, bool sprinting)
         {
             Vec3 flat = s.Velocity.Flat;
             float wishLen = wish.Magnitude;
@@ -316,6 +316,13 @@ namespace Satisfying.Shared
                 else
                 {
                     Vec3 target = wish.Normalized * (targetSpeed * MathK.Min(1f, wishLen));
+
+                    // Sprint is a switch, not a ramp: the moment it engages you are at whatever speed
+                    // it allows. Leave the ceiling to targetSpeed - gear can lower that later without
+                    // this having an opinion about it.
+                    if (sprinting && t.sprintSnap > 0f && flat.Magnitude < target.Magnitude)
+                        flat = Vec3.Lerp(flat, target, MathK.Clamp01(t.sprintSnap));
+
                     float accel = t.groundAccel;
                     if (Vec3.Dot(flat, target) < 0f) accel *= 1f + t.counterStrafeBoost;
                     // Above target speed (sprint release, landing hot) we bleed off at friction rate.

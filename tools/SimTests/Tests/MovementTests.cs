@@ -50,6 +50,34 @@ namespace Satisfying.Tests
     {
         public static void Register()
         {
+            TestRunner.Add("move/sprint is at speed on the first tick", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                WeaponTuning gun = Sim.Weapon();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+
+                // Walk up to a steady jog first, so the sprint has a real gap to close.
+                InputCommand walk = InputCommand.Default(0);
+                walk.MoveY = 1f;
+                for (int i = 0; i < 64; i++)
+                {
+                    SimEvents ev = new SimEvents();
+                    walk.Tick = (uint)i;
+                    MovementCore.Step(ref s, walk, t, gun, Sim.Dt, w, ref ev);
+                }
+                Assert.Near(s.Velocity.Flat.Magnitude, t.walkSpeed, 0.3f, "walking");
+
+                InputCommand sprint = walk;
+                sprint.Buttons |= Buttons.Sprint;
+                SimEvents one = new SimEvents();
+                sprint.Tick = 64;
+                MovementCore.Step(ref s, sprint, t, gun, Sim.Dt, w, ref one);
+
+                Assert.Greater(s.Velocity.Flat.Magnitude, t.sprintSpeed - 0.2f,
+                    "one tick of sprint is already sprint speed");
+            });
+
             TestRunner.Add("movement/reaches walk speed", () =>
             {
                 MovementTuning t = Sim.Tuning();

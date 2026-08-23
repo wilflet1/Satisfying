@@ -157,6 +157,20 @@ namespace Satisfying.Game
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
+            // Everything you have moved away from the defaults, as text, on the clipboard. Easier to
+            // paste somewhere than to read back off a screenshot.
+            if (GUILayout.Button("copy changes", Skin.ButtonSmall))
+            {
+                string sim = TuningSerializer.ToTextDiff(Game.Tuning, new GameTuning());
+                string feel = TuningSerializer.ToTextDiff(Feel, new FeelTuning());
+                string all = (sim.Length > 0 ? "# simulation\n" + sim : "") +
+                             (feel.Length > 0 ? "# feel\n" + feel : "");
+                GUIUtility.systemCopyBuffer = all.Length > 0 ? all : "# nothing changed from the defaults";
+                Note(all.Length > 0 ? "changed values copied" : "nothing has been changed yet");
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
             if (GUILayout.Button("reset feel", Skin.ButtonSmall))
             {
                 FeelTuning defaults = new FeelTuning();

@@ -164,7 +164,7 @@ namespace Satisfying.Game
             }
 
             if (Feel.showNetGraph > 0.5f) DrawNetGraph();
-            if (Feel.showMovementDebug > 0.5f) DrawMovementDebug(in state, move);
+            if (Feel.showMovementDebug > 0.5f) DrawMovementDebug(in state, move, weapon);
             if (Bindings.Held(GameAction.Scoreboard)) DrawScoreboard();
         }
 
@@ -422,9 +422,9 @@ namespace Satisfying.Game
             GUILayout.EndArea();
         }
 
-        void DrawMovementDebug(in PlayerSimState state, MovementTuning move)
+        void DrawMovementDebug(in PlayerSimState state, MovementTuning move, WeaponTuning weapon)
         {
-            GUILayout.BeginArea(new Rect(26f, 90f, 250f, 210f), _skin.PanelDim);
+            GUILayout.BeginArea(new Rect(26f, 90f, 250f, 248f), _skin.PanelDim);
             GUILayout.Label("MOVEMENT", _skin.Header);
             Row("speed", state.Velocity.Flat.Magnitude.ToString("0.00") + " m/s");
             Row("vertical", state.Velocity.y.ToString("0.00"));
@@ -436,6 +436,12 @@ namespace Satisfying.Game
             Row("slide", state.Sliding ? state.SlideTimer.ToString("0.00") + "s left"
                 : (state.SlideCooldown > 0f ? "cooldown " + state.SlideCooldown.ToString("0.00") : "ready"));
             Row("stamina", state.Stamina.ToString("0") + (state.Exhausted ? "  winded" : ""));
+
+            // The cone of fire as a number, and what it means downrange, so spread can be tuned by
+            // reading rather than by guessing at the crosshair.
+            float cone = MovementCore.CurrentSpread(in state, move, weapon, Game.Client.Tuning.Sight(state.Weapon.Sight));
+            Row("spread", cone.ToString("0.00") + " deg");
+            Row("at 25 m", (Mathf.Tan(cone * Mathf.Deg2Rad) * 25f * 200f).ToString("0") + " cm group");
             GUILayout.EndArea();
         }
 
