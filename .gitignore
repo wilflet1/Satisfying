@@ -47,6 +47,13 @@ ExportedObj/
 *.unityproj
 *.sln
 *.slnx
+
+# The rule above is aimed at the .csproj files Unity regenerates. The three under tools/ are written by
+# hand and are the entire headless harness - SimTests, UnityCheck and Playground do not exist without
+# them. They were silently untracked once already; keep them in.
+!tools/SimTests/SimTests.csproj
+!tools/UnityCheck/UnityCheck.csproj
+!tools/Playground/Playground.csproj
 *.suo
 *.tmp
 *.user

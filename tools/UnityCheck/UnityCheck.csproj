@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Type-checks the Unity and Editor layers against hand-written UnityEngine/UnityEditor stubs.
+       It cannot prove the game runs, only that every symbol resolves. Build only - never run. -->
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Satisfying.UnityCheck</RootNamespace>
+    <AssemblyName>UnityCheck</AssemblyName>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <NoWarn>$(NoWarn);CS0649;CS0169;CS0414</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)..\..\Assets\_Project\Scripts\Shared\**\*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)..\..\Assets\_Project\Scripts\Unity\**\*.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)..\..\Assets\_Project\Editor\**\*.cs" />
+  </ItemGroup>
+
+</Project>

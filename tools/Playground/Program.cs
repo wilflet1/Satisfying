@@ -11,17 +11,21 @@ namespace Satisfying.Playground
     /// seconds of play takes a fraction of a second and is perfectly repeatable.
     ///
     ///   dotnet run --project tools/Playground -- --seconds 20 --latency 60 --loss 3 --bots 2
+    ///
+    /// With no arguments the drill runs long enough to finish the course; --seconds overrides that.
     /// </summary>
     public static class Program
     {
         public static int Main(string[] args)
         {
-            float seconds = ArgFloat(args, "--seconds", 20f);
             float latency = ArgFloat(args, "--latency", 60f);
             float jitter = ArgFloat(args, "--jitter", 12f);
             float loss = ArgFloat(args, "--loss", 3f);
             string mode = ArgString(args, "--mode", "drill");
             bool duel = mode == "duel";
+            // The drill has to outlast the whole course, or the run ends somewhere around the vault row
+            // and reports the smash and drag legs as "did not fire" when nothing is actually wrong.
+            float seconds = ArgFloat(args, "--seconds", duel ? 20f : DrillRunner.CourseSeconds);
             int bots = (int)ArgFloat(args, "--bots", duel ? 2f : 1f);
 
             Console.WriteLine();
@@ -381,6 +385,17 @@ namespace Satisfying.Playground
         public DrillRunner(NetClient client) { _client = client; }
 
         public string CurrentLeg { get { return Course[_leg % Course.Length].Name; } }
+
+        /// <summary>Every leg's timeout plus slack, so the default run always reaches the last leg.</summary>
+        public static float CourseSeconds
+        {
+            get
+            {
+                float total = 0f;
+                for (int i = 0; i < Course.Length; i++) total += Course[i].Timeout;
+                return total * 1.1f;
+            }
+        }
 
         public InputCommand Think(uint tick)
         {
