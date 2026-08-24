@@ -32,6 +32,9 @@ namespace Satisfying.Shared
         public string ExternalAddress { get; private set; }
         public string Method { get; private set; }
 
+        /// <summary>Where it got to before giving up. Far more useful than "did not work".</summary>
+        public string Stage { get; private set; }
+
         const int LeaseSeconds = 7200;
         const int SsdpPort = 1900;
         const int NatPmpPort = 5351;
@@ -74,7 +77,8 @@ namespace Satisfying.Shared
                 if (TryUpnp()) { Method = "UPnP"; Finish(true, "router is forwarding UDP " + _port + " (UPnP)"); return; }
                 if (_stop) return;
                 if (TryNatPmp()) { Method = "NAT-PMP"; Finish(true, "router is forwarding UDP " + _port + " (NAT-PMP)"); return; }
-                Finish(false, "the router did not answer - forward UDP " + _port + " by hand to play over the internet");
+                Finish(false, (Stage ?? "the router did not answer") +
+                    " - forward UDP " + _port + " by hand to play over the internet");
             }
             catch (Exception e)
             {
@@ -91,13 +95,16 @@ namespace Satisfying.Shared
         // ================================================================== UPnP
         bool TryUpnp()
         {
+            Stage = "no gateway answered the UPnP search";
             string description = DiscoverUpnp();
             if (description == null) return false;
 
+            Stage = "the gateway answered but its description could not be fetched";
             string xml = HttpGet(description, 3000);
             if (xml == null) return false;
 
             string baseUrl = description;
+            Stage = "the gateway has no WAN connection service - UPnP is probably switched off";
             if (!FindService(xml, out _serviceType, out _controlUrl)) return false;
             _controlUrl = AbsoluteUrl(baseUrl, _controlUrl);
 
@@ -113,6 +120,7 @@ namespace Satisfying.Shared
                 "<NewLeaseDuration>" + LeaseSeconds + "</NewLeaseDuration>" +
                 "</u:AddPortMapping>";
 
+            Stage = "the gateway refused the port mapping - UPnP may be set to read only";
             if (Soap(_controlUrl, _serviceType, "AddPortMapping", body) == null) return false;
             _mappedUpnp = true;
 
@@ -123,36 +131,66 @@ namespace Satisfying.Shared
             return true;
         }
 
-        /// <summary>SSDP: shout on the multicast group and take the first gateway that answers.</summary>
+        /// <summary>
+        /// SSDP. Two things here are worth stating, because getting either wrong looks exactly like
+        /// "the router does not speak UPnP":
+        ///
+        /// The socket is bound to the address we are hosting on. A development machine usually has
+        /// several interfaces - Hyper-V, VirtualBox, a VPN - and an unbound multicast send leaves by
+        /// whichever the routing table prefers, which may not be the one the router is on.
+        ///
+        /// MX is the longest a device may wait before answering, and it answers at a random point
+        /// inside that window. Asking for MX 1 and then listening for two full seconds means a slow
+        /// router's reply lands while we are still listening, rather than after we gave up.
+        /// </summary>
         string DiscoverUpnp()
         {
             string request =
                 "M-SEARCH * HTTP/1.1\r\n" +
                 "HOST: 239.255.255.250:1900\r\n" +
                 "MAN: \"ssdp:discover\"\r\n" +
-                "MX: 2\r\n" +
+                "MX: 1\r\n" +
                 "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n";
 
-            using (UdpClient udp = new UdpClient())
+            byte[] payload = Encoding.ASCII.GetBytes(request);
+            IPAddress local;
+            if (!IPAddress.TryParse(_localAddress, out local)) local = IPAddress.Any;
+
+            using (UdpClient udp = new UdpClient(new IPEndPoint(local, 0)))
             {
-                udp.Client.ReceiveTimeout = 1200;
-                byte[] payload = Encoding.ASCII.GetBytes(request);
-                IPEndPoint target = new IPEndPoint(SsdpMulticast, SsdpPort);
+                udp.Client.ReceiveTimeout = 400;
+                IPAddress gateway = DefaultGateway();
 
                 for (int attempt = 0; attempt < 3 && !_stop; attempt++)
                 {
-                    try { udp.Send(payload, payload.Length, target); }
-                    catch (SocketException) { return null; }
-
                     try
                     {
-                        IPEndPoint from = new IPEndPoint(IPAddress.Any, 0);
-                        byte[] reply = udp.Receive(ref from);
-                        string text = Encoding.ASCII.GetString(reply);
-                        string location = HeaderValue(text, "LOCATION");
-                        if (!string.IsNullOrEmpty(location)) return location;
+                        udp.Send(payload, payload.Length, new IPEndPoint(SsdpMulticast, SsdpPort));
+                        // Some routers filter the multicast group but answer a direct knock.
+                        if (gateway != null) udp.Send(payload, payload.Length, new IPEndPoint(gateway, SsdpPort));
                     }
-                    catch (SocketException) { /* nobody answered this round */ }
+                    catch (SocketException) { return null; }
+
+                    // Listen out the whole window rather than bailing on the first quiet moment: the
+                    // first thing to answer is often a printer or a media server, not the gateway.
+                    DateTime deadline = DateTime.UtcNow.AddSeconds(2);
+                    while (DateTime.UtcNow < deadline && !_stop)
+                    {
+                        try
+                        {
+                            IPEndPoint from = new IPEndPoint(IPAddress.Any, 0);
+                            byte[] reply = udp.Receive(ref from);
+                            string text = Encoding.ASCII.GetString(reply);
+                            string location = HeaderValue(text, "LOCATION");
+                            if (string.IsNullOrEmpty(location)) continue;
+
+                            string kind = HeaderValue(text, "ST");
+                            if (kind != null && kind.IndexOf("InternetGatewayDevice", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                kind.IndexOf("WANConnectionDevice", StringComparison.OrdinalIgnoreCase) < 0) continue;
+                            return location;
+                        }
+                        catch (SocketException) { /* keep listening until the window closes */ }
+                    }
                 }
             }
             return null;
@@ -248,7 +286,10 @@ namespace Satisfying.Shared
 
             byte[] request = BuildNatPmpRequest(_port, LeaseSeconds);
 
-            using (UdpClient udp = new UdpClient())
+            IPAddress local;
+            if (!IPAddress.TryParse(_localAddress, out local)) local = IPAddress.Any;
+
+            using (UdpClient udp = new UdpClient(new IPEndPoint(local, 0)))
             {
                 udp.Client.ReceiveTimeout = 900;
                 IPEndPoint target = new IPEndPoint(_gateway, NatPmpPort);

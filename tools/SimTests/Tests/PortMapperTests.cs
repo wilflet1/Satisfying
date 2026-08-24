@@ -56,6 +56,22 @@ namespace Satisfying.Tests
                 Assert.True(PortMapper.HeaderValue(reply, "SERVER") == null, "and absent headers are null");
             });
 
+            TestRunner.Add("net/an answer from a printer is not mistaken for the gateway", () =>
+            {
+                // The first thing to answer an SSDP search is often a media server or a printer.
+                // Taking its LOCATION and asking it to forward a port gets you nowhere slowly.
+                string printer = "HTTP/1.1 200 OK\r\nLOCATION: http://192.168.0.50:80/desc.xml\r\n" +
+                                 "ST: urn:schemas-upnp-org:device:Printer:1\r\n\r\n";
+                string gateway = "HTTP/1.1 200 OK\r\nLOCATION: http://192.168.0.1:1780/gw.xml\r\n" +
+                                 "ST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n";
+
+                Assert.True(PortMapper.HeaderValue(printer, "ST").IndexOf("Printer") >= 0, "the printer says so");
+                Assert.True(PortMapper.HeaderValue(gateway, "ST").IndexOf("InternetGatewayDevice") >= 0,
+                    "and the gateway says so");
+                Assert.True(PortMapper.HeaderValue(gateway, "LOCATION") == "http://192.168.0.1:1780/gw.xml",
+                    "which is the one worth fetching");
+            });
+
             TestRunner.Add("net/the external address is read out of the SOAP reply", () =>
             {
                 string soap = "<s:Envelope><s:Body><u:GetExternalIPAddressResponse>" +
