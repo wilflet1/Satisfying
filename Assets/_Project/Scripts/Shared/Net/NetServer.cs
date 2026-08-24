@@ -585,10 +585,23 @@ namespace Satisfying.Shared
             }
         }
 
+        /// <summary>
+        /// How many connection attempts have reached this server, and when the last one did. The
+        /// single most useful number when someone cannot join: if this is climbing, the packets are
+        /// arriving and the problem is on the way back; if it stays at zero, they never got here.
+        /// </summary>
+        public int ConnectAttemptsSeen { get; private set; }
+        public double LastConnectAttemptAt { get; private set; }
+        public string LastConnectResult { get; private set; }
+
         void HandleConnect(int peerId)
         {
             ushort version = _read.ReadUShort();
             string name = _read.ReadString();
+
+            ConnectAttemptsSeen++;
+            LastConnectAttemptAt = _now;
+            LastConnectResult = "accepted";
 
             ServerPlayer existing = Find(peerId);
             if (existing != null && existing.Bot != null)
@@ -608,11 +621,13 @@ namespace Satisfying.Shared
 
             if (version != Protocol.Version)
             {
+                LastConnectResult = "rejected: their build is version " + version + ", this one is " + Protocol.Version;
                 SendSimple(peerId, MessageType.ConnectReject, (byte)DisconnectReason.VersionMismatch);
                 return;
             }
             if (ActiveCount >= Protocol.MaxPlayers)
             {
+                LastConnectResult = "rejected: server full";
                 SendSimple(peerId, MessageType.ConnectReject, (byte)DisconnectReason.ServerFull);
                 return;
             }

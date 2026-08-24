@@ -137,6 +137,11 @@ namespace Satisfying.Shared
         public int Corrections;
         public float LastCorrectionError;
         public int HistoryMisses;       // corrections forced because the acked tick had aged out of the buffer
+
+        /// <summary>Connect requests sent, and how long we have been trying. Shown while connecting.</summary>
+        public int ConnectAttempts;
+        public float ConnectingFor { get { return (float)(_now - _connectStartedAt); } }
+        double _connectStartedAt;
         uint _spawnTick;                // prediction restarted here; acks older than this mean nothing
         public int PacketsIn;
         public int PacketsOut;
@@ -186,6 +191,8 @@ namespace Satisfying.Shared
             State = Status.Connecting;
             _now = now;
             _connectSentAt = -100.0;
+            _connectStartedAt = now;
+            ConnectAttempts = 0;
             _lastPacketTime = now;
             _reliable.Reset();
             _remotes.Clear();
@@ -215,9 +222,19 @@ namespace Satisfying.Shared
 
             if (State == Status.Connecting)
             {
+                // Connecting had no timeout at all: it retried every 250 ms forever and said nothing,
+                // which is what "endless loading" was. Silence is now a reportable outcome.
+                if (now - _connectStartedAt > Protocol.ConnectTimeoutSeconds)
+                {
+                    LastDisconnectReason = DisconnectReason.Timeout;
+                    State = Status.Disconnected;
+                    return;
+                }
+
                 if (now - _connectSentAt >= Protocol.ConnectRetryInterval)
                 {
                     _connectSentAt = now;
+                    ConnectAttempts++;
                     SendConnectRequest();
                 }
                 return;

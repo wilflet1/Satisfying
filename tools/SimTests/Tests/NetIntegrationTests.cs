@@ -332,6 +332,33 @@ namespace Satisfying.Tests
                 Assert.True(h.ServerPlayerOf(late).InputStarted, "and adopted their tick numbering");
             });
 
+            TestRunner.Add("net/a client that never hears back gives up and says so", () =>
+            {
+                // Connecting had no timeout: it retried every 250 ms forever and reported nothing,
+                // which is exactly what an endless loading screen is made of.
+                NetHarness h = new NetHarness();
+                NetClient client = h.AddClient("nobody home");
+
+                // Everything the client sends falls on the floor, so the server never answers.
+                h.ClientTransports[0].Conditions.lossPercent = 100f;
+                h.Advance(Protocol.ConnectTimeoutSeconds + 2f);
+
+                Assert.True(client.State == NetClient.Status.Disconnected, "gave up, got " + client.State);
+                Assert.True(client.LastDisconnectReason == DisconnectReason.Timeout, "and said why");
+                Assert.Greater(client.ConnectAttempts, 10f, "having actually tried, got " + client.ConnectAttempts);
+                Assert.Equal(h.Server.ConnectAttemptsSeen, 0, "and the server saw none of them");
+            });
+
+            TestRunner.Add("net/the host can see that connection attempts are arriving", () =>
+            {
+                NetHarness h = new NetHarness();
+                NetClient client = h.AddClient("knocker");
+                Assert.True(h.WaitForConnect(), "connected");
+
+                Assert.Greater(h.Server.ConnectAttemptsSeen, 0.5f, "the server counted the attempt");
+                Assert.True(h.Server.LastConnectResult == "accepted", "and says what came of it");
+            });
+
             TestRunner.Add("net/a leaving player is cleaned up", () =>
             {
                 NetHarness h = Duel(20f, 0f, 0f);

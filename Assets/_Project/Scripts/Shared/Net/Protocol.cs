@@ -81,6 +81,11 @@ namespace Satisfying.Shared
 
         public const float ConnectRetryInterval = 0.25f;
         public const float TimeoutSeconds = 8f;
+
+        // Long enough to ride out a bad first few seconds, short enough that a wrong address is
+        // reported rather than spun on. Without this, a client that never hears back retries silently
+        // for as long as you leave it there.
+        public const float ConnectTimeoutSeconds = 12f;
         public const float ReliableResendInterval = 0.2f;
 
         /// <summary>Position error (metres) above which the client snaps to the server and replays.</summary>

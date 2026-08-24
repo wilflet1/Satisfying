@@ -374,9 +374,11 @@ namespace Satisfying.Game
         /// </summary>
         void DrawHostingAddress()
         {
+            // The attempts line matters whether or not the port mapper ran, so this panel is drawn
+            // for any host, not only one that tried UPnP.
             PortMapper mapper = Game.Mapper;
             ReachabilityProbe probe = Game.Reachability;
-            if (mapper == null && probe == null) return;
+            if (mapper == null && probe == null && Game.Server == null) return;
 
             GUILayout.BeginVertical(_skin.PanelDim);
 
@@ -407,6 +409,18 @@ namespace Satisfying.Game
                 GUILayout.Label(probe.Describe(Game.Port), _skin.Small);
             }
             GUI.color = previous;
+
+            // Neither of those can tell you whether anything is actually turning up. This can: it
+            // splits "they never reached me" from "my reply never reached them", which are different
+            // problems with different fixes.
+            NetServer server = Game.Server;
+            if (server != null)
+            {
+                GUILayout.Label(server.ConnectAttemptsSeen == 0
+                        ? "no connection attempts have reached this machine yet"
+                        : server.ConnectAttemptsSeen + " connection attempt(s) arrived - last one " + server.LastConnectResult,
+                    _skin.Small);
+            }
 
             // The address to hand out. STUN knows it even when UPnP failed, which is exactly the case
             // where the host most needs to be told what to type into the chat window.
@@ -550,11 +564,33 @@ namespace Satisfying.Game
             GUILayout.EndArea();
         }
 
+        /// <summary>
+        /// Say what is actually happening. A spinner that never resolves tells you nothing; the number
+        /// of unanswered requests and how long they have gone unanswered tells you the server is not
+        /// replying, which is a different problem from the server refusing you.
+        /// </summary>
         void DrawConnecting()
         {
+            NetClient client = Game.Client;
             _skin.Fill(new Rect(0f, 0f, _width, _height), new Color(0.03f, 0.035f, 0.05f, 0.85f));
-            _skin.Text(new Rect(0f, _height * 0.46f, _width, 40f), "connecting...", _centreHeader, UiSkin.Accent);
-            _skin.Text(new Rect(0f, _height * 0.52f, _width, 24f), "Esc to give up", _centreDim, UiSkin.InkDim);
+            _skin.Text(new Rect(0f, _height * 0.44f, _width, 40f), "connecting...", _centreHeader, UiSkin.Accent);
+
+            if (client != null)
+            {
+                _skin.Text(new Rect(0f, _height * 0.50f, _width, 24f),
+                    client.ConnectAttempts + " request" + (client.ConnectAttempts == 1 ? "" : "s") +
+                    " sent, no reply yet   (" + client.ConnectingFor.ToString("0.0") + "s)",
+                    _centreDim, UiSkin.InkDim);
+
+                if (client.ConnectingFor > 4f)
+                {
+                    _skin.Text(new Rect(0f, _height * 0.55f, _width, 24f),
+                        "nothing is coming back from " + _address + " - check the address, the port forward, and their firewall",
+                        _centreDim, UiSkin.Bad);
+                }
+            }
+
+            _skin.Text(new Rect(0f, _height * 0.61f, _width, 24f), "Esc to give up", _centreDim, UiSkin.InkDim);
         }
 
         // ------------------------------------------------------------------ menu
