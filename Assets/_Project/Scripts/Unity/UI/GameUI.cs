@@ -15,6 +15,9 @@ namespace Satisfying.Game
         public TuningPanelUI Tuning;
         public BindingsPanelUI Controls;
         public GearPanelUI Gear;
+
+        /// <summary>Null on desktop. The thumb controls, drawn over the HUD and nothing else.</summary>
+        public TouchControlsUI Touch;
         public System.Action OnQuit;
 
         public bool ShowMenu = true;
@@ -112,13 +115,21 @@ namespace Satisfying.Game
         // ================================================================== drawing
         public void Draw()
         {
-            _scale = Mathf.Clamp(Screen.height / 900f, 0.7f, 2.4f);
+            // A phone is held at arm's length and pressed with a thumb, so everything wants to be
+            // bigger than it does on a monitor - buttons especially, since a miss is a lost round.
+            float reference = Touch != null ? 520f : 900f;
+            _scale = Mathf.Clamp(Screen.height / reference, 0.7f, 3.2f);
             GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity, new Vector3(_scale, _scale, 1f));
             _width = Screen.width / _scale;
             _height = Screen.height / _scale;
 
             bool connecting = !Game.InGame && Game.CurrentMode != NetGame.Mode.Offline;
             if (Game.InGame) DrawHud();
+            if (Touch != null && Game.InGame && !ShowMenu && !ShowTuning && !ShowControls && !ShowGear)
+            {
+                Touch.Skin = _skin;
+                Touch.Draw();
+            }
             if (connecting && !ShowMenu) DrawConnecting();
             else if (ShowMenu || !Game.InGame) DrawMenu();
             if (ShowTuning) Tuning.Draw(new Rect(_width - 470f, 20f, 450f, _height - 40f));

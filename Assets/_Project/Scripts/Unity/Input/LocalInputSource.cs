@@ -8,28 +8,36 @@ namespace Satisfying.Game
     /// Continuous state (aim, lean, stance, speed dial) is polled every frame; one-shot presses are
     /// latched so a tap between two ticks is never swallowed.
     /// </summary>
-    public sealed class LocalInputSource : IInputSource
+    public sealed class LocalInputSource : IPlayerInput
     {
         public InputBindings Bindings;
-        public FeelTuning Feel;
-        public GameTuning Tuning;
+        public FeelTuning Feel { get; set; }
+        public GameTuning Tuning { get; set; }
         /// <summary>Keyboard actions: movement, lean, stance. Off while a modal menu owns the input.</summary>
-        public bool Enabled = true;
+        public bool Enabled { get; set; }
+
+        public LocalInputSource()
+        {
+            Enabled = true;
+            LookEnabled = true;
+            Sights = new byte[3];
+        }
 
         /// <summary>
         /// Mouse look and the mouse buttons. Turned off on its own while the tuning panel is open, so
         /// you can drag a slider with the cursor and still strafe and lean with the keyboard - which is
         /// the entire point of tuning movement live.
         /// </summary>
-        public bool LookEnabled = true;
+        public bool LookEnabled { get; set; }
 
         /// <summary>Optic fitted to each weapon, chosen in the gear menu and saved between sessions.</summary>
-        public readonly byte[] Sights = new byte[3];
+        public byte[] Sights { get; private set; }
         public byte CurrentWeapon { get { return _weapon; } }
 
         public float Yaw { get { return _yaw + _recoilYaw; } }
         public float Pitch { get { return _pitch + _recoilPitch; } }
         public float SpeedDial { get { return _speedDial; } }
+        public bool WantsSprint { get { return Bindings != null && Bindings.Held(GameAction.Sprint); } }
         public float BlindAngle { get { return _blindAngle; } }
         public bool BlindFiring { get { return _blindFiring; } }
         public Stance StanceRequest { get { return _stance; } }

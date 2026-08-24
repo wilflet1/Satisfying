@@ -412,12 +412,36 @@ namespace UnityEngine
         public static float GetAxis(string name) { return 0f; }
         public static Vector2 mouseScrollDelta { get { return Vector2.zero; } }
         public static Vector3 mousePosition { get { return Vector3.zero; } }
+        public static int touchCount { get { return 0; } }
+        public static Touch GetTouch(int index) { return default(Touch); }
     }
 
     public static class Screen
     {
         public static int width { get { return 1920; } }
         public static int height { get { return 1080; } }
+        public static float dpi { get { return 96f; } }
+        public static ScreenOrientation orientation { get; set; }
+        public static bool autorotateToLandscapeLeft { get; set; }
+        public static bool autorotateToLandscapeRight { get; set; }
+        public static bool autorotateToPortrait { get; set; }
+        public static bool autorotateToPortraitUpsideDown { get; set; }
+        public static void SetResolution(int w, int h, bool fullscreen) { }
+        public static SleepTimeoutValue sleepTimeout { get; set; }
+    }
+
+    public enum ScreenOrientation { Portrait = 1, PortraitUpsideDown = 2, LandscapeLeft = 3, LandscapeRight = 4, AutoRotation = 5, Landscape = 3 }
+
+    public struct SleepTimeoutValue
+    {
+        public static int NeverSleep { get { return -1; } }
+        public static implicit operator SleepTimeoutValue(int v) { return default(SleepTimeoutValue); }
+    }
+
+    public static class SleepTimeout
+    {
+        public static int NeverSleep { get { return -1; } }
+        public static int SystemSetting { get { return -2; } }
     }
 
     public static class Time
@@ -437,7 +461,12 @@ namespace UnityEngine
         public static string persistentDataPath { get { return "/tmp"; } }
         public static void Quit() { }
         public static void Quit(int exitCode) { }
+        public static bool isFocused { get { return true; } }
+        public static bool isMobilePlatform { get { return false; } }
+        public static RuntimePlatform platform { get { return RuntimePlatform.WindowsPlayer; } }
     }
+
+    public enum RuntimePlatform { WindowsPlayer, WindowsEditor, OSXPlayer, OSXEditor, LinuxPlayer, LinuxEditor, Android, IPhonePlayer }
 
     public static class QualitySettings { public static int vSyncCount { get; set; } }
 
@@ -526,6 +555,16 @@ namespace UnityEngine
     }
 
     public class GUILayoutOption { }
+
+    public enum TouchPhase { Began, Moved, Stationary, Ended, Canceled }
+
+    public struct Touch
+    {
+        public int fingerId;
+        public Vector2 position;
+        public Vector2 deltaPosition;
+        public TouchPhase phase;
+    }
 
     public static class GUIUtility
     {

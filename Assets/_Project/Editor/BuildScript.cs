@@ -24,6 +24,51 @@ namespace Satisfying.Editor
         [MenuItem("Satisfying/Build/Linux 64", priority = 22)]
         public static void BuildLinux() { Build(BuildTarget.StandaloneLinux64, "Linux/Satisfying", false); }
 
+        [MenuItem("Satisfying/Build/Android APK", priority = 24)]
+        public static void BuildAndroid()
+        {
+            ConfigureAndroid();
+            Build(BuildTarget.Android, "Android/Satisfying.apk", false);
+        }
+
+        [MenuItem("Satisfying/Build/Android APK (development)", priority = 25)]
+        public static void BuildAndroidDevelopment()
+        {
+            ConfigureAndroid();
+            Build(BuildTarget.Android, "Android/Satisfying-dev.apk", true);
+        }
+
+        /// <summary>
+        /// The handful of player settings an installable APK actually needs. Set here rather than
+        /// left to whoever last opened the inspector, so the build is the same on any machine.
+        /// </summary>
+        static void ConfigureAndroid()
+        {
+            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.satisfying.duel");
+
+            // ARM64 with IL2CPP: Play requires 64 bit, and it is what every phone since about 2017
+            // actually runs. Mono would be a smaller build that no store would take.
+            PlayerSettings.SetScriptingBackend(BuildTargetGroup.Android, ScriptingImplementation.IL2CPP);
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+
+            // The netcode is raw UDP, so the INTERNET permission is not optional. Unity usually infers
+            // it, but "usually" is how you ship a build that cannot open a socket.
+            PlayerSettings.Android.forceInternetPermission = true;
+
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel24;
+            PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
+
+            // A duel is landscape. Portrait would put both thumbs over the middle of the screen.
+            PlayerSettings.defaultInterfaceOrientation = UnityEngine.ScreenOrientation.LandscapeLeft;
+            PlayerSettings.allowedAutorotateToLandscapeLeft = true;
+            PlayerSettings.allowedAutorotateToLandscapeRight = true;
+            PlayerSettings.allowedAutorotateToPortrait = false;
+            PlayerSettings.allowedAutorotateToPortraitUpsideDown = false;
+
+            // An APK to sideload, not a bundle to upload.
+            EditorUserBuildSettings.buildAppBundle = false;
+        }
+
         [MenuItem("Satisfying/Build/Linux dedicated server", priority = 23)]
         public static void BuildLinuxServer()
         {
@@ -116,6 +161,7 @@ namespace Satisfying.Editor
                 switch (args[i + 1].ToLowerInvariant())
                 {
                     case "linuxserver": BuildLinuxServer(); return;
+                    case "android": BuildAndroid(); return;
                     case "windows": target = BuildTarget.StandaloneWindows64; break;
                     case "mac": target = BuildTarget.StandaloneOSX; break;
                     case "linux": target = BuildTarget.StandaloneLinux64; break;

@@ -12,7 +12,7 @@ namespace Satisfying.Game
     {
         public UiSkin Skin;
         public NetGame Game;
-        public LocalInputSource Input;
+        public IPlayerInput Input;
 
         const string PrefsKey = "satisfying.loadout.v1";
         Vector2 _scroll;

@@ -85,6 +85,15 @@ Satisfying -batchmode -nographics -server -port 7777 -bots 1    # no player of i
 
 Full list, chords and rebinding: **[docs/CONTROLS.md](docs/CONTROLS.md)**.
 
+### On a phone
+
+**Satisfying → Build → Android APK** produces a client that joins the same servers over the same
+protocol — a full client, predicting and reconciling like the desktop one, not a remote view. The
+left thumb is a stick that appears where you put it and sprints when pushed to its edge; the right
+one looks, with fire, jump, crouch and lean under it. A finger keeps whatever job it started with
+until it lifts, which is the difference between controls that work and controls that fight you.
+**[docs/MOBILE.md](docs/MOBILE.md)**.
+
 ## A map you can take apart
 
 **Glass** fills several of the openings. It stops nothing — a round passes through and takes the
@@ -193,7 +202,7 @@ Assets/_Project/
     Input/             rebindable bindings with chords, input sampling
     UI/                menu, HUD, tuning panel, controls panel
   Editor/              project setup, builds, two-instance playtest
-docs/                  design, netcode, controls, tuning, running a server
+docs/                  design, netcode, controls, tuning, running a server, playing on a phone
 tools/                 headless test harness and type checker (.NET, outside Unity)
 ```
 

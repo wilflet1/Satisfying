@@ -25,7 +25,9 @@ namespace Satisfying.Game
         GearPanelUI _gearPanel;
         InputBindings _bindings;
         FeelTuning _feel;
-        LocalInputSource _input;
+        IPlayerInput _input;
+        TouchInputSource _touch;
+        TouchControlsUI _touchControls;
         PlayerView _view;
         UnityCollisionWorld _world;
         Palette _palette;
@@ -211,6 +213,20 @@ namespace Satisfying.Game
         {
             Application.targetFrameRate = -1;
             Application.runInBackground = true;   // two instances on one machine must both keep ticking
+
+            if (Application.isMobilePlatform)
+            {
+                // A duel is landscape, and a phone that dims mid-firefight is worse than useless.
+                Screen.orientation = ScreenOrientation.AutoRotation;
+                Screen.autorotateToLandscapeLeft = true;
+                Screen.autorotateToLandscapeRight = true;
+                Screen.autorotateToPortrait = false;
+                Screen.autorotateToPortraitUpsideDown = false;
+                Screen.sleepTimeout = SleepTimeout.NeverSleep;
+
+                // 60 is plenty for this and leaves the battery something to work with.
+                Application.targetFrameRate = 60;
+            }
             QualitySettings.vSyncCount = 0;
             Time.fixedDeltaTime = Protocol.TickDt;
 
@@ -298,8 +314,19 @@ namespace Satisfying.Game
             _bindings = new InputBindings();
             _bindings.Load();
 
-            _input = new LocalInputSource();
-            _input.Bindings = _bindings;
+            // A phone gets thumbs, everything else gets the keyboard. Both hand the same
+            // InputCommand downstream, so nothing below this line knows the difference.
+            if (WantsTouchControls())
+            {
+                _touch = new TouchInputSource();
+                _input = _touch;
+            }
+            else
+            {
+                LocalInputSource keyboard = new LocalInputSource();
+                keyboard.Bindings = _bindings;
+                _input = keyboard;
+            }
             _input.Feel = _feel;
             _input.Tuning = _game.Tuning;
 
@@ -320,6 +347,21 @@ namespace Satisfying.Game
             _sound.MasterVolume = _feel.masterVolume;
         }
 
+        /// <summary>
+        /// Touch on a real handset, and on request anywhere else so the controls can be looked at
+        /// without deploying to a phone: -touch forces them on, -nottouch forces them off.
+        /// </summary>
+        static bool WantsTouchControls()
+        {
+            string[] args = System.Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length; i++)
+            {
+                if (args[i] == "-touch") return true;
+                if (args[i] == "-notouch") return false;
+            }
+            return Application.isMobilePlatform;
+        }
+
         void BuildInterface()
         {
             _tuningPanel = new TuningPanelUI();
@@ -337,6 +379,13 @@ namespace Satisfying.Game
             _bindingsPanel.Bindings = _bindings;
             _bindingsPanel.Feel = _feel;
 
+            if (_touch != null)
+            {
+                _touchControls = new TouchControlsUI();
+                _touchControls.Input = _touch;
+                _touchControls.Feel = _feel;
+            }
+
             _ui = new GameUI();
             _ui.Game = _game;
             _ui.Bindings = _bindings;
@@ -345,6 +394,7 @@ namespace Satisfying.Game
             _ui.Controls = _bindingsPanel;
             _ui.Gear = _gearPanel;
             _ui.OnQuit = Quit;
+            _ui.Touch = _touchControls;
             _ui.Initialise();
         }
 

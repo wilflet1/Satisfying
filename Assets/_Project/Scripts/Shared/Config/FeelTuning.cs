@@ -19,6 +19,12 @@ namespace Satisfying.Shared
         [Tune("Mouse", 0f, 1f, Tip = "1 inverts vertical aim.")]
         public float invertY = 0f;
 
+        [Tune("Touch", 60f, 900f, Tip = "Degrees turned per inch of thumb travel. Per inch, not per pixel, so a denser screen does not turn faster.")]
+        public float touchLookSensitivity = 260f;
+
+        [Tune("Touch", 0.3f, 1f, Tip = "How opaque the on-screen controls are.")]
+        public float touchControlAlpha = 0.55f;
+
         [Tune("Mouse", 0f, 1f, Tip = "Mouse smoothing. 0 is raw and correct; anything else adds latency.")]
         public float smoothing = 0f;
 

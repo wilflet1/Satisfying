@@ -112,9 +112,47 @@ namespace UnityEditor
         public static int defaultScreenWidth { get; set; }
         public static int defaultScreenHeight { get; set; }
         public static UnityEngine.FullScreenMode fullScreenMode { get; set; }
+        public static UnityEngine.ScreenOrientation defaultInterfaceOrientation { get; set; }
+        public static bool allowedAutorotateToPortrait { get; set; }
+        public static bool allowedAutorotateToPortraitUpsideDown { get; set; }
+        public static bool allowedAutorotateToLandscapeLeft { get; set; }
+        public static bool allowedAutorotateToLandscapeRight { get; set; }
+        public static string applicationIdentifier { get; set; }
+        public static void SetApplicationIdentifier(BuildTargetGroup group, string identifier) { }
+        public static void SetScriptingBackend(BuildTargetGroup group, ScriptingImplementation backend) { }
+        public static ScriptingImplementation GetScriptingBackend(BuildTargetGroup group) { return ScriptingImplementation.IL2CPP; }
+        public static void SetArchitecture(BuildTargetGroup group, int architecture) { }
+
+        public static class Android
+        {
+            public static AndroidSdkVersions minSdkVersion { get; set; }
+            public static AndroidSdkVersions targetSdkVersion { get; set; }
+            public static int bundleVersionCode { get; set; }
+            public static AndroidArchitecture targetArchitectures { get; set; }
+            public static bool forceInternetPermission { get; set; }
+            public static bool useCustomKeystore { get; set; }
+        }
     }
 
-    public enum BuildTarget { StandaloneWindows64 = 19, StandaloneOSX = 2, StandaloneLinux64 = 24 }
+    public static class EditorUserBuildSettings
+    {
+        public static BuildTarget activeBuildTarget { get; set; }
+        public static bool buildAppBundle { get; set; }
+        public static AndroidBuildType androidBuildType { get; set; }
+        public static bool SwitchActiveBuildTarget(BuildTargetGroup group, BuildTarget target) { return true; }
+    }
+
+    public enum AndroidBuildType { Debug = 0, Development = 1, Release = 2 }
+
+    public enum ScriptingImplementation { Mono2x = 0, IL2CPP = 1 }
+    public enum AndroidSdkVersions { AndroidApiLevel23 = 23, AndroidApiLevel24 = 24, AndroidApiLevel29 = 29, AndroidApiLevel33 = 33, AndroidApiLevelAuto = 0 }
+
+    [Flags]
+    public enum AndroidArchitecture { None = 0, ARMv7 = 1, ARM64 = 2, All = 3 }
+
+    public enum BuildTargetGroup { Unknown = 0, Standalone = 1, Android = 13, iOS = 4 }
+
+    public enum BuildTarget { StandaloneWindows64 = 19, StandaloneOSX = 2, StandaloneLinux64 = 24, Android = 13, iOS = 9 }
 
     [Flags]
     public enum BuildOptions { None = 0, Development = 1, AutoRunPlayer = 4 }

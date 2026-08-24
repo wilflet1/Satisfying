@@ -34,7 +34,7 @@ namespace Satisfying.Game
         // ------------------------------------------------------------------ wiring
         public GameTuning Tuning = new GameTuning();
         public FeelTuning Feel;
-        public LocalInputSource Input;
+        public IPlayerInput Input;
         public PlayerView View;
         public Palette Palette;
         public AudioBank Audio;
@@ -279,8 +279,7 @@ namespace Satisfying.Game
         void RenderLocal(float dt)
         {
             PlayerSimState state = Client.Predicted;
-            bool sprinting = Input.Enabled &&
-                             Input.Bindings.Held(GameAction.Sprint) &&
+            bool sprinting = Input.Enabled && Input.WantsSprint &&
                              state.Velocity.Flat.Magnitude > Tuning.move.walkSpeed * 1.02f;
 
             View.Render(in state, Client.RenderPosition.ToUnity(), Client.Tuning.move,

@@ -79,6 +79,7 @@ namespace Satisfying.Tests
             UdpTransportTests.Register();
             NetAddressTests.Register();
             RealSocketTests.Register();
+            TouchRigTests.Register();
             ReachabilityTests.Register();
 
             int passed = 0;
