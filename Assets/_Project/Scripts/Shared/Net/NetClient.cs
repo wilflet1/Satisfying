@@ -349,6 +349,10 @@ namespace Satisfying.Shared
             ServerTick = serverTick;
             ServerTimeline = serverTick;
 
+            // Whoever sent this is the server. From here the transport listens only to that address,
+            // so nothing stray can redirect the session once it is established.
+            _transport.ConfirmPeer(0);
+
             // Start far enough ahead that our inputs land just before the server needs them.
             float leadTicks = Rtt * 0.5f * Protocol.TickRate + NetTuning.inputBufferTarget + 1f;
             ClientTick = serverTick + (uint)MathK.Max(1, MathK.CeilToInt(leadTicks));

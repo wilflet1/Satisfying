@@ -23,7 +23,7 @@ namespace Satisfying.Shared
         const double PeerIdleSeconds = 10.0;
 
         IPEndPoint _serverEndPoint;
-        bool _adoptedServer;            // client: the address that actually answered is the real one
+        bool _serverConfirmed;          // client: a handshake has been accepted from _serverEndPoint
         EndPoint _from = new IPEndPoint(IPAddress.Any, 0);
 
         // Asking the outside world whether this socket is reachable. It has to go out of THIS socket:
@@ -216,12 +216,15 @@ namespace Satisfying.Shared
                     // rewrites, a host with several interfaces. We only ever talk to one server, so the
                     // first coherent reply is by definition it - and after this, we write back to the
                     // address that reached us rather than the one that did not.
+                    // Before the handshake is accepted we take a reply from anywhere and write back
+                    // there, because we cannot know in advance which address will answer. Once the
+                    // client has confirmed a real server, only that address is listened to - otherwise
+                    // a stray datagram could redirect a live session, or lock the real one out.
                     if (!endPoint.Address.Equals(_serverEndPoint.Address))
                     {
-                        if (_adoptedServer) continue;         // already settled; ignore latecomers
+                        if (_serverConfirmed) continue;
                         _serverEndPoint = new IPEndPoint(endPoint.Address, endPoint.Port);
                     }
-                    _adoptedServer = true;
                     peerId = 0;
                 }
 
@@ -305,6 +308,11 @@ namespace Satisfying.Shared
             {
                 LastError = e.Message;
             }
+        }
+
+        public void ConfirmPeer(int peerId)
+        {
+            if (!_isServer && peerId == 0) _serverConfirmed = true;
         }
 
         public void Forget(int peerId)

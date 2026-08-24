@@ -14,6 +14,13 @@ namespace Satisfying.Shared
         bool Poll(out int peerId, out byte[] data, out int length);
         void Send(int peerId, byte[] data, int length);
         void Forget(int peerId);
+
+        /// <summary>
+        /// Client side: this peer is the real server - we have accepted a handshake from it. Until
+        /// this is called the transport will take a reply from any address, because it cannot know in
+        /// advance which one will answer; afterwards it takes them only from the one that did.
+        /// </summary>
+        void ConfirmPeer(int peerId);
         string Describe(int peerId);
     }
 
@@ -111,6 +118,7 @@ namespace Satisfying.Shared
         }
 
         public void Forget(int peerId) { _inner.Forget(peerId); }
+        public void ConfirmPeer(int peerId) { _inner.ConfirmPeer(peerId); }
         public string Describe(int peerId) { return _inner.Describe(peerId); }
     }
 
@@ -145,6 +153,7 @@ namespace Satisfying.Shared
             }
 
             public void Forget(int peerId) { }
+            public void ConfirmPeer(int peerId) { }
             public string Describe(int peerId) { return "loopback:" + peerId; }
         }
 

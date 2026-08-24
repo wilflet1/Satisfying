@@ -77,6 +77,8 @@ namespace Satisfying.Tests
             PropTests.Register();
             PortMapperTests.Register();
             UdpTransportTests.Register();
+            NetAddressTests.Register();
+            RealSocketTests.Register();
             ReachabilityTests.Register();
 
             int passed = 0;

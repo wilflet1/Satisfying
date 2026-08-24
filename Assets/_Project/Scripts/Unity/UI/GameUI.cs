@@ -759,6 +759,19 @@ namespace Satisfying.Game
         {
             int port;
             if (!int.TryParse(_port, out port)) port = Protocol.DefaultPort;
+
+            // The host is handed "1.2.3.4:7777" to give out, so that is what arrives in this box.
+            // Take the port from the address when it carries one, and tolerate a pasted link.
+            string host;
+            int fromAddress;
+            if (NetAddress.TryParse(address, port, out host, out fromAddress))
+            {
+                address = host;
+                port = fromAddress;
+                _port = port.ToString();
+                _address = host;
+            }
+
             SavePrefs();
             StopBrowsing();
             string error;

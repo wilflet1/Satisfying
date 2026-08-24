@@ -146,6 +146,18 @@ namespace Satisfying.Game
                 }
             }
 
+            // -connect 1.2.3.4:7777 is what someone will type, having been given exactly that.
+            if (connect != null)
+            {
+                string parsedHost;
+                int parsedPort;
+                if (NetAddress.TryParse(connect, port, out parsedHost, out parsedPort))
+                {
+                    connect = parsedHost;
+                    port = parsedPort;
+                }
+            }
+
             if (!host && connect == null) return;
             if (playerName == null) playerName = host ? "host" : "challenger";
 
