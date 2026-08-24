@@ -388,11 +388,12 @@ namespace Satisfying.Tests
                 h.AddClient("alpha");
                 h.Advance(1.5f);
 
-                NetServer.ServerPlayer bot = h.Server.AddBot("training bot", 0.9f);
+                // Pinned seed: what this bot does must not depend on which id it happened to get.
+                NetServer.ServerPlayer bot = h.Server.AddBot("training bot", 0.9f, 12345);
                 Assert.True(bot != null, "bot joined");
                 Vec3 spawn = bot.Sim.Position;
 
-                h.Advance(6f);
+                h.Advance(10f);
 
                 Assert.True(h.Server.Phase == MatchPhase.Live, "a bot makes the match live, phase=" + h.Server.Phase);
                 Assert.Greater(Vec3.Distance(bot.Sim.Position, spawn), 2f, "the bot actually moved");

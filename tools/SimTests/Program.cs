@@ -76,6 +76,7 @@ namespace Satisfying.Tests
             MeleeTests.Register();
             PropTests.Register();
             PortMapperTests.Register();
+            UdpTransportTests.Register();
             ReachabilityTests.Register();
 
             int passed = 0;

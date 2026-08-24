@@ -64,7 +64,11 @@ namespace Satisfying.Shared
         public const ushort Version = 11;
 
         public const int DefaultPort = 7777;
-        public const int MaxPlayers = 8;
+        // Peer ids travel in 3 bits. 0 is the server and 7 is the "nobody" sentinel that a suicide or
+        // a world kill uses for the killer, so the ids a player can actually hold are 1..6. MaxPlayers
+        // used to say 8, which would have handed the seventh player an id that means "no one".
+        public const int MaxPeerId = 6;
+        public const int MaxPlayers = MaxPeerId;
         public const int MaxPacketSize = 1200;      // stays under the usual 1500 MTU with room for headers
 
         public const int TickRate = 64;

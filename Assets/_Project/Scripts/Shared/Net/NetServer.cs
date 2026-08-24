@@ -234,7 +234,12 @@ namespace Satisfying.Shared
         }
 
         /// <summary>Adds a practice opponent. It is a real player to the rest of the server.</summary>
-        public ServerPlayer AddBot(string name, float skill = 0.55f)
+        /// <summary>
+        /// A bot's whole personality - weapon, wander, when it shoots - comes out of this seed, and by
+        /// default the seed comes from its peer id and the tick it joined on. That makes any test that
+        /// asserts what a bot did hostage to unrelated changes, so a test can pin the seed instead.
+        /// </summary>
+        public ServerPlayer AddBot(string name, float skill = 0.55f, int seed = 0)
         {
             int peerId = -1;
             for (int candidate = Protocol.MaxPlayers - 1; candidate >= 1; candidate--)
@@ -250,7 +255,7 @@ namespace Satisfying.Shared
             bot.Name = name;
             bot.Active = true;
             bot.LastPacketTime = _now;
-            bot.Bot = new BotBrain(peerId * 7919 + (int)Tick);
+            bot.Bot = new BotBrain(seed != 0 ? seed : peerId * 7919 + (int)Tick);
             bot.Bot.Skill = MathK.Clamp01(skill);
             bot.LastInput = InputCommand.Default(0);
             _players.Add(bot);
