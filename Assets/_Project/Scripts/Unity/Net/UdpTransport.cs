@@ -24,8 +24,16 @@ namespace Satisfying.Game
         IPEndPoint _serverEndPoint;
         EndPoint _from = new IPEndPoint(IPAddress.Any, 0);
 
+        // Asking the outside world whether this socket is reachable. It has to go out of THIS socket:
+        // a probe on any other port answers a question nobody asked.
+        ReachabilityProbe _probe;
+        readonly Dictionary<string, IPEndPoint> _stunServers = new Dictionary<string, IPEndPoint>();
+
         public string LastError { get; private set; }
         public int LocalPort { get; private set; }
+
+        /// <summary>Null until hosting starts. See <see cref="BeginReachabilityProbe"/>.</summary>
+        public ReachabilityProbe Reachability { get { return _probe; } }
 
         UdpTransport(Socket socket, bool isServer)
         {
@@ -100,7 +108,52 @@ namespace Satisfying.Game
             }
         }
 
-        public void Update(double now) { }
+        public void Update(double now)
+        {
+            if (_probe == null) return;
+
+            string host;
+            int port;
+            byte[] payload;
+            if (!_probe.NextRequest(now, out host, out port, out payload)) return;
+
+            IPEndPoint target = ResolveStunServer(host, port);
+            if (target == null) return;
+
+            try { _socket.SendTo(payload, 0, payload.Length, SocketFlags.None, target); }
+            catch (Exception) { /* the probe retries and eventually reports NoAnswer on its own */ }
+        }
+
+        /// <summary>Start asking whether this port is reachable. Server sockets only.</summary>
+        public void BeginReachabilityProbe()
+        {
+            if (!_isServer || _probe != null) return;
+            _probe = new ReachabilityProbe(LocalPort);
+        }
+
+        /// <summary>Cached: DNS on the frame thread once per server is fine, every retry is not.</summary>
+        IPEndPoint ResolveStunServer(string host, int port)
+        {
+            string key = host + ":" + port;
+            IPEndPoint cached;
+            if (_stunServers.TryGetValue(key, out cached)) return cached;
+
+            IPEndPoint resolved = null;
+            try
+            {
+                IPAddress[] all = Dns.GetHostAddresses(host);
+                for (int i = 0; i < all.Length; i++)
+                {
+                    if (all[i].AddressFamily != AddressFamily.InterNetwork) continue;
+                    resolved = new IPEndPoint(all[i], port);
+                    break;
+                }
+            }
+            catch (Exception) { }
+
+            _stunServers[key] = resolved;    // cache the failure too, so a dead name is not retried all game
+            return resolved;
+        }
 
         public bool Poll(out int peerId, out byte[] data, out int length)
         {
@@ -137,6 +190,15 @@ namespace Satisfying.Game
 
                 if (_isServer)
                 {
+                    // Before anything else: a STUN reply is not a player. Letting it fall through to
+                    // ResolvePeer would hand a Google server a slot in a two-player game.
+                    if (_probe != null &&
+                        _probe.HandleDatagram(_receiveBuffer, received, endPoint.Address.ToString())) continue;
+
+                    // Anything from a public address is someone who found us without us writing first,
+                    // which is the only proof of reachability that exists.
+                    if (_probe != null) _probe.NoteInbound(endPoint.Address.ToString());
+
                     peerId = ResolvePeer(endPoint);
                     if (peerId < 0) continue;
                 }

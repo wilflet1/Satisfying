@@ -68,6 +68,8 @@ namespace Satisfying.Game
         /// from outside the house does not start with a router admin page. Null when not hosting.
         /// </summary>
         public PortMapper Mapper;
+        /// <summary>Whether the outside world can actually reach us. Null unless hosting.</summary>
+        public ReachabilityProbe Reachability { get { return _serverSocket != null ? _serverSocket.Reachability : null; } }
         public bool OpenPortAutomatically = true;
 
         public Mode CurrentMode = Mode.Offline;
@@ -130,6 +132,10 @@ namespace Satisfying.Game
                 Mapper = new PortMapper(port, UdpTransport.LocalAddress());
                 Mapper.Begin();
             }
+
+            // Ask the outside world separately. UPnP only ever knows about mappings it made itself, so
+            // without this a port forwarded by hand on the router reads as shut.
+            _serverSocket.BeginReachabilityProbe();
 
             // A dedicated server has no player of its own: nobody to render, nobody to predict for.
             // It just runs the simulation and answers everyone who turns up.
@@ -446,7 +452,7 @@ namespace Satisfying.Game
                 Input.ApplyRecoil(Client.PeerId, shotIndex, weapon);
                 View.OnShot(weapon);
 
-                Vector3 muzzle = View.MuzzleTip != null ? View.MuzzleTip.position : origin + aim * 0.4f;
+                Vector3 muzzle = View.MuzzleWorldPoint(origin, aim);
                 Fx.MuzzleFlash(muzzle, aim);
                 Sound.PlayAt(Audio.ShotFor(cmd.WeaponIndex), origin, 0.75f, Random.Range(0.96f, 1.05f));
 

@@ -22,6 +22,29 @@ removed when you leave the match.
 some disable it after a firmware update). Either turn it on — usually under *Advanced → UPnP* — or
 forward UDP 7777 to your machine by hand. `-noupnp` on the command line skips the attempt.
 
+### The second line: can anyone actually reach you
+
+UPnP only knows about mappings it made itself, so a port you forwarded by hand on the router looks
+exactly like a port that is shut. A separate check asks the outside world instead, and prints its
+own line under the UPnP one:
+
+```
+  confirmed open - a player reached you from the internet
+  UDP 7777 looks forwarded - unconfirmed until someone joins
+  your router is remapping UDP 7777 to 51413 - inbound cannot work until that stops
+  could not reach a STUN server to check from outside
+```
+
+It works two ways. A STUN request goes out of the game socket itself and comes back with the address
+and port the internet saw, which is the address to hand out and is known even when UPnP failed. And
+any datagram arriving from a public address we never wrote to first is proof the port is open,
+because nothing else can produce one.
+
+Only the first line means open. **"Looks forwarded" is deliberately not a yes**: most routers hand
+out the same port number even with no forward at all, so a preserved port is consistent with a port
+that nobody can reach. It stops being a guess the moment somebody joins. "Remapping", on the other
+hand, is a definite no — the router is rewriting your port and no forwarding rule will fix it.
+
 **If you are behind carrier-grade NAT** — common on mobile broadband and some fibre ISPs — no
 amount of port forwarding will help, because you do not have a public address to forward from. You
 want option 3.

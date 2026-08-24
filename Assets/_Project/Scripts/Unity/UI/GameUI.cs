@@ -375,30 +375,58 @@ namespace Satisfying.Game
         void DrawHostingAddress()
         {
             PortMapper mapper = Game.Mapper;
-            if (mapper == null) return;
+            ReachabilityProbe probe = Game.Reachability;
+            if (mapper == null && probe == null) return;
 
             GUILayout.BeginVertical(_skin.PanelDim);
 
-            bool open = mapper.State == PortMapper.Result.Mapped;
-            string external = open && !string.IsNullOrEmpty(mapper.ExternalAddress)
-                ? mapper.ExternalAddress + ":" + Game.Port
-                : null;
+            // Two independent sources, and they disagree in the case that matters: a port forwarded by
+            // hand on the router leaves UPnP reporting failure while the door is wide open. The probe
+            // asks the outside world, so it is the one that gets to say whether anyone can get in.
+            bool mapped = mapper != null && mapper.State == PortMapper.Result.Mapped;
+            bool confirmed = probe != null && probe.State == ReachabilityProbe.Verdict.Confirmed;
+            bool looksOpen = probe != null && probe.State == ReachabilityProbe.Verdict.PortPreserved;
+            bool definitelyShut = probe != null && probe.State == ReachabilityProbe.Verdict.PortRemapped;
+
+            // Only proof silences the advice. A preserved port is NOT proof: a NAT with no forward at all
+            // usually preserves the port too, so treating it as open would swap one lie for another.
+            bool proven = confirmed || mapped;
 
             Color previous = GUI.color;
-            GUI.color = open ? UiSkin.Good : (mapper.State == PortMapper.Result.Failed ? UiSkin.Bad : UiSkin.Ink);
-            GUILayout.Label(mapper.Status, _skin.Small);
+            if (mapper != null)
+            {
+                GUI.color = mapped ? UiSkin.Good : (mapper.State == PortMapper.Result.Failed ? UiSkin.Bad : UiSkin.Ink);
+                GUILayout.Label(mapper.Status, _skin.Small);
+            }
+
+            if (probe != null)
+            {
+                GUI.color = confirmed ? UiSkin.Good
+                    : definitelyShut || probe.State == ReachabilityProbe.Verdict.NoAnswer ? UiSkin.Bad
+                    : looksOpen ? UiSkin.Ink : UiSkin.InkDim;
+                GUILayout.Label(probe.Describe(Game.Port), _skin.Small);
+            }
             GUI.color = previous;
+
+            // The address to hand out. STUN knows it even when UPnP failed, which is exactly the case
+            // where the host most needs to be told what to type into the chat window.
+            string external = null;
+            if (probe != null && !string.IsNullOrEmpty(probe.ExternalAddress) && !definitelyShut)
+                external = probe.ExternalAddress + ":" + Game.Port;
+            else if (mapped && !string.IsNullOrEmpty(mapper.ExternalAddress))
+                external = mapper.ExternalAddress + ":" + Game.Port;
 
             if (external != null)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("anyone can join at", _skin.Small, GUILayout.Width(130f));
+                GUILayout.Label(confirmed ? "anyone can join at" : "try giving out", _skin.Small, GUILayout.Width(130f));
                 GUILayout.Label(external, _skin.Value);
                 if (GUILayout.Button("copy", _skin.ButtonSmall, GUILayout.Width(52f)))
                     GUIUtility.systemCopyBuffer = external;
                 GUILayout.EndHorizontal();
             }
-            else if (mapper.State == PortMapper.Result.Failed)
+
+            if (!proven)
             {
                 GUILayout.Label("forward UDP " + Game.Port + " to " + UdpTransport.LocalAddress() +
                                 " on your router, or run a dedicated server - see docs/SERVER.md",
