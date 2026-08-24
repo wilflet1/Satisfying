@@ -80,7 +80,6 @@ namespace Satisfying.Game
             Bindings.CrouchIsToggle = ToggleRow("crouch is a toggle", Bindings.CrouchIsToggle);
             Bindings.ProneIsToggle = ToggleRow("prone is a toggle", Bindings.ProneIsToggle);
             Bindings.LeanIsToggle = ToggleRow("lean is a toggle", Bindings.LeanIsToggle);
-            Bindings.FreeLeanWithMouse = ToggleRow("modifier + lean key + mouse = free lean", Bindings.FreeLeanWithMouse);
 
             GUILayout.Space(8f);
             GUILayout.Label("MOUSE", Skin.Header);

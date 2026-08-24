@@ -21,6 +21,7 @@ namespace Satisfying.Shared
         public float BlindAngle;
         public float Height;
         public float Stamina;
+        public float ArmStamina;
         public Stance Stance;
         public bool Grounded;
         public bool Mantling;

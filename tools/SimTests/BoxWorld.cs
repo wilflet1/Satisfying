@@ -18,6 +18,14 @@ namespace Satisfying.Tests
 
         readonly List<Box> _boxes = new List<Box>();
 
+        // Props, when attached, answer CheckSphere as well. In Unity a dragged crate is a real collider on
+        // the same layer the drag probe queries, so a probe placed over the crate's own footprint reports
+        // "blocked" and the crate can never move - only spin to face you. The harness has to reproduce that
+        // or the drag probe is being tested against a world where the object it is moving does not exist.
+        // Only CheckSphere sees them: that is the one query PropSim makes.
+        WorldModel _propModel;
+        WorldState _propState;
+
         public void AddBox(Vec3 center, Vec3 size)
         {
             Box b;
@@ -104,12 +112,33 @@ namespace Satisfying.Tests
             return false;
         }
 
+        /// <summary>Give the sphere query sight of the live prop bodies, the way Unity's layers do.</summary>
+        public void IncludePropBodies(WorldModel model, WorldState state)
+        {
+            _propModel = model;
+            _propState = state;
+        }
+
         public bool CheckSphere(Vec3 center, float radius)
         {
             for (int i = 0; i < _boxes.Count; i++)
             {
                 Vec3 n; float d;
                 if (SphereVsBox(_boxes[i], center, radius, out n, out d)) return true;
+            }
+
+            if (_propModel != null && _propState != null)
+            {
+                for (int i = 0; i < _propModel.Props.Count; i++)
+                {
+                    Vec3 size = _propModel.Props[i].Size;
+                    Vec3 basePos = _propState.Props[i].Position;   // props sit on their base, not their centre
+                    Box b;
+                    b.Min = new Vec3(basePos.x - size.x * 0.5f, basePos.y, basePos.z - size.z * 0.5f);
+                    b.Max = new Vec3(basePos.x + size.x * 0.5f, basePos.y + size.y, basePos.z + size.z * 0.5f);
+                    Vec3 n; float d;
+                    if (SphereVsBox(b, center, radius, out n, out d)) return true;
+                }
             }
             return false;
         }

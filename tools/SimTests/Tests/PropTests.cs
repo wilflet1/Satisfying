@@ -29,6 +29,7 @@ namespace Satisfying.Tests
             model.AddProp(propPosition, new Vec3(0.9f, 0.9f, 0.9f), mass);
             world = new WorldState();
             world.Reset(model);
+            w.IncludePropBodies(model, world);
         }
 
         public static void Register()
@@ -85,6 +86,51 @@ namespace Satisfying.Tests
                 Assert.Greater(world.Props[0].Position.x, 1f, "the object came along, x=" + world.Props[0].Position.x);
                 Assert.Less(Vec3.Distance(world.Props[0].Position.Flat, s.Position.Flat), t.grabBreakDistance,
                     "and stayed within arm's reach");
+            });
+
+            TestRunner.Add("props/it moves even though it is solid to the drag probe", () =>
+            {
+                // The regression: the probe used to be centred on the object, and the object is a collider
+                // on the layer being probed - so every drag read as blocked and the crate only ever turned
+                // to face the player. The probe has to sit ahead of the leading face.
+                MovementTuning t; BoxWorld w; WorldModel model; WorldState world;
+                Setup(out t, out w, out model, out world, 20f, new Vec3(0f, 0f, 1.6f));
+
+                Assert.True(w.CheckSphere(new Vec3(0f, 0.45f, 1.6f), 0.3f), "the prop really is solid here");
+
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+                InputCommand c = InputCommand.Default(0);
+                c.PressGrab();
+                SimEvents total = new SimEvents();
+                Run(ref s, c, t, w, model, world, 0.2f, ref total);
+                Assert.True(total.GrabbedProp, "grabbed it");
+
+                Vec3 before = world.Props[0].Position;
+                c.MoveY = -1f;                     // back away and haul it along
+                Run(ref s, c, t, w, model, world, 1.5f, ref total);
+
+                float moved = (world.Props[0].Position - before).Magnitude;
+                Assert.Greater(moved, 0.5f, "the crate actually travelled, got " + moved);
+            });
+
+            TestRunner.Add("props/a wall in front of it still stops it dead", () =>
+            {
+                // The other half: pushing the probe ahead must not make the object blind to real geometry.
+                MovementTuning t; BoxWorld w; WorldModel model; WorldState world;
+                Setup(out t, out w, out model, out world, 20f, new Vec3(0f, 0f, 1.6f));
+                w.AddBox(new Vec3(0f, 1.5f, 4.2f), new Vec3(12f, 3f, 0.4f));   // wall beyond the crate
+
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+                InputCommand c = InputCommand.Default(0);
+                c.PressGrab();
+                SimEvents total = new SimEvents();
+                Run(ref s, c, t, w, model, world, 0.2f, ref total);
+                Assert.True(total.GrabbedProp, "grabbed it");
+
+                c.MoveY = 1f;                      // shove it into the wall
+                Run(ref s, c, t, w, model, world, 2.5f, ref total);
+
+                Assert.Less(world.Props[0].Position.z, 4.0f, "it stopped on the wall instead of passing through");
             });
 
             TestRunner.Add("props/heavier is slower, for it and for you", () =>

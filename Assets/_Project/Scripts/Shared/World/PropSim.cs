@@ -72,10 +72,27 @@ namespace Satisfying.Shared
             Vec3 next = Vec3.MoveTowards(position, target, DragSpeed(def.Mass, t) * dt);
 
             // Push it into geometry and it simply stops - the player keeps walking, the grip stretches.
-            float radius = MathK.Max(0.1f, MathK.Max(def.Size.x, def.Size.z) * 0.5f);
-            Vec3 probe = new Vec3(next.x, next.y + def.Size.y * 0.5f, next.z);
-            if (collision == null || !collision.CheckSphere(probe, radius * 0.92f))
-                world.Props[current].Position = next;
+            // The probe has to sit just AHEAD of the leading edge, never over the object's own footprint:
+            // props live on the same collision layer this query uses, so a sphere centred on the object
+            // would always hit the object itself and it would never move - only turn to face you.
+            Vec3 step = next - position;
+            float stepLen = new Vec3(step.x, 0f, step.z).Magnitude;
+            bool blocked = false;
+            if (collision != null && stepLen > 0.0005f)
+            {
+                float invLen = 1f / stepLen;
+                Vec3 dir = new Vec3(step.x * invLen, 0f, step.z * invLen);
+                float radius = MathK.Max(0.12f, MathK.Min(def.Size.x, def.Size.z) * 0.3f);
+                // The probe must clear the prop's OWN body (it sits on the world layer this query uses, so a
+                // sphere that touches it reads as blocked and the object would never move - only turn to face
+                // you) and it must clear the floor. Push it a full radius past the leading face, and hold it a
+                // radius above the base.
+                float ahead = MathK.Max(def.Size.x, def.Size.z) * 0.5f + radius + 0.08f;
+                float probeY = next.y + MathK.Max(def.Size.y * 0.5f, radius + 0.06f);
+                Vec3 probe = new Vec3(next.x + dir.x * ahead, probeY, next.z + dir.z * ahead);
+                blocked = collision.CheckSphere(probe, radius);
+            }
+            if (!blocked) world.Props[current].Position = next;
 
             world.Props[current].Yaw = s.Yaw;
             s.CarryMass = def.Mass;

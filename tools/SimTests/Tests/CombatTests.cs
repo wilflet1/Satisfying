@@ -305,9 +305,43 @@ namespace Satisfying.Tests
                 Vec3 up = DirectionFor(1f);
                 Vec3 down = DirectionFor(-1f);
 
-                Assert.Near(ViewMath.PitchOf(flat), 0f, 1f, "dial at zero fires level");
-                Assert.Near(ViewMath.PitchOf(up), -t.blindFirePitchMax, 1.5f, "dial up elevates the muzzle");
-                Assert.Near(ViewMath.PitchOf(down), -t.blindFirePitchMin, 1.5f, "dial down drops the muzzle");
+                // A neutral dial is not level - the muzzle is held above the eye line, so firing level would
+                // send the round parallel to the crosshair and permanently high. It aims slightly down, to
+                // converge on where you are actually looking.
+                float flatPitch = ViewMath.PitchOf(flat);
+                Assert.Greater(flatPitch, 0.2f, "dial at zero aims down off the raised muzzle");
+                Assert.Less(flatPitch, 5f, "but only just - it is a convergence, not a dive");
+
+                // The dial is an offset from that converged line, not from the horizon.
+                Assert.Near(ViewMath.PitchOf(up), flatPitch - t.blindFirePitchMax, 1.5f, "dial up elevates the muzzle");
+                Assert.Near(ViewMath.PitchOf(down), flatPitch - t.blindFirePitchMin, 1.5f, "dial down drops the muzzle");
+            });
+
+            TestRunner.Add("blindfire/a neutral dial lands where you are looking", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+                InputCommand c = InputCommand.Default(0);
+                c.Buttons |= Buttons.BlindFire;
+                c.BlindAngle = 0f;
+                Sim.Run(ref s, c, t, w, 0.8f);
+
+                Assert.Near(s.BlindFire, 1f, 0.01f, "fully blind firing");
+
+                // Walk the shot out to the convergence distance and see how far it is off the crosshair line.
+                Vec3 eye = s.EyePosition(t);
+                Vec3 muzzle = eye + Vec3.Up * (t.blindFireRaise * s.BlindFire);
+                Vec3 dir = s.WeaponDirection(t);
+                Vec3 aimPoint = eye + s.LookDirection() * t.blindFireConvergeDist;
+
+                float travel = (aimPoint - muzzle).Magnitude;
+                Vec3 hit = muzzle + dir * travel;
+                Assert.Less((hit - aimPoint).Magnitude, 0.05f, "the round converges on the crosshair");
+
+                // And without the correction it would have been high by the whole muzzle raise.
+                Vec3 uncorrected = muzzle + s.LookDirection() * travel;
+                Assert.Greater((uncorrected - aimPoint).Magnitude, t.blindFireRaise * 0.9f, "which is the bug this fixes");
             });
 
             TestRunner.Add("blindfire/leaning swings the shot around the corner", () =>

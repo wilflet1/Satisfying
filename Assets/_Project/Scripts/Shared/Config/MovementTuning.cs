@@ -150,9 +150,6 @@ namespace Satisfying.Shared
         [Tune("Lean", 0.05f, 1f, Tip = "Lean speed multiplier while the slow-lean modifier is held.")]
         public float slowLeanSpeedMul = 0.28f;
 
-        [Tune("Lean", 0.001f, 0.06f, Tip = "Mouse travel to lean amount while free-leaning (analog).")]
-        public float freeLeanMouseScale = 0.011f;
-
         [Tune("Lean", 0f, 1.5f, Tip = "Lean multiplier while aiming down sights.")]
         public float adsLeanMul = 0.9f;
 
@@ -304,10 +301,13 @@ namespace Satisfying.Shared
         public float blindFireBlendTime = 0.18f;
 
         [Tune("Blind fire", 1f, 20f, Tip = "Spread multiplier while blind firing - you cannot see what you are shooting at.")]
-        public float blindFireSpreadMul = 7f;
+        public float blindFireSpreadMul = 2f;
 
         [Tune("Blind fire", 0f, 1.2f, Tip = "How far the muzzle is lifted above the eye line so you clear the cover.")]
         public float blindFireRaise = 0.42f;
+
+        [Tune("Blind fire", 2f, 80f, Tip = "Distance the raised muzzle is aimed to converge on your crosshair line, so a neutral dial hits where you look.")]
+        public float blindFireConvergeDist = 24f;
 
         [Tune("Blind fire", -90f, 0f, Tip = "Lowest weapon elevation on the blind fire dial.")]
         public float blindFirePitchMin = -25f;

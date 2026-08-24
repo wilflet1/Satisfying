@@ -149,13 +149,41 @@ namespace Satisfying.Shared
         static void StepLean(ref PlayerSimState s, InputCommand cmd, MovementTuning t, ICollisionWorld world,
                              float dt, bool sprinting)
         {
-            float target = sprinting ? 0f : MathK.Clamp(cmd.LeanAxis, -1f, 1f);
+            float axis = sprinting ? 0f : MathK.Clamp(cmd.LeanAxis, -1f, 1f);
+            bool slow = cmd.Has(Buttons.SlowLean) && !sprinting;
+            bool leanKey = MathK.Abs(axis) > 0.01f;
+
+            // Slow lean is a "dial and latch" peek: it travels to the full extent, just slowly, and it holds
+            // wherever it is - not only when you release the lean keys, but after you release the slow-lean
+            // modifier too. A normal (non-slow) lean press takes manual control again and clears the latch,
+            // so an ordinary tap-and-release still recentres.
+            float target;
+            if (sprinting)
+            {
+                s.LeanLatched = false;
+                target = 0f;
+            }
+            else if (slow)
+            {
+                target = leanKey ? axis : s.Lean;      // dial toward the key, hold when none is pressed
+                if (leanKey || MathK.Abs(s.Lean) > 0.01f) s.LeanLatched = true;
+            }
+            else if (leanKey)
+            {
+                s.LeanLatched = false;                 // manual lean overrides and drops the latch
+                target = axis;
+            }
+            else
+            {
+                target = s.LeanLatched ? s.Lean : 0f;  // latched: hold; otherwise spring back to centre
+            }
 
             bool returning = MathK.Abs(target) < MathK.Abs(s.Lean) || (target * s.Lean) < 0f;
             float rate = returning ? t.leanReturnSpeed : t.leanSpeed;
-            if (cmd.Has(Buttons.SlowLean)) rate *= t.slowLeanSpeedMul;
+            if (slow) rate *= t.slowLeanSpeedMul;
 
             float next = MathK.MoveTowards(s.Lean, target, rate * dt);
+            if (MathK.Abs(next) < 0.001f && !slow && !leanKey) s.LeanLatched = false;
 
             // Leaning into a wall gets crushed back instead of putting your head through concrete.
             if (t.leanWallPushback > 0f && MathK.Abs(next) > 0.01f)
@@ -195,7 +223,7 @@ namespace Satisfying.Shared
         /// </summary>
         static void StepBlindFire(ref PlayerSimState s, InputCommand cmd, MovementTuning t, float dt, bool sprinting)
         {
-            bool wants = cmd.Has(Buttons.BlindFire) && !sprinting && !s.Mantling && s.Stamina > 0f;
+            bool wants = cmd.Has(Buttons.BlindFire) && !sprinting && !s.Mantling && s.ArmStamina > 0f;
             float rate = dt / MathK.Max(0.02f, t.blindFireBlendTime);
             s.BlindFire = MathK.MoveTowards(s.BlindFire, wants ? 1f : 0f, rate);
             s.BlindAngle = MathK.MoveTowards(s.BlindAngle, MathK.Clamp(cmd.BlindAngle, -1f, 1f), rate * 2f);
@@ -229,12 +257,12 @@ namespace Satisfying.Shared
 
             if (!fresh) return;
             if (s.MeleeCooldown > 0f || s.Mantling || s.Sliding) return;
-            if (s.Stamina < t.meleeStaminaCost) return;
+            if (s.ArmStamina < t.meleeStaminaCost) return;
 
             s.MeleeTimer = 1e-5f;
             s.Ads = 0f;
             s.BlindFire = 0f;
-            SpendStamina(ref s, t, t.meleeStaminaCost);
+            SpendArmStamina(ref s, t, t.meleeStaminaCost);
             ev.MeleeSwing = true;
         }
 
@@ -739,23 +767,30 @@ namespace Satisfying.Shared
         }
 
         // ------------------------------------------------------------------ stamina
+        /// <summary>Leg-pool spend: sprint, jump, slide, side step, mantle, vault.</summary>
         static void SpendStamina(ref PlayerSimState s, MovementTuning t, float amount)
         {
             s.Stamina = MathK.Max(0f, s.Stamina - amount);
             s.StaminaDelayTimer = t.staminaRegenDelay;
         }
 
+        /// <summary>Arm-pool spend: melee (aim and blind fire drain continuously in StepStamina).</summary>
+        static void SpendArmStamina(ref PlayerSimState s, MovementTuning t, float amount)
+        {
+            s.ArmStamina = MathK.Max(0f, s.ArmStamina - amount);
+            s.ArmStaminaDelay = t.staminaRegenDelay;
+        }
+
         static void StepStamina(ref PlayerSimState s, InputCommand cmd, MovementTuning t, float dt, bool sprinting, float leanAmount)
         {
-            float drain = 0f;
-            if (sprinting) drain += t.sprintStaminaDrain;
-            if (leanAmount > 0.05f) drain += t.leanStaminaDrain * leanAmount;
-            if (s.Ads > 0.5f) drain += t.adsStaminaDrain;
-            if (s.BlindFire > 0.05f) drain += t.blindFireStaminaDrain * s.BlindFire;
+            // Legs: locomotion effort. Aim NEVER touches this pool.
+            float legDrain = 0f;
+            if (sprinting) legDrain += t.sprintStaminaDrain;
+            if (leanAmount > 0.05f) legDrain += t.leanStaminaDrain * leanAmount;
 
-            if (drain > 0f)
+            if (legDrain > 0f)
             {
-                s.Stamina = MathK.Max(0f, s.Stamina - drain * dt);
+                s.Stamina = MathK.Max(0f, s.Stamina - legDrain * dt);
                 s.StaminaDelayTimer = t.staminaRegenDelay;
             }
             else
@@ -765,7 +800,25 @@ namespace Satisfying.Shared
                     s.Stamina = MathK.Min(t.staminaMax, s.Stamina + t.staminaRegen * dt);
             }
 
-            // Hysteresis so you cannot machine-gun the sprint key at the exhaustion boundary.
+            // Arms: holding the weapon up. Sprinting drops the gun, so it does not drain here.
+            float armDrain = 0f;
+            if (s.Ads > 0.5f) armDrain += t.adsStaminaDrain;
+            if (s.BlindFire > 0.05f) armDrain += t.blindFireStaminaDrain * s.BlindFire;
+
+            if (armDrain > 0f)
+            {
+                s.ArmStamina = MathK.Max(0f, s.ArmStamina - armDrain * dt);
+                s.ArmStaminaDelay = t.staminaRegenDelay;
+            }
+            else
+            {
+                s.ArmStaminaDelay = MathK.Max(0f, s.ArmStaminaDelay - dt);
+                if (s.ArmStaminaDelay <= 0f)
+                    s.ArmStamina = MathK.Min(t.staminaMax, s.ArmStamina + t.staminaRegen * dt);
+            }
+
+            // Hysteresis so you cannot machine-gun the sprint key at the exhaustion boundary. Exhaustion
+            // tracks the legs - it gates sprint and slows you down.
             float low = t.staminaMax * t.exhaustionThreshold;
             float high = t.staminaMax * MathK.Min(0.95f, t.exhaustionThreshold + 0.15f);
             if (!s.Exhausted && s.Stamina <= low) s.Exhausted = true;
@@ -850,7 +903,8 @@ namespace Satisfying.Shared
             float adsSpread = w.spreadAdsMul;
             if (sight != null) adsSpread *= MathK.Max(0.05f, sight.spreadMul);
             spread *= MathK.Lerp(1f, adsSpread, s.Ads);
-            if (s.Exhausted) spread *= 1.35f;
+            // Tired ARMS shake the sights, not tired legs.
+            if (s.ArmStamina <= t.staminaMax * t.exhaustionThreshold) spread *= 1.35f;
             if (!s.Grounded) spread *= 2.2f;
             if (s.BlindFire > 0.01f) spread *= MathK.Lerp(1f, MathK.Max(1f, t.blindFireSpreadMul), s.BlindFire);
             return MathK.Max(0f, spread);

@@ -314,7 +314,7 @@ namespace Satisfying.Game
 
             _skin.Text(new Rect(sx + 92f, sy + 2f, 60f, 16f), "LEAN", _skin.SmallDim, UiSkin.InkDim);
             _skin.SignedBar(new Rect(sx + 130f, sy + 6f, 90f, 8f), state.Lean,
-                Game.Input.FreeLeaning ? UiSkin.Accent : new Color(0.75f, 0.78f, 0.85f), new Color(0f, 0f, 0f, 0.55f));
+                new Color(0.75f, 0.78f, 0.85f), new Color(0f, 0f, 0f, 0.55f));
 
             float dial = Mathf.Lerp(move.speedDialMin, 1f, Game.Input.SpeedDial);
             _skin.Text(new Rect(sx, sy + 22f, 120f, 16f), "SPEED " + Mathf.RoundToInt(dial * 100f) + "%", _skin.SmallDim, UiSkin.InkDim);
@@ -541,6 +541,7 @@ namespace Satisfying.Game
             GUILayout.BeginArea(area, _skin.Panel);
             GUILayout.Label("SATISFYING", _skin.Title);
             GUILayout.Label("a 1v1 movement duel - lean, slow lean, prone lean, side step, blind fire", _centreDim);
+            GUILayout.Label("build 2026-08-24 #3  -  slow-lean latch, grab drag fix, blindfire, tracer, no mouse-lean", _skin.SmallDim);
             GUILayout.Space(10f);
 
             _menuScroll = GUILayout.BeginScrollView(_menuScroll);

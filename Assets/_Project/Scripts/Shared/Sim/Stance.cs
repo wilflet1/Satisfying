@@ -17,8 +17,10 @@ namespace Satisfying.Shared
         Ads = 1 << 2,
         Fire = 1 << 3,
         Reload = 1 << 4,
-        SlowLean = 1 << 5,      // modifier: lean eases in at a fraction of the normal rate
-        FreeLean = 1 << 6,      // modifier held: mouse X drives an analog lean instead of turning
+        SlowLean = 1 << 5,      // modifier: lean eases in at a fraction of the normal rate, and latches
+        // Retired: mouse X used to drive an analog lean, which fought the player for control of the view.
+        // The slow-lean latch replaced it. The bit stays reserved so an old client cannot repurpose it.
+        FreeLean = 1 << 6,
         StepLeft = 1 << 7,
         StepRight = 1 << 8,
         Mantle = 1 << 9,

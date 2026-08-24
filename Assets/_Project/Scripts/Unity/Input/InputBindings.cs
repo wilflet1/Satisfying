@@ -81,7 +81,6 @@ namespace Satisfying.Game
         public bool CrouchIsToggle = true;
         public bool ProneIsToggle = true;
         public bool LeanIsToggle = false;
-        public bool FreeLeanWithMouse = true;
 
         public InputBindings()
         {
@@ -134,7 +133,6 @@ namespace Satisfying.Game
             CrouchIsToggle = true;
             ProneIsToggle = true;
             LeanIsToggle = false;
-            FreeLeanWithMouse = true;
         }
 
         void Set(GameAction action, KeyCode key, KeyCode modifier = KeyCode.None)
@@ -261,8 +259,7 @@ namespace Satisfying.Game
                 sb.Append((int)Bindings[i].Key).Append(',').Append((int)Bindings[i].Modifier).Append(';');
             sb.Append(CrouchIsToggle ? 1 : 0).Append(',');
             sb.Append(ProneIsToggle ? 1 : 0).Append(',');
-            sb.Append(LeanIsToggle ? 1 : 0).Append(',');
-            sb.Append(FreeLeanWithMouse ? 1 : 0);
+            sb.Append(LeanIsToggle ? 1 : 0);
 
             PlayerPrefs.SetString(PrefsKey, sb.ToString());
             PlayerPrefs.Save();
@@ -289,12 +286,11 @@ namespace Satisfying.Game
                 if (parts.Length > Bindings.Length)
                 {
                     string[] flags = parts[parts.Length - 1].Split(',');
-                    if (flags.Length >= 4)
+                    if (flags.Length >= 3)
                     {
                         CrouchIsToggle = flags[0] == "1";
                         ProneIsToggle = flags[1] == "1";
                         LeanIsToggle = flags[2] == "1";
-                        FreeLeanWithMouse = flags[3] == "1";
                     }
                 }
             }

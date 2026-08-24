@@ -30,18 +30,21 @@ namespace Satisfying.Shared
         public Stance Stance;
         public float Height;            // current (animating) capsule height
         public float Lean;              // -1..1 signed lean amount
+        public bool LeanLatched;        // slow lean holds its value after the modifier is released
         public float SideStep;          // -1..1 signed lateral step offset
         public float SideStepCooldown;
         public float Ads;               // 0..1 aim blend
         public float BlindFire;         // 0..1 blend of holding the weapon over cover
         public float BlindAngle;        // -1..1 elevation dial while blind firing
-        public float Stamina;
+        public float Stamina;           // LEGS: sprint, jump, slide, side step, lean, mantle, vault
+        public float ArmStamina;        // ARMS: aim, blind fire, melee - never touched by leg work
 
         public bool Grounded;
         public float CoyoteTimer;
         public float JumpBufferTimer;
         public float JumpCooldownTimer;
         public float StaminaDelayTimer;
+        public float ArmStaminaDelay;
         public bool Exhausted;
         public float TimeSinceLanded;
 
@@ -87,6 +90,7 @@ namespace Satisfying.Shared
             s.Height = t.standHeight;
             s.Stance = Stance.Stand;
             s.Stamina = t.staminaMax;
+            s.ArmStamina = t.staminaMax;
             s.Grounded = true;
             s.Weapon.Ammo = (short)w.MagSizeInt;
             return s;
@@ -132,14 +136,25 @@ namespace Satisfying.Shared
         {
             if (BlindFire <= 0.001f) return LookDirection();
 
+            // The muzzle is raised over cover, so a shot fired straight along the look angle would run on
+            // a line parallel to - and above - your crosshair. Instead aim the raised muzzle at a point on
+            // the crosshair line, so a neutral dial actually lands where you are looking.
+            Vec3 eye = EyePosition(t);
+            Vec3 origin = eye + Vec3.Up * (t.blindFireRaise * BlindFire);
+            Vec3 target = eye + LookDirection() * MathK.Max(1f, t.blindFireConvergeDist);
+            Vec3 baseDir = (target - origin).Normalized;
+
+            float baseYaw = ViewMath.YawOf(baseDir);
+            float basePitch = ViewMath.PitchOf(baseDir);
+
             float dial = MathK.Clamp(BlindAngle, -1f, 1f);
             float pitchOffset = dial >= 0f
                 ? dial * t.blindFirePitchMax
                 : -dial * t.blindFirePitchMin;
             float yawOffset = EffectiveLean(t) * t.blindFireYaw;
 
-            float pitch = MathK.Clamp(Pitch - pitchOffset * BlindFire, -89f, 89f);
-            float yaw = Yaw + yawOffset * BlindFire;
+            float pitch = MathK.Clamp(basePitch - pitchOffset * BlindFire, -89f, 89f);
+            float yaw = baseYaw + yawOffset * BlindFire;
             return ViewMath.Forward(yaw, pitch);
         }
 

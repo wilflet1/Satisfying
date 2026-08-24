@@ -77,7 +77,8 @@ namespace Satisfying.Tests
                 }
 
                 Assert.Less(strikes, 3f, "cooldown limits the rate, got " + strikes);
-                Assert.Less(s.Stamina, t.staminaMax, "swings cost stamina");
+                Assert.Less(s.ArmStamina, t.staminaMax, "swings cost arm stamina");
+                Assert.Near(s.Stamina, t.staminaMax, 0.001f, "swinging never taxes the legs");
             });
 
             TestRunner.Add("world/a ray finds the nearest intact pane and ignores broken ones", () =>

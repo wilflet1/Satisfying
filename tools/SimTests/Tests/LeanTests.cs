@@ -42,6 +42,71 @@ namespace Satisfying.Tests
                 Assert.Greater(slow, 0f, "slow lean still moves");
             });
 
+            TestRunner.Add("lean/slow lean latches where you leave it", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+
+                // Dial out slowly, then let go of everything. It must stay put: this is a peek you hold,
+                // not a spring you fight.
+                InputCommand dial = InputCommand.Default(0);
+                dial.LeanAxis = 1f;
+                dial.Buttons |= Buttons.SlowLean;
+                Sim.Run(ref s, dial, t, w, 0.5f);
+
+                float held = s.Lean;
+                Assert.Greater(held, 0.05f, "the slow dial moved");
+                Assert.Less(held, 0.99f, "and has not run to the stop yet");
+                Assert.True(s.LeanLatched, "it latched");
+
+                Sim.Run(ref s, InputCommand.Default(0), t, w, 1.5f);
+                Assert.Near(s.Lean, held, 0.02f, "released, it holds instead of recentring");
+            });
+
+            TestRunner.Add("lean/a normal lean takes control back from the latch", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+
+                InputCommand dial = InputCommand.Default(0);
+                dial.LeanAxis = 1f;
+                dial.Buttons |= Buttons.SlowLean;
+                Sim.Run(ref s, dial, t, w, 0.5f);
+                Assert.True(s.LeanLatched, "latched first");
+
+                // Tap the lean key without the modifier and release: an ordinary lean must still recentre.
+                InputCommand normal = InputCommand.Default(0);
+                normal.LeanAxis = 1f;
+                Sim.Run(ref s, normal, t, w, 0.15f);
+                Assert.False(s.LeanLatched, "the manual press dropped the latch");
+
+                Sim.Run(ref s, InputCommand.Default(0), t, w, 1.5f);
+                Assert.Near(s.Lean, 0f, 0.02f, "so it springs back to centre");
+            });
+
+            TestRunner.Add("lean/sprinting drops a latched lean", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+
+                InputCommand dial = InputCommand.Default(0);
+                dial.LeanAxis = 1f;
+                dial.Buttons |= Buttons.SlowLean;
+                Sim.Run(ref s, dial, t, w, 0.5f);
+                Assert.True(s.LeanLatched, "latched first");
+
+                InputCommand sprint = InputCommand.Default(0);
+                sprint.MoveY = 1f;
+                sprint.Buttons |= Buttons.Sprint;
+                Sim.Run(ref s, sprint, t, w, 1f);
+
+                Assert.False(s.LeanLatched, "you cannot sprint with a latched peek");
+                Assert.Near(s.Lean, 0f, 0.02f, "and it recentres");
+            });
+
             TestRunner.Add("lean/analog axis holds a partial lean", () =>
             {
                 MovementTuning t = Sim.Tuning();

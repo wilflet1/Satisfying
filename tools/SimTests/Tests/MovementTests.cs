@@ -135,6 +135,57 @@ namespace Satisfying.Tests
                 Assert.Less(s.Velocity.Flat.Magnitude, t.walkSpeed + 0.1f, "no sprint while winded");
             });
 
+            TestRunner.Add("stamina/aiming tires the arms, never the legs", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+
+                InputCommand c = InputCommand.Default(0);
+                c.Buttons |= Buttons.Ads;
+                Sim.Run(ref s, c, t, w, 3f);
+
+                Assert.Less(s.ArmStamina, t.staminaMax, "holding the sights up costs the arms");
+                Assert.Near(s.Stamina, t.staminaMax, 0.001f, "but standing still costs the legs nothing");
+                Assert.False(s.Exhausted, "and tired arms never gate your sprint");
+            });
+
+            TestRunner.Add("stamina/sprinting tires the legs, never the arms", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                BoxWorld w = BoxWorld.FlatGround();
+                PlayerSimState s = Sim.Fresh(t, Vec3.Zero);
+
+                InputCommand c = InputCommand.Default(0);
+                c.MoveY = 1f;
+                c.Buttons |= Buttons.Sprint;
+                Sim.Run(ref s, c, t, w, 3f);
+
+                Assert.Less(s.Stamina, t.staminaMax, "running costs the legs");
+                // The gun is down while you sprint, so the arms are resting - they must be full, not draining.
+                Assert.Near(s.ArmStamina, t.staminaMax, 0.001f, "the arms rest while the gun is down");
+            });
+
+            TestRunner.Add("stamina/spread grows on tired arms, not tired legs", () =>
+            {
+                MovementTuning t = Sim.Tuning();
+                WeaponTuning gun = Sim.Weapon();
+                PlayerSimState legs = Sim.Fresh(t, Vec3.Zero);
+                PlayerSimState arms = Sim.Fresh(t, Vec3.Zero);
+                float rested = MovementCore.CurrentSpread(legs, t, gun, null);
+
+                // Legs empty, arms fresh: you are winded, but the sights are still steady.
+                legs.Stamina = 0f;
+                legs.Exhausted = true;
+                Assert.Near(MovementCore.CurrentSpread(legs, t, gun, null), rested, 0.0001f,
+                    "winded legs do not shake the sights");
+
+                // Arms empty, legs fresh: the gun wanders.
+                arms.ArmStamina = 0f;
+                Assert.Greater(MovementCore.CurrentSpread(arms, t, gun, null), rested * 1.2f,
+                    "tired arms do");
+            });
+
             TestRunner.Add("movement/jump apex matches tuned height", () =>
             {
                 MovementTuning t = Sim.Tuning();

@@ -33,7 +33,6 @@ namespace Satisfying.Game
         public float BlindAngle { get { return _blindAngle; } }
         public bool BlindFiring { get { return _blindFiring; } }
         public Stance StanceRequest { get { return _stance; } }
-        public bool FreeLeaning { get { return _freeLeaning; } }
         public float LeanTarget { get { return _leanTarget; } }
 
         float _yaw;
@@ -44,8 +43,6 @@ namespace Satisfying.Game
         float _blindAngle;
         bool _blindFiring;
         float _leanTarget;
-        float _analogLean;
-        bool _freeLeaning;
         bool _leanToggleLeft;
         bool _leanToggleRight;
         Stance _stance = Stance.Stand;
@@ -70,7 +67,6 @@ namespace Satisfying.Game
             _recoilPitch = 0f;
             _recoilYaw = 0f;
             _leanTarget = 0f;
-            _analogLean = 0f;
             _blindAngle = 0f;
             _leanToggleLeft = false;
             _leanToggleRight = false;
@@ -88,7 +84,6 @@ namespace Satisfying.Game
             if (!Enabled)
             {
                 _leanTarget = 0f;
-                _freeLeaning = false;
                 _blindFiring = false;
                 return;
             }
@@ -112,8 +107,8 @@ namespace Satisfying.Game
                 _pitch = Mathf.Clamp(_pitch + rawY, -move.pitchLimit, move.pitchLimit);
             }
 
-            PollLean(rawX, move);
-            if (!_freeLeaning) _yaw += rawX;
+            PollLean();
+            _yaw += rawX;
             _yaw = Mathf.Repeat(_yaw + 180f, 360f) - 180f;
 
             PollStance();
@@ -129,7 +124,7 @@ namespace Satisfying.Game
             if (Bindings.Pressed(GameAction.StepRight)) _latchStepRight = true;
         }
 
-        void PollLean(float mouseX, MovementTuning move)
+        void PollLean()
         {
             bool modifier = Bindings.Held(GameAction.LeanModifier);
             bool leftHeld = Bindings.Held(GameAction.LeanLeft) || (modifier && Input.GetKey(Bindings[GameAction.LeanLeft].Key));
@@ -149,27 +144,6 @@ namespace Satisfying.Game
                 }
                 leftHeld = _leanToggleLeft;
                 rightHeld = _leanToggleRight;
-            }
-
-            // Hold the modifier plus a lean key and the mouse drives the lean instead of the view:
-            // that is the fine-grained "slice the pie" peek.
-            bool wantsFreeLean = Bindings.FreeLeanWithMouse && modifier && (leftHeld || rightHeld);
-            if (wantsFreeLean && !_freeLeaning)
-            {
-                _analogLean = (rightHeld ? 1f : 0f) - (leftHeld ? 1f : 0f);
-                _analogLean *= 0.35f;   // start shallow, mouse takes it the rest of the way
-            }
-            _freeLeaning = wantsFreeLean;
-
-            if (_freeLeaning)
-            {
-                float direction = rightHeld && !leftHeld ? 1f : (leftHeld && !rightHeld ? -1f : 0f);
-                _analogLean += mouseX * move.freeLeanMouseScale;
-                _analogLean = Mathf.Clamp(_analogLean, -1f, 1f);
-                if (direction > 0f) _analogLean = Mathf.Clamp(_analogLean, 0f, 1f);
-                else if (direction < 0f) _analogLean = Mathf.Clamp(_analogLean, -1f, 0f);
-                _leanTarget = _analogLean;
-                return;
             }
 
             float target = 0f;
@@ -305,7 +279,6 @@ namespace Satisfying.Game
             c.MeleeSeq = _meleeSeq;
             c.GrabSeq = _grabSeq;
             if (Bindings.Held(GameAction.LeanModifier)) buttons |= Buttons.SlowLean;
-            if (_freeLeaning) buttons |= Buttons.FreeLean;
             if (Bindings.Held(GameAction.StepLeft) || _latchStepLeft) buttons |= Buttons.StepLeft;
             if (Bindings.Held(GameAction.StepRight) || _latchStepRight) buttons |= Buttons.StepRight;
             c.Buttons = buttons;

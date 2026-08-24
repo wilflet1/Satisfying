@@ -17,6 +17,22 @@ namespace Satisfying.Game
         public WeaponModel Weapon;
         public Transform MuzzleTip { get { return Weapon != null ? Weapon.Muzzle : null; } }
 
+        /// <summary>
+        /// World position of the barrel tip, re-projected so a tracer started here lines up with where the
+        /// gun actually appears on screen. The viewmodel is drawn by its own camera at a different FOV, so
+        /// the muzzle's raw world position does not fall on the same pixel under the world camera - starting
+        /// a tracer there makes it visibly miss the barrel. Round-trip through screen space to correct it.
+        /// </summary>
+        public Vector3 MuzzleWorldPoint(Vector3 fallbackEye, Vector3 aim)
+        {
+            if (Weapon == null || Weapon.Muzzle == null || WeaponCamera == null || Camera == null)
+                return fallbackEye + aim * 0.4f;
+
+            Vector3 sp = WeaponCamera.WorldToScreenPoint(Weapon.Muzzle.position);
+            if (sp.z <= 0.02f) return fallbackEye + aim * 0.4f;   // behind the camera: fall back
+            return Camera.ScreenToWorldPoint(new Vector3(sp.x, sp.y, sp.z));
+        }
+
         readonly FeelTuning _feel;
         readonly Palette _palette;
         readonly int _layer;

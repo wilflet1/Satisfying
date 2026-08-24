@@ -358,6 +358,8 @@ namespace UnityEngine
         public CameraClearFlags clearFlags { get; set; }
         public Color backgroundColor { get; set; }
         public static Camera main { get { return null; } }
+        public Vector3 WorldToScreenPoint(Vector3 position) { return Vector3.zero; }
+        public Vector3 ScreenToWorldPoint(Vector3 position) { return Vector3.zero; }
     }
 
     public class Light : Behaviour
