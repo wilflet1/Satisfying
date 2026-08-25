@@ -25,7 +25,7 @@ namespace Satisfying.Game
             for (int i = 0; i < parts.Length && i < Input.Sights.Length; i++)
             {
                 int value;
-                if (int.TryParse(parts[i], out value)) Input.Sights[i] = (byte)Mathf.Clamp(value, 0, 2);
+                if (int.TryParse(parts[i], out value)) Input.Sights[i] = (byte)Mathf.Clamp(value, 0, 3);
             }
         }
 
@@ -56,7 +56,7 @@ namespace Satisfying.Game
                     held ? Skin.Value : Skin.Label);
 
                 GUILayout.BeginHorizontal();
-                for (int sight = 0; sight < 3; sight++)
+                for (int sight = 0; sight < 4; sight++)
                 {
                     SightTuning s = tuning.Sight(sight);
                     bool active = Input.Sights[weapon] == sight;
@@ -70,13 +70,18 @@ namespace Satisfying.Game
 
                 SightTuning fitted = tuning.Sight(Input.Sights[weapon]);
                 float adsMs = w.adsTime * fitted.adsTimeMul * 1000f;
-                GUILayout.Label(string.Format("   aim in {0:0} ms    aimed spread x{1:0.00}    zoom x{2:0.00}",
-                    adsMs, w.spreadAdsMul * fitted.spreadMul, 1f / Mathf.Max(0.01f, fitted.zoomMul)), Skin.SmallDim);
+                string zoom = fitted.IsScope
+                    ? string.Format("{0:0.#}-{1:0.#}x", fitted.magnification, fitted.magnificationMax)
+                    : string.Format("x{0:0.00}", 1f / Mathf.Max(0.01f, fitted.zoomMul));
+                GUILayout.Label(string.Format("   aim in {0:0} ms    aimed spread x{1:0.00}    zoom {2}",
+                    adsMs, w.spreadAdsMul * fitted.spreadMul, zoom), Skin.SmallDim);
             }
 
             GUILayout.Space(10f);
             GUILayout.Label("Iron sights are a notch and a post: line the post up in the gap. " +
-                            "The red dot and the holo put a reticle on the glass instead.", Skin.SmallDim);
+                            "The red dot and the holo put a reticle on the glass instead. The scope has a " +
+                            "picture of its own - the wheel turns the power ring while you are behind it.",
+                            Skin.SmallDim);
 
             GUILayout.EndScrollView();
             GUILayout.EndArea();

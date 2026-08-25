@@ -259,11 +259,189 @@ namespace Satisfying.Game
                                                              Vector3.up);
         }
 
+        /// <summary>
+        /// The bolt gun and the picture through its glass, at both ends of the power ring. The scope
+        /// is a second camera rendering into a texture, so this is the real thing and not a mock-up.
+        /// </summary>
+        [MenuItem("Satisfying/Shots/Scope", priority = 64)]
+        public static void Scope()
+        {
+            Prepare();
+            Palette palette = Palette.Build();
+            MovementTuning move = new MovementTuning();
+            FeelTuning feel = new FeelTuning();
+            WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
+            SightTuning[] sights = SightTuning.Defaults();
+
+            GameObject stage = Stage(palette, true);
+            Camera cam = ShotCamera();
+
+            // The rifle in someone's hands, so the model can be judged as a silhouette.
+            PlayerNetState ads = Base(move, Stance.Stand);
+            ads.Ads = 1f;
+            ads.WeaponIndex = 3;
+            ads.SightIndex = (byte)SightKind.Scope;
+            ads.Ammo = 5;
+            Sheet(cam, palette, move, weapons[3], ads, 1, "sniper",
+                new Shot[]
+                {
+                    new Shot("side", "body", 0f, 90f),
+                    new Shot("front", "body", 0f, 0f),
+                    new Shot("hands", "hands", 0.5f, 50f, 12f)
+                });
+
+            PlayerNetState hip = Base(move, Stance.Stand);
+            hip.WeaponIndex = 3;
+            hip.SightIndex = (byte)SightKind.Scope;
+            hip.Ammo = 5;
+            Sheet(cam, palette, move, weapons[3], hip, 1, "sniper-hip",
+                new Shot[] { new Shot("side", "body", 0f, 90f) });
+
+            // Something worth a scope: a man at sixty metres, dead ahead, plus posts further out.
+            // A duellist is the honest test - if the centre dot does not land on him the optic is
+            // pointing somewhere the rifle is not, and a coloured post would hide that.
+            GameObject far = new GameObject("distant duellist");
+            RemotePlayerView farView = new RemotePlayerView(far.transform, 2, palette, move,
+                                                            GameBootstrap.LayerPlayer);
+            PlayerNetState standing = Base(move, Stance.Stand);
+            standing.Position = new Vec3(0f, 0f, 60f);
+            standing.Yaw = 180f;
+            float farStep;
+            farView.Render(in standing, 1f / 64f, weapons[0], out farStep);
+
+            Target(palette, new Vector3(3.5f, 0f, 120f));
+            Target(palette, new Vector3(-6f, 0f, 220f));
+
+            GameObject rig = new GameObject("first person");
+            PlayerView player = new PlayerView(rig.transform, feel, palette, GameBootstrap.LayerViewmodel);
+
+            PlayerSimState state = SimBase(move, Stance.Stand);
+            state.Weapon.Index = 3;
+            state.Weapon.Sight = (byte)SightKind.Scope;
+            state.Weapon.Ammo = 5;
+            state.Ads = 1f;
+
+            SightTuning scope = sights[(int)SightKind.Scope];
+            float[] powers = { 3.5f, 6f, 12f, 18f };
+            for (int i = 0; i < powers.Length; i++)
+            {
+                player.Magnification = powers[i];
+                Settle(player, in state, move, weapons[3], scope, 0f);
+                CaptureScope(player, "scope-" + powers[i].ToString("0.0").Replace(".", "-") + "x");
+            }
+
+            // And what it looks like on the way up, which is when the eyebox is still finding you.
+            state.Ads = 0.8f;
+            player.Magnification = 6f;
+            Settle(player, in state, move, weapons[3], scope, 0f);
+            CaptureScope(player, "scope-coming-up");
+
+            Object.DestroyImmediate(rig);
+            Object.DestroyImmediate(far);
+            Object.DestroyImmediate(stage);
+            Debug.Log("[shots] scope written to " + Path.GetFullPath(_outDir));
+        }
+
+        /// <summary>
+        /// The scope is drawn by the HUD in OnGUI, which a headless render does not run - so the shot
+        /// sheet composites it the same way GameUI does: world, then viewmodel, then the glass.
+        /// </summary>
+        static void CaptureScope(PlayerView view, string name)
+        {
+            Texture2D frame = Render(view.Camera, view.WeaponCamera);
+
+            ScopeView scope = view.Scope;
+            if (scope != null && scope.Active && scope.Texture != null)
+            {
+                Write(ReadBack(scope.Texture), name + "-raw");
+                Composite(frame, scope);
+            }
+
+            Write(frame, name);
+        }
+
+        static Texture2D ReadBack(RenderTexture source)
+        {
+            RenderTexture previous = RenderTexture.active;
+            RenderTexture.active = source;
+            Texture2D texture = new Texture2D(source.width, source.height, TextureFormat.RGB24, false);
+            texture.ReadPixels(new Rect(0f, 0f, source.width, source.height), 0, 0);
+            texture.Apply();
+            RenderTexture.active = previous;
+            return texture;
+        }
+
+        /// <summary>
+        /// The scope, drawn onto a captured frame in software.
+        ///
+        /// The game draws it in OnGUI, which a headless render never runs - so this is a second
+        /// blitter, and a second blitter is exactly the kind of thing that quietly starts drawing
+        /// something the game does not. It is kept honest by owning none of the decisions: the circle,
+        /// the reticle rect and all three textures come from ScopeView itself. All that lives here is
+        /// "put these pixels over those pixels".
+        /// </summary>
+        static void Composite(Texture2D frame, ScopeView scope)
+        {
+            Texture2D picture = ReadBack(scope.Texture);
+            Rect circle = scope.Circle(Width, Height);
+            Rect reticle = scope.ReticleRect(Width, Height);
+
+            Texture2D surround = scope.Surround;
+            Texture2D shadow = scope.Shadow;
+            Texture2D marks = scope.Reticle;
+
+            for (int y = 0; y < Height; y++)
+            {
+                // GUI space runs down from the top; a texture runs up from the bottom.
+                float guiY = Height - 1 - y;
+                for (int x = 0; x < Width; x++)
+                {
+                    Color result = frame.GetPixel(x, y);
+
+                    if (Inside(circle, x, guiY))
+                    {
+                        float u = (x - circle.x) / circle.width;
+                        float v = 1f - (guiY - circle.y) / circle.height;
+                        result = picture.GetPixelBilinear(u, v);
+                        result = Over(result, shadow.GetPixelBilinear(u, 1f - v));
+                    }
+
+                    if (Inside(reticle, x, guiY))
+                    {
+                        float u = (x - reticle.x) / reticle.width;
+                        float v = 1f - (guiY - reticle.y) / reticle.height;
+                        Color mark = marks.GetPixelBilinear(u, v);
+                        mark.r = 0.05f; mark.g = 0.05f; mark.b = 0.06f;
+                        result = Over(result, mark);
+                    }
+
+                    result = Over(result, surround.GetPixelBilinear(x / (float)Width, 1f - guiY / (float)Height));
+                    frame.SetPixel(x, y, result);
+                }
+            }
+            frame.Apply();
+            Object.DestroyImmediate(picture);
+        }
+
+        static bool Inside(Rect rect, float x, float y)
+        {
+            return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
+        }
+
+        static Color Over(Color under, Color over)
+        {
+            float a = Mathf.Clamp01(over.a);
+            return new Color(Mathf.Lerp(under.r, over.r, a),
+                             Mathf.Lerp(under.g, over.g, a),
+                             Mathf.Lerp(under.b, over.b, a), 1f);
+        }
+
         public static void All()
         {
             Character();
             Sights();
             Hits();
+            Scope();
         }
 
         static void Settle(PlayerView view, in PlayerSimState state, MovementTuning move, WeaponTuning weapon,

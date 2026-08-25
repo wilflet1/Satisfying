@@ -23,8 +23,11 @@ namespace Satisfying.Shared
         [Tune("Weapon", 0.5f, 3f, Tip = "Stomach damage multiplier - under the armour, over the belt.")]
         public float stomachMultiplier = 1.25f;
 
-        [Tune("Weapon", 0.2f, 1.5f, Tip = "Arm, leg and foot damage multiplier.")]
+        [Tune("Weapon", 0.2f, 1.5f, Tip = "Leg and foot damage multiplier.")]
         public float limbMultiplier = 0.78f;
+
+        [Tune("Weapon", 0.2f, 1.5f, Tip = "Arm damage multiplier. Separate from the legs so a rifle can be made to drop someone who takes it in the thigh but not someone who only loses an arm to it.")]
+        public float armMultiplier = 0.78f;
 
         [Tune("Weapon", 1f, 200f, Tip = "Distance where damage starts dropping.")]
         public float falloffStart = 28f;
@@ -126,6 +129,7 @@ namespace Satisfying.Shared
             m4.neckMultiplier = 1.9f;
             m4.stomachMultiplier = 1.25f;
             m4.limbMultiplier = 0.8f;
+            m4.armMultiplier = 0.8f;
             m4.falloffStart = 32f;
             m4.falloffEnd = 100f;
             m4.falloffMinMul = 0.62f;
@@ -154,6 +158,7 @@ namespace Satisfying.Shared
             mp5.neckMultiplier = 1.7f;
             mp5.stomachMultiplier = 1.2f;
             mp5.limbMultiplier = 0.85f;
+            mp5.armMultiplier = 0.85f;
             mp5.falloffStart = 16f;
             mp5.falloffEnd = 48f;
             mp5.falloffMinMul = 0.42f;
@@ -182,6 +187,7 @@ namespace Satisfying.Shared
             usp.neckMultiplier = 1.85f;
             usp.stomachMultiplier = 1.3f;
             usp.limbMultiplier = 0.75f;
+            usp.armMultiplier = 0.75f;
             usp.falloffStart = 18f;
             usp.falloffEnd = 55f;
             usp.falloffMinMul = 0.55f;
@@ -203,7 +209,55 @@ namespace Satisfying.Shared
             usp.adsTime = 0.13f;
             usp.automatic = 0f;
 
-            return new WeaponTuning[] { m4, mp5, usp };
+            // ---- a bolt gun. Hopeless from the hip and exact through the glass, which is the whole
+            // trade: you cannot take a snap shot with it and you do not need a second one.
+            WeaponTuning sniper = new WeaponTuning();
+            sniper.name = "M700";
+            sniper.rpm = 42f;
+            sniper.automatic = 0f;
+
+            // 105 to the chest, and every zone but an arm is at or above 1.0, so anything except an
+            // arm is one round inside the falloff. An arm is 0.9 - about five health left, which is a
+            // man who is alive, knows exactly where you are, and cannot take another one.
+            sniper.damage = 105f;
+            sniper.headMultiplier = 2.2f;
+            sniper.neckMultiplier = 1.6f;
+            sniper.stomachMultiplier = 1.15f;
+            sniper.limbMultiplier = 1.0f;
+            sniper.armMultiplier = 0.9f;
+
+            // Nothing drops off inside 55 m, so "one tap within 50" is a property of the numbers
+            // rather than a hope. SniperTests asserts it.
+            sniper.falloffStart = 55f;
+            sniper.falloffEnd = 220f;
+            sniper.falloffMinMul = 0.62f;
+            sniper.range = 400f;
+
+            // Six and a half degrees from the hip is roughly a barn door at 20 m. Aimed, it is zero:
+            // not "small", zero, because a rifle you have set up on is not a dice roll.
+            sniper.spreadBase = 6.5f;
+            sniper.spreadAdsMul = 0f;
+            sniper.spreadMovePerSpeed = 0.9f;
+            sniper.spreadCrouchMul = 0.9f;
+            sniper.spreadProneMul = 0.8f;
+            sniper.spreadPerShot = 2.4f;
+            sniper.spreadRecovery = 3f;
+
+            sniper.recoilVertical = 4.6f;
+            sniper.recoilHorizontal = 0.7f;
+            sniper.recoilRecoverFraction = 0.55f;
+            sniper.recoilRecoverSpeed = 4f;
+
+            sniper.magSize = 5f;
+            sniper.reloadTime = 3.4f;
+            sniper.adsTime = 0.42f;
+            sniper.concussionTime = 2.8f;
+            sniper.concussionStrength = 1f;
+            sniper.soundCarry = 300f;
+            sniper.supportHandReach = 0.44f;
+            sniper.supportHandRise = 0.05f;
+
+            return new WeaponTuning[] { m4, mp5, usp, sniper };
         }
     }
 

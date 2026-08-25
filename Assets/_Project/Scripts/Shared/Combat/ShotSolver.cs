@@ -37,7 +37,10 @@ namespace Satisfying.Shared
                 case HitZone.Head: return w.headMultiplier;
                 case HitZone.Neck: return w.neckMultiplier;
                 case HitZone.Stomach: return w.stomachMultiplier;
-                case HitZone.Arm:
+                // An arm is its own number. It used to share one with the legs, which is fine until a
+                // weapon exists that is meant to drop someone with a leg hit and not with an arm hit -
+                // and then it is the difference between the rifle working as designed and not.
+                case HitZone.Arm: return w.armMultiplier;
                 case HitZone.Leg:
                 case HitZone.Foot: return w.limbMultiplier;
                 default: return 1f;

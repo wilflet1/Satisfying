@@ -12,7 +12,7 @@ namespace Satisfying.Game
         Fire, Aim, Reload, BlindFire, Melee, Grab,
         LeanLeft, LeanRight, LeanModifier,
         StepLeft, StepRight,
-        Weapon1, Weapon2, Weapon3,
+        Weapon1, Weapon2, Weapon3, Weapon4,
         SpeedUp, SpeedDown,
         Scoreboard, TuningPanel, BindingsPanel, GearPanel, NetGraph, Menu,
         Count
@@ -121,6 +121,7 @@ namespace Satisfying.Game
             Set(GameAction.Weapon1, KeyCode.Alpha1);
             Set(GameAction.Weapon2, KeyCode.Alpha2);
             Set(GameAction.Weapon3, KeyCode.Alpha3);
+            Set(GameAction.Weapon4, KeyCode.Alpha4);
             Set(GameAction.SpeedUp, KeyCode.PageUp);
             Set(GameAction.SpeedDown, KeyCode.PageDown);
             Set(GameAction.Scoreboard, KeyCode.Tab);
@@ -225,6 +226,7 @@ namespace Satisfying.Game
                 case GameAction.Weapon1: return "Weapon 1";
                 case GameAction.Weapon2: return "Weapon 2";
                 case GameAction.Weapon3: return "Weapon 3";
+                case GameAction.Weapon4: return "Weapon 4";
                 default: return action.ToString();
             }
         }

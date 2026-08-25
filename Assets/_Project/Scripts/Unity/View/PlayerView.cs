@@ -13,6 +13,9 @@ namespace Satisfying.Game
         public Camera Camera;
         public Camera WeaponCamera;
         public ConcussionBlur Blur;
+
+        /// <summary>The picture through a magnified optic. Null until one is fitted.</summary>
+        public ScopeView Scope;
         public Transform Rig;
         public Transform ViewmodelRoot;
         public WeaponModel Weapon;
@@ -78,6 +81,10 @@ namespace Satisfying.Game
             // On the world camera, not the weapon camera: your gun stays sharp when your head rings,
             // which is both how it works and the only thing keeping the effect playable.
             Blur = cameraGo.AddComponent<ConcussionBlur>();
+
+            // The scope renders the world and nothing else: no viewmodel, because the rifle is not in
+            // front of its own objective lens and drawing it twice is the expensive mistake here.
+            Scope = new ScopeView(Rig, ~(1 << viewmodelLayer));
             _fov = feel.fieldOfView;
 
             // A second camera draws the gun and hands so they never clip through walls.
@@ -178,9 +185,17 @@ namespace Satisfying.Game
             float targetFov = _feel.fieldOfView;
             if (sprinting) targetFov += _feel.sprintFovAdd;
             if (state.Sliding) targetFov += _feel.slideFovAdd;
-            // An optic's magnification rides on top of the base aim zoom.
+
+            // A magnified optic does NOT zoom the main camera. The scope has a camera of its own and
+            // the world outside the tube has to stay where it was, or the picture in picture is just
+            // an expensive way of drawing the same zoom twice. It squeezes a little, because leaning
+            // into a scope does narrow what you take in, and that is all.
+            bool scoped = sight != null && sight.IsScope;
             float sightZoom = sight != null ? Mathf.Max(0.1f, sight.zoomMul) : 1f;
-            targetFov = Mathf.Lerp(targetFov, _feel.fieldOfView * _feel.adsFovMul * sightZoom, state.Ads);
+            float aimedFov = scoped
+                ? _feel.fieldOfView * Mathf.Lerp(1f, _feel.adsFovMul, 0.35f)
+                : _feel.fieldOfView * _feel.adsFovMul * sightZoom;
+            targetFov = Mathf.Lerp(targetFov, aimedFov, state.Ads);
             _fov = Mathf.Lerp(_fov, targetFov, 1f - Mathf.Exp(-_feel.fovLerpSpeed * dt));
             Camera.fieldOfView = _fov;
             // Barely narrow the viewmodel camera when aiming: zooming it is what makes the gun
@@ -188,7 +203,31 @@ namespace Satisfying.Game
             WeaponCamera.fieldOfView = Mathf.Lerp(_feel.viewmodelFov, _feel.viewmodelFov * 0.94f, state.Ads);
 
             RenderViewmodel(in state, move, weapon, yaw, pitch, dt, sprinting, bobX, bobY);
+            RenderScope(in state, sight);
         }
+
+        /// <summary>
+        /// Points the scope camera down the optic and renders it, but only over the last of the aim -
+        /// the picture is worthless while the rifle is still coming up, and rendering the world a
+        /// second time for a frame nobody can use is the one cost worth avoiding here.
+        /// </summary>
+        void RenderScope(in PlayerSimState state, SightTuning sight)
+        {
+            if (Scope == null) return;
+
+            if (sight == null || !sight.IsScope || Weapon == null || Weapon.SightAnchor == null)
+            {
+                Scope.Render(null, _fov, 1f, 0f);
+                return;
+            }
+
+            // Nothing until the rifle is most of the way up, then in over the last quarter.
+            float blend = Mathf.Clamp01((state.Ads - 0.72f) / 0.28f);
+            Scope.Render(Weapon.SightAnchor, _feel.fieldOfView, sight.ClampMagnification(Magnification), blend);
+        }
+
+        /// <summary>What the player has dialled the optic to. Local, like every other feel value.</summary>
+        public float Magnification = 6f;
 
         void RenderViewmodel(in PlayerSimState state, MovementTuning move, WeaponTuning weapon,
                              float yaw, float pitch, float dt, bool sprinting, float bobX, float bobY)

@@ -27,6 +27,17 @@ namespace Satisfying.Game
         bool WantsSprint { get; }
 
         float SpeedDial { get; }
+
+        /// <summary>
+        /// A variable optic's power ring. The game sets ScopeWheel and the limits each frame from
+        /// whatever sight is actually fitted, and reads Magnification back to point the scope camera.
+        /// It is local and unreplicated: how far you have zoomed changes nothing anyone else can see.
+        /// </summary>
+        float Magnification { get; set; }
+        bool ScopeWheel { get; set; }
+        float ScopeMin { get; set; }
+        float ScopeMax { get; set; }
+
         byte CurrentWeapon { get; }
         byte[] Sights { get; }
 

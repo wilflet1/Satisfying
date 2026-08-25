@@ -54,6 +54,13 @@ namespace Satisfying.Game
         byte _grabSeq;
         byte _meleeSeq;
 
+        // A phone has no wheel. The optic sits where the game puts it and the pinch gesture is a job
+        // for another day; everything below still has to exist so both inputs are the same shape.
+        public float Magnification { get; set; }
+        public bool ScopeWheel { get; set; }
+        public float ScopeMin { get; set; }
+        public float ScopeMax { get; set; }
+
         public float SpeedDial { get { return _speedDial; } }
         public bool WantsSprint { get { return Rig.Sprint && Rig.MoveY > 0.4f; } }
 

@@ -20,8 +20,8 @@ namespace Satisfying.Game
         public Transform StockAnchor;       // the end that hits things when you melee
 
         /// <summary>One per SightKind. The active one is what gets lined up with the screen centre.</summary>
-        public Transform[] SightAnchors = new Transform[3];
-        public GameObject[] SightModels = new GameObject[3];
+        public Transform[] SightAnchors = new Transform[4];
+        public GameObject[] SightModels = new GameObject[4];
         public int ActiveSight;
 
         public Transform SightAnchor
@@ -83,6 +83,7 @@ namespace Satisfying.Game
             {
                 case 1: return BuildMp5(parent, palette, layer);
                 case 2: return BuildUsp45(parent, palette, layer);
+                case 3: return BuildSniper(parent, palette, layer);
                 default: return BuildM4(parent, palette, layer);
             }
         }
@@ -93,6 +94,7 @@ namespace Satisfying.Game
             {
                 case 1: return "MP5";
                 case 2: return "USP45";
+                case 3: return "M700";
                 default: return "M4A1";
             }
         }
@@ -223,6 +225,48 @@ namespace Satisfying.Game
         }
 
         /// <summary>
+        /// A magnified optic. Unlike the other three this one is not really aimed THROUGH - the scope
+        /// picture is rendered by a camera of its own and drawn over the middle of the screen - so what
+        /// is modelled here is the outside of it: a tube, two bells, turrets and a set of rings. What
+        /// matters mechanically is that the anchor is on the optical axis, because that axis is what
+        /// the scope camera is pointed down.
+        /// </summary>
+        static void BuildScope(WeaponModel m, Transform t, Palette palette, int layer, float railY, float z,
+                               float length = 0.30f)
+        {
+            GameObject group = Blockout.Group(t, "scope", Vector3.zero, layer);
+            float centreY = railY + 0.052f;
+
+            Tube(group.transform, "tube", new Vector3(0f, centreY, z), new Vector3(0.040f, 0.040f, length), palette.Gun, layer);
+            Tube(group.transform, "ocular bell", new Vector3(0f, centreY, z - length * 0.5f - 0.030f),
+                new Vector3(0.052f, 0.052f, 0.062f), palette.Gun, layer);
+            Tube(group.transform, "objective bell", new Vector3(0f, centreY, z + length * 0.5f + 0.038f),
+                new Vector3(0.062f, 0.062f, 0.080f), palette.Gun, layer);
+            // The glass. Dark, so it reads as glass rather than as an open pipe you can see the sky through.
+            Tube(group.transform, "objective glass", new Vector3(0f, centreY, z + length * 0.5f + 0.076f),
+                new Vector3(0.054f, 0.054f, 0.006f), palette.GunDark, layer);
+
+            Piece(group.transform, "elevation turret", new Vector3(0f, centreY + 0.032f, z - 0.01f),
+                new Vector3(0.030f, 0.028f, 0.034f), palette.GunDark, layer);
+            Piece(group.transform, "windage turret", new Vector3(0.030f, centreY, z - 0.01f),
+                new Vector3(0.028f, 0.030f, 0.034f), palette.GunDark, layer);
+            Piece(group.transform, "parallax turret", new Vector3(-0.030f, centreY, z - 0.01f),
+                new Vector3(0.028f, 0.030f, 0.030f), palette.GunDark, layer);
+            // The magnification ring, which is the thing the wheel is turning.
+            Tube(group.transform, "power ring", new Vector3(0f, centreY, z - length * 0.5f + 0.012f),
+                new Vector3(0.050f, 0.050f, 0.022f), palette.GunDark, layer);
+
+            Piece(group.transform, "ring front", new Vector3(0f, centreY - 0.026f, z + 0.070f),
+                new Vector3(0.026f, 0.052f, 0.020f), palette.GunDark, layer);
+            Piece(group.transform, "ring rear", new Vector3(0f, centreY - 0.026f, z - 0.070f),
+                new Vector3(0.026f, 0.052f, 0.020f), palette.GunDark, layer);
+
+            m.SightModels[(int)SightKind.Scope] = group;
+            m.SightAnchors[(int)SightKind.Scope] =
+                Anchor(t, "scope line", new Vector3(0f, centreY, z - length * 0.5f - 0.055f), layer);
+        }
+
+        /// <summary>
         /// Picatinny slots down a rail. Five thin ribs read as a rail from a metre away and cost five
         /// boxes; a smooth bar reads as a handle.
         /// </summary>
@@ -314,6 +358,7 @@ namespace Satisfying.Game
             BuildIronSights(m, t, palette, layer, 0.086f, -0.055f, 0.615f, 0.020f);
             BuildRedDot(m, t, palette, layer, 0.072f, 0.02f);
             BuildHolo(m, t, palette, layer, 0.072f, 0.02f);
+            BuildScope(m, t, palette, layer, 0.072f, 0.06f, 0.26f);
             m.SetSight((int)SightKind.Iron);
 
             m.Muzzle = Anchor(t, "muzzle", new Vector3(0f, 0.012f, 0.76f), layer);
@@ -372,6 +417,7 @@ namespace Satisfying.Game
             BuildIronSights(m, t, palette, layer, 0.079f, -0.030f, 0.365f, 0.020f);
             BuildRedDot(m, t, palette, layer, 0.053f, 0.03f);
             BuildHolo(m, t, palette, layer, 0.053f, 0.03f);
+            BuildScope(m, t, palette, layer, 0.053f, 0.05f, 0.22f);
             m.SetSight((int)SightKind.Iron);
 
             m.Muzzle = Anchor(t, "muzzle", new Vector3(0f, 0.012f, 0.43f), layer);
@@ -427,6 +473,7 @@ namespace Satisfying.Game
             BuildIronSights(m, t, palette, layer, 0.056f, -0.020f, 0.138f, 0.040f, 0.004f);
             BuildRedDot(m, t, palette, layer, 0.043f, 0.02f);
             BuildHolo(m, t, palette, layer, 0.043f, 0.02f);
+            BuildScope(m, t, palette, layer, 0.043f, 0.03f, 0.14f);
             m.SetSight((int)SightKind.Iron);
 
             m.Muzzle = Anchor(t, "muzzle", new Vector3(0f, 0.020f, 0.175f), layer);
@@ -436,6 +483,70 @@ namespace Satisfying.Game
             m.StockAnchor = Anchor(t, "butt", new Vector3(0f, -0.150f, -0.045f), layer);
             m.HipOffset = new Vector3(0.135f, -0.130f, 0.32f);
             m.SwayScale = 1.25f;
+            m.HoldsOpenWhenEmpty = true;
+            return m;
+        }
+    
+        // ------------------------------------------------------------------ M700
+        /// <summary>
+        /// A bolt gun: long barrel, heavy stock, five rounds, and a scope that is most of its length.
+        /// The bolt handle sticks out to the right and cycles on every shot, which is the read that
+        /// tells you at a glance this is not something you can hold a trigger down on.
+        /// </summary>
+        static WeaponModel BuildSniper(Transform parent, Palette palette, int layer)
+        {
+            WeaponModel m = new WeaponModel();
+            m.Root = Blockout.Group(parent, "M700", Vector3.zero, layer);
+            Transform t = m.Root.transform;
+
+            Piece(t, "receiver", new Vector3(0f, 0.014f, 0.03f), new Vector3(0.048f, 0.060f, 0.30f), palette.Gun, layer);
+            Piece(t, "top rail", new Vector3(0f, 0.050f, 0.03f), new Vector3(0.038f, 0.014f, 0.28f), palette.GunDark, layer);
+            Tube(t, "barrel", new Vector3(0f, 0.010f, 0.44f), new Vector3(0.030f, 0.030f, 0.52f), palette.Metal, layer);
+            Tube(t, "muzzle brake", new Vector3(0f, 0.010f, 0.725f), new Vector3(0.042f, 0.042f, 0.075f), palette.GunDark, layer);
+
+            // A laminated stock: a wide fore-end you can rest on anything, and a cheek piece.
+            Piece(t, "fore end", new Vector3(0f, -0.030f, 0.26f), new Vector3(0.062f, 0.058f, 0.34f), palette.WallDark, layer);
+            Piece(t, "belly", new Vector3(0f, -0.052f, 0.05f), new Vector3(0.056f, 0.048f, 0.20f), palette.WallDark, layer);
+            Piece(t, "grip", new Vector3(0f, -0.108f, -0.075f), new Vector3(0.042f, 0.130f, 0.062f), palette.WallDark, layer, new Vector3(-14f, 0f, 0f));
+            Piece(t, "comb", new Vector3(0f, 0.012f, -0.215f), new Vector3(0.050f, 0.062f, 0.20f), palette.WallDark, layer);
+            Piece(t, "cheek piece", new Vector3(0f, 0.050f, -0.225f), new Vector3(0.044f, 0.026f, 0.150f), palette.WallDark, layer);
+            Piece(t, "butt pad", new Vector3(0f, -0.012f, -0.322f), new Vector3(0.054f, 0.115f, 0.030f), palette.GunDark, layer);
+            Piece(t, "bipod stud", new Vector3(0f, -0.058f, 0.40f), new Vector3(0.018f, 0.020f, 0.014f), palette.Metal, layer);
+            Piece(t, "sling loop", new Vector3(0f, -0.058f, 0.14f), new Vector3(0.024f, 0.024f, 0.010f), palette.Metal, layer);
+
+            Serrations(t, palette, layer, new Vector3(0f, -0.060f, 0.26f), new Vector3(0.058f, 0.006f, 0.014f), 0.052f, 5, true);
+            TriggerGroup(t, palette, layer, -0.044f, -0.020f);
+
+            // The bolt. Body along the receiver, handle out to the right and turned down.
+            GameObject bolt = Blockout.Group(t, "bolt", new Vector3(0f, 0.030f, -0.055f), layer);
+            Piece(bolt.transform, "body", Vector3.zero, new Vector3(0.024f, 0.024f, 0.090f), palette.Metal, layer);
+            Piece(bolt.transform, "handle", new Vector3(0.034f, -0.012f, -0.030f), new Vector3(0.052f, 0.016f, 0.016f), palette.Metal, layer);
+            Piece(bolt.transform, "knob", new Vector3(0.060f, -0.020f, -0.030f), new Vector3(0.022f, 0.022f, 0.022f), palette.GunDark, layer);
+            m.Bolt = bolt.transform;
+            m.BoltTravel = new Vector3(0f, 0f, -0.095f);
+
+            // Internal box magazine: a floor plate rather than a stick.
+            GameObject magazine = Blockout.Group(t, "magazine", new Vector3(0f, -0.072f, 0.06f), layer);
+            Piece(magazine.transform, "floor plate", Vector3.zero, new Vector3(0.044f, 0.016f, 0.110f), palette.Metal, layer);
+            Piece(magazine.transform, "box", new Vector3(0f, -0.030f, 0f), new Vector3(0.038f, 0.048f, 0.096f), palette.GunDark, layer);
+            m.Magazine = magazine.transform;
+            m.MagazineEject = new Vector3(0f, -0.24f, 0.02f);
+
+            // Irons exist as a backup and because a gun with no sight at all looks unfinished, but the
+            // scope is what it is for and what it starts on.
+            BuildIronSights(m, t, palette, layer, 0.070f, -0.070f, 0.560f, 0.026f);
+            BuildRedDot(m, t, palette, layer, 0.058f, 0.02f);
+            BuildHolo(m, t, palette, layer, 0.058f, 0.02f);
+            BuildScope(m, t, palette, layer, 0.058f, 0.045f, 0.34f);
+            m.SetSight((int)SightKind.Scope);
+
+            m.Muzzle = Anchor(t, "muzzle", new Vector3(0f, 0.010f, 0.775f), layer);
+            m.GripAnchor = Anchor(t, "grip anchor", new Vector3(0f, -0.088f, -0.066f), layer);
+            m.ForegripAnchor = Anchor(t, "foregrip anchor", new Vector3(0f, -0.038f, 0.37f), layer);
+            m.MagAnchor = Anchor(t, "mag anchor", new Vector3(0f, -0.17f, 0.06f), layer);
+            m.StockAnchor = Anchor(t, "stock", new Vector3(0f, -0.012f, -0.322f), layer);
+            m.HipOffset = new Vector3(0.175f, -0.165f, 0.24f);
+            m.SwayScale = 1.35f;
             m.HoldsOpenWhenEmpty = true;
             return m;
         }

@@ -184,8 +184,10 @@ namespace UnityEngine
     public enum QueryTriggerInteraction { UseGlobal, Ignore, Collide }
     public enum TextureFormat { RGB24 = 3, RGBA32 = 4, ARGB32 = 5 }
     public enum RenderTextureFormat { ARGB32 = 0, Depth = 1, RFloat = 14 }
+    public enum RenderTextureReadWrite { Default, Linear, sRGB }
     public enum TextureWrapMode { Repeat, Clamp, Mirror }
     public enum FilterMode { Point, Bilinear, Trilinear }
+    public enum ScaleMode { StretchToFill, ScaleAndCrop, ScaleToFit }
     public enum TextAnchor { UpperLeft, UpperCenter, UpperRight, MiddleLeft, MiddleCenter, MiddleRight, LowerLeft, LowerCenter, LowerRight }
     public enum FontStyle { Normal, Bold, Italic, BoldAndItalic }
     public enum RuntimeInitializeLoadType { AfterSceneLoad, BeforeSceneLoad, BeforeSplashScreen, SubsystemRegistration, AfterAssembliesLoaded }
@@ -290,7 +292,10 @@ namespace UnityEngine
         public FilterMode filterMode { get; set; }
         public void SetPixel(int x, int y, Color color) { }
         public Color GetPixel(int x, int y) { return Color.black; }
+        public Color GetPixelBilinear(float u, float v) { return Color.black; }
         public void ReadPixels(Rect source, int destX, int destY) { }
+        public void SetPixels(Color[] colors) { }
+        public Color[] GetPixels() { return new Color[0]; }
         public void Apply() { }
         public int width { get { return 0; } }
         public int height { get { return 0; } }
@@ -305,21 +310,32 @@ namespace UnityEngine
     {
         public RenderTexture(int width, int height, int depth) { }
         public RenderTexture(int width, int height, int depth, RenderTextureFormat format) { }
+        public RenderTexture(int width, int height, int depth, RenderTextureFormat format, RenderTextureReadWrite readWrite) { }
         public int antiAliasing { get; set; }
         public FilterMode filterMode { get; set; }
         public int width { get { return 0; } }
         public int height { get { return 0; } }
         public RenderTextureFormat format { get { return RenderTextureFormat.ARGB32; } }
         public void Release() { }
+        public bool Create() { return true; }
         public static RenderTexture active { get; set; }
         public static RenderTexture GetTemporary(int width, int height, int depth, RenderTextureFormat format) { return null; }
         public static void ReleaseTemporary(RenderTexture rt) { }
+    }
+
+    public static class GL
+    {
+        public static void PushMatrix() { }
+        public static void PopMatrix() { }
+        public static void LoadPixelMatrix(float left, float right, float bottom, float top) { }
     }
 
     public static class Graphics
     {
         public static void Blit(Texture source, RenderTexture destination) { }
         public static void Blit(Texture source, RenderTexture destination, Material material) { }
+        public static void DrawTexture(Rect screenRect, Texture texture, Rect sourceRect, int leftBorder,
+                                       int rightBorder, int topBorder, int bottomBorder, Color color) { }
     }
 
     public class Shader : Object
@@ -643,6 +659,7 @@ namespace UnityEngine
         public static void Label(Rect rect, string text) { }
         public static void Label(Rect rect, string text, GUIStyle style) { }
         public static void DrawTexture(Rect rect, Texture texture) { }
+        public static void DrawTexture(Rect rect, Texture texture, ScaleMode mode, bool alphaBlend) { }
         public static bool Button(Rect rect, string text, GUIStyle style) { return false; }
         public static void Box(Rect rect, string text, GUIStyle style) { }
     }

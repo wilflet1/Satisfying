@@ -20,7 +20,12 @@ namespace Satisfying.Game
         {
             Enabled = true;
             LookEnabled = true;
-            Sights = new byte[3];
+            Sights = new byte[4];
+            // The bolt gun comes with its glass on. Everything else starts on irons, as it did.
+            Sights[3] = (byte)SightKind.Scope;
+            Magnification = 6f;
+            ScopeMin = 3.5f;
+            ScopeMax = 18f;
         }
 
         /// <summary>
@@ -191,9 +196,38 @@ namespace Satisfying.Game
             if (Bindings.Pressed(GameAction.Jump)) _stance = Stance.Stand;
         }
 
+        /// <summary>
+        /// Magnification the player has dialled into a variable optic, and whether the wheel is
+        /// currently theirs to turn. Read by PlayerView, which is what actually renders the scope.
+        /// </summary>
+        public float Magnification { get; set; }
+
+        /// <summary>Set by the game each frame: true when a variable optic is up and the wheel should
+        /// be turning the power ring rather than the speed dial.</summary>
+        public bool ScopeWheel { get; set; }
+
+        public float ScopeMin { get; set; }
+        public float ScopeMax { get; set; }
+
         void PollSpeedDial(MovementTuning move)
         {
             float wheel = LookEnabled ? Input.mouseScrollDelta.y : 0f;
+
+            // Behind a variable optic the wheel is the power ring. Your walking pace is not something
+            // you are adjusting with a rifle up, and a scope you cannot zoom is not a variable scope.
+            if (ScopeWheel)
+            {
+                if (Mathf.Abs(wheel) > 0.01f)
+                {
+                    // A fixed step in magnification is far too coarse at the bottom and far too fine
+                    // at the top, so it steps proportionally: one notch is always about 12 per cent.
+                    Magnification *= Mathf.Pow(1.12f, Mathf.Sign(wheel));
+                    Magnification = Mathf.Clamp(Magnification, ScopeMin, ScopeMax);
+                }
+                if (Bindings.Pressed(GameAction.SpeedUp)) Magnification = Mathf.Min(ScopeMax, Magnification * 1.12f);
+                if (Bindings.Pressed(GameAction.SpeedDown)) Magnification = Mathf.Max(ScopeMin, Magnification / 1.12f);
+                return;
+            }
 
             // While the gun is up over cover the wheel aims it instead of setting your walking pace -
             // it is the only way to steer a shot you cannot see.
@@ -217,6 +251,7 @@ namespace Satisfying.Game
             if (Bindings.Pressed(GameAction.Weapon1)) _weapon = 0;
             if (Bindings.Pressed(GameAction.Weapon2)) _weapon = 1;
             if (Bindings.Pressed(GameAction.Weapon3)) _weapon = 2;
+            if (Bindings.Pressed(GameAction.Weapon4)) _weapon = 3;
         }
 
         void RecoverRecoil(WeaponTuning weapon, float dt)

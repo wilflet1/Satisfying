@@ -289,6 +289,20 @@ namespace Satisfying.Game
             bool sprinting = Input.Enabled && Input.WantsSprint &&
                              state.Velocity.Flat.Magnitude > Tuning.move.walkSpeed * 1.02f;
 
+            // Hand the wheel to the power ring while a variable optic is up, and hand it back the
+            // moment it comes down. The limits come from the sight that is actually fitted, so a
+            // tuning change to the optic is felt immediately and there is no second copy of them.
+            SightTuning optic = Client.Tuning.Sight(state.Weapon.Sight);
+            bool onScope = optic != null && optic.IsScope && state.Ads > 0.5f;
+            Input.ScopeWheel = onScope && optic.IsVariable;
+            if (optic != null && optic.IsScope)
+            {
+                Input.ScopeMin = Mathf.Max(1f, optic.magnification);
+                Input.ScopeMax = Mathf.Max(Input.ScopeMin, optic.magnificationMax);
+                Input.Magnification = optic.ClampMagnification(Input.Magnification);
+            }
+            View.Magnification = Input.Magnification;
+
             View.Render(in state, Client.RenderPosition.ToUnity(), Client.Tuning.move,
                         Client.Tuning.Weapon(state.Weapon.Index), Client.Tuning.Sight(state.Weapon.Sight),
                         state.Yaw, state.Pitch, dt, sprinting);

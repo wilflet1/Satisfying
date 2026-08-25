@@ -145,14 +145,23 @@ namespace Satisfying.Game
             MovementTuning move = client.Tuning.move;
             WeaponTuning weapon = client.Tuning.Weapon(state.Weapon.Index);
 
-            SightKind sight = (SightKind)Mathf.Clamp(state.Weapon.Sight, 0, 2);
+            SightKind sight = (SightKind)Mathf.Clamp(state.Weapon.Sight, 0, 3);
+
+            // The scope goes down before anything else on the HUD, so the hit marker, the kill feed
+            // and the ammo count all sit on top of the glass rather than under it.
+            ScopeView scope = Game.View != null ? Game.View.Scope : null;
+            bool scoped = scope != null && scope.Active;
+            if (scoped) scope.Draw(_width, _height, _scale);
+
             if (state.BlindFire > 0.5f) DrawBlindFireDial(in state, move);
-            else
+            else if (!scoped)
             {
                 DrawCrosshair(in state, move, weapon, sight);
-                if (sight != SightKind.Iron)
+                if (sight != SightKind.Iron && sight != SightKind.Scope)
                     GearPanelUI.DrawReticle(_skin, sight, _width * 0.5f, _height * 0.5f, state.Ads);
             }
+
+            if (scoped) DrawMagnification(scope);
             DrawHitMarker();
             DrawVitals(in state, move, weapon);
             DrawMatchBanner();
@@ -260,6 +269,19 @@ namespace Satisfying.Game
             float elevation = dial >= 0f ? dial * move.blindFirePitchMax : -dial * move.blindFirePitchMin;
             _skin.Text(new Rect(cx + 34f, y - 12f, 90f, 22f), elevation.ToString("0") + "\u00b0", _skin.Small, UiSkin.Accent);
             _skin.Text(new Rect(cx - 90f, cy + height * 0.5f + 6f, 180f, 20f), "BLIND FIRE - wheel aims", _centreDim, UiSkin.InkDim);
+        }
+
+        /// <summary>
+        /// What the power ring is set to, under the glass. A variable optic you cannot read the
+        /// magnification off is a variable optic you will always leave at whatever it was last on.
+        /// </summary>
+        void DrawMagnification(ScopeView scope)
+        {
+            float diameter = Mathf.Min(_width, _height) * 0.66f;
+            Rect rect = new Rect(_width * 0.5f - 60f * _scale,
+                                 _height * 0.5f + diameter * 0.5f + 10f * _scale,
+                                 120f * _scale, 22f * _scale);
+            GUI.Label(rect, scope.Magnification.ToString("0.0") + "x", _centreDim);
         }
 
         void DrawHitMarker()
