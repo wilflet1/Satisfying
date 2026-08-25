@@ -118,3 +118,17 @@ tools/**/obj/
 
 # Per-machine Claude Code permissions. The shared ones are in .claude/settings.json.
 .claude/settings.local.json
+
+# Everything Unity writes for itself on first load. The project generates its scene, its layers and
+# its build settings from Editor/ProjectSetup.cs, so checking the results in would mean two sources
+# of truth for the same thing and a merge conflict every time anyone opens the editor.
+*.meta
+/[Aa]ssets/[Ss]cenes/
+/Packages/packages-lock.json
+/ProjectSettings/*
+!/ProjectSettings/ProjectVersion.txt
+!/ProjectSettings/TagManager.asset
+
+# Output of Satisfying/Shots/*. There is not a single binary asset in this repository and screenshots
+# are not going to be the first.
+/Screenshots/
