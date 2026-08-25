@@ -24,7 +24,7 @@ in `Scripts/Unity/` and you are writing presentation, not simulation.
 ```
 Assets/_Project/
   Scripts/Shared/      simulation, netcode, tuning - engine free
-    Math/              Vec3, MathK, ViewMath
+    Math/              Vec3, MathK, ViewMath, Loft + ShapeCatalogue (the character's geometry)
     Sim/               MovementCore is the single source of truth for how a player moves,
                        BodyPose for where every bone of them is, ViewmodelPose for the gun
     Combat/            deterministic spread, hitboxes, damage
@@ -98,6 +98,13 @@ defaults on the clipboard as text, which is the right way to receive tuning from
   off `Blockout.Bone` joints and nothing but `Bone.Set` touches a mesh scale.
 - **Two things describing one body will disagree.** The hitbox and the model are both built from
   `BodyPose` now. If a limb needs to move, move it there, not in the view.
+- **Generated geometry cannot be checked by reading it.** A loft wound the other way round is
+  invisible from outside and solid from inside, and looks perfectly reasonable in the source. That is
+  why the character's shapes live in `Shared/Math` and `ShapeTests` asserts they are closed, outward
+  facing and exactly the size they claim. Add a shape, add it to `ShapeCatalogue`.
+- **Nothing drawn on a duellist may stick out past its hitbox capsule.** A helmet overhanging the
+  head sphere is a helmet you can shoot for no damage, and it is indistinguishable from broken
+  netcode at the other end.
 - **At full ADS the sight sits on the exact centre of the screen.** Every flourish that moves the gun
   goes into one accumulator scaled by `(1 - Ads)` in `ViewmodelPose`. Adding an offset after that
   blend is how the crouch and prone sight pictures got broken in the first place.

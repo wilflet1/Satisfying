@@ -81,6 +81,7 @@ namespace Satisfying.Tests
             RealSocketTests.Register();
             TouchRigTests.Register();
             ViewmodelTests.Register();
+            ShapeTests.Register();
             ReachabilityTests.Register();
 
             int passed = 0;

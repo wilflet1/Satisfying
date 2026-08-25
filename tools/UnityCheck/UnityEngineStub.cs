@@ -293,7 +293,17 @@ namespace UnityEngine
         public Color color { get; set; }
     }
 
-    public class Mesh : Object { }
+    public class Mesh : Object
+    {
+        public Mesh() { }
+        public Vector3[] vertices { get; set; }
+        public Vector3[] normals { get; set; }
+        public Vector2[] uv { get; set; }
+        public int[] triangles { get; set; }
+        public void Clear() { }
+        public void RecalculateNormals() { }
+        public void RecalculateBounds() { }
+    }
     public class MeshFilter : Component { public Mesh mesh { get; set; } public Mesh sharedMesh { get; set; } }
 
     public class Renderer : Component

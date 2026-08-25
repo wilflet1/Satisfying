@@ -1,9 +1,35 @@
 # Art
 
-Everything you can see is built from `Blockout` primitives at runtime. There is not a single binary
-asset in the repository: clone it, press Play, and the arena, the duellists and the guns are all
-there. That is a deliberate constraint and most of what makes the project pleasant to work on - no
-importer settings, no meta files, no "works on my machine because my Library folder is warm".
+Everything you can see is generated at runtime - primitives for the hard-edged things, lofted meshes
+for the character. There is not a single binary asset in the repository: clone it, press Play, and
+the arena, the duellists and the guns are all there. That is a deliberate constraint and most of what
+makes the project pleasant to work on - no importer settings, no meta files, no "works on my machine
+because my Library folder is warm".
+
+## How the character is built
+
+Not out of cubes any more. `Shared/Math/Loft.cs` sweeps an outline down an axis through a few rings,
+and `ShapeCatalogue` is the five profiles it makes: a tapered limb, a lofted torso, an ovoid head,
+a boot, and a chamfered box for kit. `MeshShapes` turns those into engine meshes and caches them, so
+eleven meshes exist in a match however many duellists are in it.
+
+The geometry lives in `Shared` rather than here on purpose. There is no Unity in the container this
+was written in, so the only way to know a generated body is not inside out, not full of holes and
+not the wrong size is to run the numbers - and `tools/SimTests` does, on every shape. The winding
+test in particular earns its keep: a loft wound the other way is invisible from outside and solid
+from inside, and looks completely reasonable in the source.
+
+**Every shape is normalised into the unit cube**, centred on the origin, running -0.5 to +0.5 down
+Z. That is what lets `Blockout.Bone` scale one by (width, depth, length) and get exactly a limb that
+wide, that deep and that long. Break the normalisation and every proportion in the game moves at
+once.
+
+**Nothing drawn on a duellist may stick out past the capsules `PlayerHitbox` tests.** A helmet that
+overhangs the head sphere is a helmet you can put a round through for no damage, and from the
+shooting end that is indistinguishable from the netcode being broken. The one deliberate exception
+is the shoulders: the chest capsule is 0.31 m across and the drawn shoulders are 0.40, because the
+arm capsules start at the shoulder joints and cover the difference - a round in someone's deltoid
+registers as an arm, which is what it is.
 
 ## The one thing that must not change
 
@@ -52,6 +78,18 @@ Anything sold on a store is sold, and "modifying it to make it ours" does not ch
 derivative of a work you have no licence to is still a work you have no licence to. If a paid asset
 is the right one, buy it; if the budget is zero, the list above is genuinely enough to build a
 shipping-looking game.
+
+## Making the character better without importing anything
+
+Most of what reads as "better models" is proportion and silhouette, and all of it is numbers in two
+files:
+
+- `ShapeCatalogue.Rings` - the profile of each shape. Where a limb tapers, how far the chest lofts
+  out past the waist, how flat the toe of a boot is.
+- `Blockout.Duellist` - the sizes those shapes are scaled to, and the kit hung off the joints.
+
+Raising the ring count in a profile costs vertices and nothing else; the meshes are shared and a
+duellist is a few thousand triangles either way.
 
 ## Materials
 

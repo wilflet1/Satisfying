@@ -45,8 +45,10 @@ namespace Satisfying.Game
             _palette = palette;
             _layer = layer;
 
-            Character = Blockout.Duellist(parent, "Duellist " + peerId, palette, palette.Enemy, layer,
-                move.standHeight / 1.82f);
+            // Your own body is the friendly colour. Looking down and seeing the shade you have spent
+            // the match shooting at is a small thing that reads wrong every single time.
+            Character = Blockout.Duellist(parent, "Duellist " + peerId, palette,
+                firstPerson ? palette.Ally : palette.Enemy, layer, move.standHeight / 1.82f);
 
             _weaponHolder = Blockout.Group(Character.Root.transform, "weapon holder", Vector3.zero, layer).transform;
 

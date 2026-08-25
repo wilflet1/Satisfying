@@ -189,7 +189,7 @@ All three are plain .NET projects outside `Assets/`, so Unity never sees them.
 ```
 Assets/_Project/
   Scripts/Shared/      engine-free simulation, netcode and tuning (asmdef: noEngineReferences)
-    Math/              vectors and helpers, no UnityEngine
+    Math/              vectors and helpers, plus the lofted geometry the character is built from
     Sim/               MovementCore - the single source of truth for how a player moves
                        BodyPose - and the single source of truth for where their bones are
     Combat/            deterministic spread, hitboxes, damage
@@ -198,7 +198,7 @@ Assets/_Project/
     Config/            every [Tune] value in the game
   Scripts/Unity/       everything you can see and hear
     Core/              bootstrap, collision world, conversions
-    Art/               procedural arena, weapons, materials, synthesised audio
+    Art/               procedural arena, character, weapons, materials, synthesised audio
     View/              camera rig, viewmodel, IK arms, opponent rendering, effects
     Input/             rebindable bindings with chords, input sampling
     UI/                menu, HUD, tuning panel, controls panel

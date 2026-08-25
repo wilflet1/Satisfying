@@ -109,6 +109,24 @@ namespace Satisfying.Tests
                 Assert.Equal((int)Zone(in box, 0f, 0.55f), (int)HitZone.None, "between the legs is a miss");
             });
 
+            TestRunner.Add("combat/a standing man has no holes in him", () =>
+            {
+                // Fifteen capsules have fourteen places to leave a gap. A round that passes between
+                // someone's stomach and their chest is not something anybody would ever report as a
+                // bug - they would just quietly stop trusting the game.
+                MovementTuning t = new MovementTuning();
+                PlayerSimState s = PlayerSimState.Spawn(Vec3.Zero, 0f, t, WeaponTuning.DefaultLoadout()[0]);
+                PlayerHitbox box = PlayerHitbox.FromState(in s, t, Gun);
+
+                for (float y = 1.00f; y <= 1.80f; y += 0.01f)
+                    Assert.True(Zone(in box, 0f, y) != HitZone.None,
+                        "centreline is solid from the hips to the crown, at " + y.ToString("0.00"));
+
+                for (float y = 0.10f; y <= 0.95f; y += 0.01f)
+                    Assert.True(Zone(in box, 0.105f, y) != HitZone.None,
+                        "the strong-side leg is solid from the boot to the hip, at " + y.ToString("0.00"));
+            });
+
             TestRunner.Add("combat/the head hitbox is where the camera is, in every stance", () =>
             {
                 MovementTuning t = Sim.Tuning();

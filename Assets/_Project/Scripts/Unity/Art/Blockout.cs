@@ -41,6 +41,27 @@ namespace Satisfying.Game
             return go;
         }
 
+        /// <summary>
+        /// A generated mesh, sized the same way a Box is: localScale IS the size in metres, because
+        /// every shape MeshShapes hands out is normalised into the unit cube. No collider - nothing
+        /// built out of these is ever collided with, the simulation owns that.
+        /// </summary>
+        public static GameObject Shape(Transform parent, string name, Vector3 center, Vector3 size,
+                                       Mesh mesh, Material material, int layer)
+        {
+            GameObject go = new GameObject(name);
+            go.layer = layer;
+            if (parent != null) go.transform.SetParent(parent, false);
+            go.transform.localPosition = center;
+            go.transform.localScale = size;
+
+            go.AddComponent<MeshFilter>().sharedMesh = mesh;
+            MeshRenderer renderer = go.AddComponent<MeshRenderer>();
+            if (material != null) renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            return go;
+        }
+
         public static GameObject Rotated(GameObject go, Vector3 euler)
         {
             go.transform.localRotation = Quaternion.Euler(euler);
@@ -71,15 +92,16 @@ namespace Satisfying.Game
             public Transform Mesh;
             public float Width = 0.1f;
             public float Depth = 0.1f;
-            public float Fill = 0.94f;      // mesh is a shade shorter than the bone, so joints read as joints
+            public float Fill = 1f;         // lofted shapes already draw their ends in, so they meet flush
 
-            public static Bone Build(Transform parent, string name, float width, float depth, Material material, int layer)
+            public static Bone Build(Transform parent, string name, float width, float depth,
+                                     Mesh shape, Material material, int layer)
             {
                 Bone b = new Bone();
                 b.Width = width;
                 b.Depth = depth;
                 b.Joint = Group(parent, name, Vector3.zero, layer).transform;
-                b.Mesh = Box(b.Joint, name + " mesh", Vector3.zero, Vector3.one, material, false, layer).transform;
+                b.Mesh = Shape(b.Joint, name + " mesh", Vector3.zero, Vector3.one, shape, material, layer).transform;
                 return b;
             }
 
@@ -114,8 +136,8 @@ namespace Satisfying.Game
             /// </summary>
             public GameObject Fitting(string name, Vector3 at, Vector3 size, Material material, int layer)
             {
-                return Box(Joint, name, new Vector3(at.x, -at.y, at.z), new Vector3(size.x, size.y, size.z),
-                    material, false, layer);
+                return Shape(Joint, name, new Vector3(at.x, -at.y, at.z), new Vector3(size.x, size.y, size.z),
+                    MeshShapes.Kit(), material, layer);
             }
 
             public void SetVisible(bool visible)
@@ -177,10 +199,17 @@ namespace Satisfying.Game
 
             Material kit = palette.WallDark;
 
-            // ---- torso. Wider than it is deep, which is most of what makes a person read as a person.
-            c.Chest = Bone.Build(t, "chest", 0.395f * scale, 0.255f * scale, skin, layer);
-            c.Stomach = Bone.Build(t, "stomach", 0.330f * scale, 0.225f * scale, kit, layer);
-            c.Neck = Bone.Build(t, "neck", 0.115f * scale, 0.115f * scale, skin, layer);
+            // Nothing drawn on a duellist may stick out past the capsules PlayerHitbox tests, or there
+            // is a sliver of him you can see and cannot shoot. The chest is the one place it is allowed
+            // to look like it does: the chest capsule is 0.31 across and the drawn shoulders are 0.40,
+            // but the arm capsules start at the shoulder joints and cover the difference - so a round
+            // fired at someone's deltoid registers, as an arm, which is what it is.
+            //
+            // ---- torso. Wider than it is deep, which is most of what makes a person read as a person:
+            // the chest lofts out from a narrower waist, so the shoulders are the widest thing on him.
+            c.Chest = Bone.Build(t, "chest", 0.400f * scale, 0.262f * scale, MeshShapes.Torso(0.76f), skin, layer);
+            c.Stomach = Bone.Build(t, "stomach", 0.300f * scale, 0.240f * scale, MeshShapes.Torso(0.92f), kit, layer);
+            c.Neck = Bone.Build(t, "neck", 0.120f * scale, 0.125f * scale, MeshShapes.Limb(1.05f), skin, layer);
 
             // Plate carrier and belt ride on the joints, not on the stretched meshes, so they keep
             // their proportions whatever the bone underneath is doing. Across, out of the front, and
@@ -194,34 +223,46 @@ namespace Satisfying.Game
             c.Chest.Fitting("mag pouch", new Vector3(0f, 0.140f, 0.060f) * scale,
                 new Vector3(0.190f, 0.070f, 0.110f) * scale, palette.Accent, layer);
             c.Stomach.Fitting("belt", new Vector3(0f, 0f, 0.038f) * scale,
-                new Vector3(0.355f, 0.250f, 0.070f) * scale, palette.Gun, layer);
+                new Vector3(0.318f, 0.258f, 0.070f) * scale, palette.Gun, layer);
 
             // ---- head. Its own group because it pitches with the aim while the neck only leans.
+            // The skull is an ovoid laid on its side: the shape's own +Z is front to back, which is the
+            // longer axis of a head, so it goes in unrotated and the sizes read as (width, height, depth).
             c.Head = Group(t, "head", Vector3.zero, layer).transform;
-            Box(c.Head, "skull", new Vector3(0f, 0.005f, 0f), new Vector3(0.185f, 0.215f, 0.205f) * scale, skin, false, layer);
-            Box(c.Head, "jaw", new Vector3(0f, -0.075f, 0.028f) * scale, new Vector3(0.150f, 0.085f, 0.165f) * scale, skin, false, layer);
-            Box(c.Head, "helmet", new Vector3(0f, 0.070f, -0.008f) * scale, new Vector3(0.215f, 0.115f, 0.235f) * scale, kit, false, layer);
-            Box(c.Head, "visor", new Vector3(0f, 0.012f, 0.098f) * scale, new Vector3(0.155f, 0.062f, 0.030f) * scale, palette.GunDark, false, layer);
-            Box(c.Head, "ear left", new Vector3(-0.105f, 0.012f, -0.010f) * scale, new Vector3(0.040f, 0.095f, 0.095f) * scale, palette.GunDark, false, layer);
-            Box(c.Head, "ear right", new Vector3(0.105f, 0.012f, -0.010f) * scale, new Vector3(0.040f, 0.095f, 0.095f) * scale, palette.GunDark, false, layer);
+            Shape(c.Head, "skull", new Vector3(0f, 0.004f, -0.006f) * scale,
+                new Vector3(0.180f, 0.212f, 0.225f) * scale, MeshShapes.Head(), skin, layer);
+            Shape(c.Head, "jaw", new Vector3(0f, -0.070f, 0.030f) * scale,
+                new Vector3(0.145f, 0.080f, 0.160f) * scale, MeshShapes.Kit(), skin, layer);
+            // Helmet and ear cups are kept inside the 0.105 m head sphere. A helmet that overhangs it
+            // is a helmet you can put a round through for no damage, which feels exactly as bad as it
+            // sounds and is impossible to diagnose from the shooting end.
+            Shape(c.Head, "helmet", new Vector3(0f, 0.058f, -0.008f) * scale,
+                new Vector3(0.200f, 0.126f, 0.208f) * scale, MeshShapes.Head(), kit, layer);
+            Shape(c.Head, "helmet brim", new Vector3(0f, 0.034f, 0.084f) * scale,
+                new Vector3(0.180f, 0.030f, 0.070f) * scale, MeshShapes.Kit(), kit, layer);
+            Shape(c.Head, "visor", new Vector3(0f, 0.010f, 0.094f) * scale,
+                new Vector3(0.150f, 0.058f, 0.034f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
+            Shape(c.Head, "ear left", new Vector3(-0.086f, 0.010f, -0.012f) * scale,
+                new Vector3(0.034f, 0.096f, 0.096f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
+            Shape(c.Head, "ear right", new Vector3(0.086f, 0.010f, -0.012f) * scale,
+                new Vector3(0.034f, 0.096f, 0.096f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
 
-            // ---- arms
-            c.LeftUpperArm = Bone.Build(t, "left upper arm", 0.115f * scale, 0.115f * scale, skin, layer);
-            c.LeftForearm = Bone.Build(t, "left forearm", 0.098f * scale, 0.098f * scale, skin, layer);
-            c.RightUpperArm = Bone.Build(t, "right upper arm", 0.115f * scale, 0.115f * scale, skin, layer);
-            c.RightForearm = Bone.Build(t, "right forearm", 0.098f * scale, 0.098f * scale, skin, layer);
+            // ---- arms. Every limb tapers towards the joint it ends at, which is what stops a person
+            // built out of six tubes from looking like a person built out of six tubes.
+            c.LeftUpperArm = Bone.Build(t, "left upper arm", 0.120f * scale, 0.120f * scale, MeshShapes.Limb(0.80f), skin, layer);
+            c.LeftForearm = Bone.Build(t, "left forearm", 0.098f * scale, 0.098f * scale, MeshShapes.Limb(0.78f), skin, layer);
+            c.RightUpperArm = Bone.Build(t, "right upper arm", 0.120f * scale, 0.120f * scale, MeshShapes.Limb(0.80f), skin, layer);
+            c.RightForearm = Bone.Build(t, "right forearm", 0.098f * scale, 0.098f * scale, MeshShapes.Limb(0.78f), skin, layer);
             c.LeftHand = Hand(t, "left hand", palette, layer, scale, -1f);
             c.RightHand = Hand(t, "right hand", palette, layer, scale, 1f);
 
             // ---- legs
-            c.LeftThigh = Bone.Build(t, "left thigh", 0.155f * scale, 0.165f * scale, kit, layer);
-            c.RightThigh = Bone.Build(t, "right thigh", 0.155f * scale, 0.165f * scale, kit, layer);
-            c.LeftShin = Bone.Build(t, "left shin", 0.125f * scale, 0.135f * scale, kit, layer);
-            c.RightShin = Bone.Build(t, "right shin", 0.125f * scale, 0.135f * scale, kit, layer);
-            c.LeftFoot = Bone.Build(t, "left boot", 0.108f * scale, 0.095f * scale, palette.Gun, layer);
-            c.RightFoot = Bone.Build(t, "right boot", 0.108f * scale, 0.095f * scale, palette.Gun, layer);
-            c.LeftFoot.Fill = 1f;
-            c.RightFoot.Fill = 1f;
+            c.LeftThigh = Bone.Build(t, "left thigh", 0.165f * scale, 0.175f * scale, MeshShapes.Limb(0.72f), kit, layer);
+            c.RightThigh = Bone.Build(t, "right thigh", 0.165f * scale, 0.175f * scale, MeshShapes.Limb(0.72f), kit, layer);
+            c.LeftShin = Bone.Build(t, "left shin", 0.128f * scale, 0.140f * scale, MeshShapes.Limb(0.74f), kit, layer);
+            c.RightShin = Bone.Build(t, "right shin", 0.128f * scale, 0.140f * scale, MeshShapes.Limb(0.74f), kit, layer);
+            c.LeftFoot = Bone.Build(t, "left boot", 0.112f * scale, 0.105f * scale, MeshShapes.Boot(), palette.Gun, layer);
+            c.RightFoot = Bone.Build(t, "right boot", 0.112f * scale, 0.105f * scale, MeshShapes.Boot(), palette.Gun, layer);
 
             // Knee pads, so a crouch reads from the front instead of being two boxes at an angle.
             c.LeftShin.Fitting("left knee pad", new Vector3(0f, 0.020f, 0.030f) * scale,
@@ -232,11 +273,17 @@ namespace Satisfying.Game
             return c;
         }
 
+        /// <summary>A gloved hand: a palm, a thumb wrapped round the grip, and fingers closed over it.</summary>
         static Transform Hand(Transform parent, string name, Palette palette, int layer, float scale, float side)
         {
             Transform hand = Group(parent, name, Vector3.zero, layer).transform;
-            Box(hand, "palm", new Vector3(0f, 0f, 0.020f) * scale, new Vector3(0.058f, 0.088f, 0.098f) * scale, palette.RemoteArms, false, layer);
-            Box(hand, "thumb", new Vector3(-0.032f * side, 0.016f, 0.030f) * scale, new Vector3(0.028f, 0.030f, 0.055f) * scale, palette.RemoteArms, false, layer);
+            Shape(hand, "palm", new Vector3(0f, 0f, 0.022f) * scale,
+                new Vector3(0.056f, 0.090f, 0.100f) * scale, MeshShapes.Kit(), palette.RemoteArms, layer);
+            Shape(hand, "fingers", new Vector3(0f, -0.030f, 0.055f) * scale,
+                new Vector3(0.052f, 0.048f, 0.070f) * scale, MeshShapes.Kit(), palette.RemoteArms, layer);
+            Rotated(Shape(hand, "thumb", new Vector3(-0.030f * side, 0.012f, 0.034f) * scale,
+                new Vector3(0.026f, 0.026f, 0.062f) * scale, MeshShapes.Limb(0.9f), palette.RemoteArms, layer),
+                new Vector3(0f, -22f * side, 0f));
             return hand;
         }
     }

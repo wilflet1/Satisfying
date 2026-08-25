@@ -105,6 +105,37 @@ namespace Satisfying.Game
             return go;
         }
 
+        /// <summary>
+        /// A round part - a barrel, a buffer tube, an optic body. A gun is mostly flats and a square
+        /// barrel was fine next to a character made of boxes; next to one made of lofted limbs it is
+        /// the thing your eye goes to. Size reads (width, height, length) like every other piece.
+        /// </summary>
+        static GameObject Tube(Transform parent, string name, Vector3 position, Vector3 size, Material material, int layer)
+        {
+            return Blockout.Shape(parent, name, position, size, MeshShapes.Limb(1f), material, layer);
+        }
+
+        /// <summary>
+        /// A ring of segments round an empty centre - an optic housing. Kept as separate pieces rather
+        /// than a modelled tube precisely so that the middle of it stays a hole.
+        /// </summary>
+        static void Aperture(Transform parent, string name, Vector3 centre, float radius, float length,
+                             float thickness, int segments, Material material, int layer)
+        {
+            GameObject ring = Blockout.Group(parent, name, centre, layer);
+            float step = Mathf.PI * 2f / segments;
+            float width = radius * step * 1.25f;
+            for (int i = 0; i < segments; i++)
+            {
+                float a = i * step;
+                // Turned so its width runs round the ring and its thickness points at the centre.
+                Piece(ring.transform, "segment",
+                    new Vector3(Mathf.Cos(a) * radius, Mathf.Sin(a) * radius, 0f),
+                    new Vector3(width, thickness, length), material, layer,
+                    new Vector3(0f, 0f, a * Mathf.Rad2Deg + 90f));
+            }
+        }
+
         static Transform Anchor(Transform parent, string name, Vector3 position, int layer)
         {
             GameObject go = new GameObject(name);
@@ -153,10 +184,10 @@ namespace Satisfying.Game
             float centreY = railY + 0.033f;
 
             Piece(group.transform, "mount", new Vector3(0f, railY + 0.010f, z), new Vector3(0.030f, 0.020f, 0.040f), palette.GunDark, layer);
-            Piece(group.transform, "tube top", new Vector3(0f, centreY + 0.021f, z), new Vector3(0.044f, 0.006f, 0.062f), palette.Gun, layer);
-            Piece(group.transform, "tube bottom", new Vector3(0f, centreY - 0.021f, z), new Vector3(0.044f, 0.006f, 0.062f), palette.Gun, layer);
-            Piece(group.transform, "tube left", new Vector3(-0.019f, centreY, z), new Vector3(0.006f, 0.038f, 0.062f), palette.Gun, layer);
-            Piece(group.transform, "tube right", new Vector3(0.019f, centreY, z), new Vector3(0.006f, 0.038f, 0.062f), palette.Gun, layer);
+            // Ten segments round an empty middle. It has to stay empty: this is a sight you look
+            // THROUGH, and the obvious tidy-up - one round tube instead of a ring of plates - fills the
+            // aperture with a solid plug and blinds you the moment you aim.
+            Aperture(group.transform, "tube", new Vector3(0f, centreY, z), 0.021f, 0.062f, 0.007f, 10, palette.Gun, layer);
 
             m.SightModels[(int)SightKind.RedDot] = group;
             m.SightAnchors[(int)SightKind.RedDot] = Anchor(t, "red dot line", new Vector3(0f, centreY, z - 0.03f), layer);
@@ -230,11 +261,11 @@ namespace Satisfying.Game
             Piece(t, "lower receiver", new Vector3(0f, -0.032f, 0.02f), new Vector3(0.046f, 0.055f, 0.22f), palette.GunDark, layer);
             Piece(t, "top rail", new Vector3(0f, 0.064f, 0.10f), new Vector3(0.040f, 0.016f, 0.40f), palette.GunDark, layer);
             Piece(t, "handguard", new Vector3(0f, 0.006f, 0.33f), new Vector3(0.056f, 0.060f, 0.28f), palette.GunDark, layer);
-            Piece(t, "barrel", new Vector3(0f, 0.012f, 0.55f), new Vector3(0.024f, 0.024f, 0.30f), palette.Metal, layer);
+            Tube(t, "barrel", new Vector3(0f, 0.012f, 0.55f), new Vector3(0.024f, 0.024f, 0.30f), palette.Metal, layer);
             Piece(t, "gas block", new Vector3(0f, 0.030f, 0.50f), new Vector3(0.034f, 0.040f, 0.05f), palette.Metal, layer);
-            Piece(t, "muzzle device", new Vector3(0f, 0.012f, 0.715f), new Vector3(0.034f, 0.034f, 0.07f), palette.Metal, layer);
+            Tube(t, "muzzle device", new Vector3(0f, 0.012f, 0.715f), new Vector3(0.036f, 0.036f, 0.07f), palette.Metal, layer);
             Piece(t, "grip", new Vector3(0f, -0.115f, -0.085f), new Vector3(0.040f, 0.145f, 0.058f), palette.GunDark, layer, new Vector3(-17f, 0f, 0f));
-            Piece(t, "buffer tube", new Vector3(0f, 0.010f, -0.215f), new Vector3(0.040f, 0.050f, 0.20f), palette.Gun, layer);
+            Tube(t, "buffer tube", new Vector3(0f, 0.010f, -0.215f), new Vector3(0.042f, 0.042f, 0.20f), palette.Gun, layer);
             Piece(t, "stock", new Vector3(0f, -0.005f, -0.245f), new Vector3(0.056f, 0.085f, 0.13f), palette.GunDark, layer);
             Piece(t, "butt plate", new Vector3(0f, -0.010f, -0.325f), new Vector3(0.058f, 0.105f, 0.035f), palette.Gun, layer);
             Piece(t, "cheek riser", new Vector3(0f, 0.042f, -0.250f), new Vector3(0.038f, 0.024f, 0.115f), palette.Gun, layer);
@@ -291,7 +322,7 @@ namespace Satisfying.Game
 
             Piece(t, "receiver", new Vector3(0f, 0.018f, 0.03f), new Vector3(0.050f, 0.070f, 0.28f), palette.Gun, layer);
             Piece(t, "handguard", new Vector3(0f, -0.004f, 0.245f), new Vector3(0.060f, 0.068f, 0.20f), palette.GunDark, layer);
-            Piece(t, "barrel", new Vector3(0f, 0.012f, 0.375f), new Vector3(0.022f, 0.022f, 0.10f), palette.Metal, layer);
+            Tube(t, "barrel", new Vector3(0f, 0.012f, 0.375f), new Vector3(0.024f, 0.024f, 0.10f), palette.Metal, layer);
             Piece(t, "trigger group", new Vector3(0f, -0.035f, -0.030f), new Vector3(0.046f, 0.050f, 0.16f), palette.GunDark, layer);
             Piece(t, "grip", new Vector3(0f, -0.105f, -0.065f), new Vector3(0.038f, 0.135f, 0.055f), palette.GunDark, layer, new Vector3(-15f, 0f, 0f));
             Piece(t, "stock rail", new Vector3(0f, 0.010f, -0.195f), new Vector3(0.046f, 0.038f, 0.19f), palette.Gun, layer);
@@ -299,14 +330,14 @@ namespace Satisfying.Game
 
             // The bits that make an MP5 an MP5: the claw mount, the tri-lug, the paddle behind the well.
             Piece(t, "claw mount", new Vector3(0f, 0.056f, 0.02f), new Vector3(0.042f, 0.024f, 0.19f), palette.Gun, layer);
-            Piece(t, "tri lug", new Vector3(0f, 0.012f, 0.415f), new Vector3(0.032f, 0.032f, 0.026f), palette.Metal, layer);
+            Tube(t, "tri lug", new Vector3(0f, 0.012f, 0.415f), new Vector3(0.034f, 0.034f, 0.026f), palette.Metal, layer);
             Piece(t, "paddle release", new Vector3(0f, -0.062f, 0.045f), new Vector3(0.030f, 0.034f, 0.014f), palette.GunDark, layer, new Vector3(24f, 0f, 0f));
             Piece(t, "ejection port", new Vector3(0.026f, 0.030f, 0.075f), new Vector3(0.008f, 0.030f, 0.062f), palette.GunDark, layer);
             Piece(t, "selector", new Vector3(-0.024f, -0.028f, -0.048f), new Vector3(0.014f, 0.018f, 0.032f), palette.Metal, layer);
-            Piece(t, "cocking tube", new Vector3(-0.038f, 0.046f, 0.28f), new Vector3(0.022f, 0.024f, 0.16f), palette.Gun, layer);
+            Tube(t, "cocking tube", new Vector3(-0.038f, 0.046f, 0.28f), new Vector3(0.024f, 0.024f, 0.16f), palette.Gun, layer);
             Piece(t, "sling loop", new Vector3(0f, -0.026f, 0.325f), new Vector3(0.024f, 0.026f, 0.010f), palette.Metal, layer);
-            Piece(t, "stock rod left", new Vector3(-0.020f, 0.010f, -0.230f), new Vector3(0.014f, 0.014f, 0.130f), palette.Metal, layer);
-            Piece(t, "stock rod right", new Vector3(0.020f, 0.010f, -0.230f), new Vector3(0.014f, 0.014f, 0.130f), palette.Metal, layer);
+            Tube(t, "stock rod left", new Vector3(-0.020f, 0.010f, -0.230f), new Vector3(0.015f, 0.015f, 0.130f), palette.Metal, layer);
+            Tube(t, "stock rod right", new Vector3(0.020f, 0.010f, -0.230f), new Vector3(0.015f, 0.015f, 0.130f), palette.Metal, layer);
 
             TriggerGroup(t, palette, layer, -0.052f, -0.020f, 0.95f);
             RailSlots(t, palette, layer, 0.070f, -0.05f, 0.09f, 0.046f, 4);
@@ -353,7 +384,7 @@ namespace Satisfying.Game
             Piece(t, "frame", new Vector3(0f, -0.028f, 0.020f), new Vector3(0.032f, 0.046f, 0.145f), palette.GunDark, layer);
             Piece(t, "trigger guard", new Vector3(0f, -0.052f, 0.008f), new Vector3(0.026f, 0.040f, 0.018f), palette.GunDark, layer);
             Piece(t, "grip", new Vector3(0f, -0.105f, -0.030f), new Vector3(0.036f, 0.130f, 0.050f), palette.GunDark, layer, new Vector3(-13f, 0f, 0f));
-            Piece(t, "barrel", new Vector3(0f, 0.018f, 0.150f), new Vector3(0.018f, 0.018f, 0.030f), palette.Metal, layer);
+            Tube(t, "barrel", new Vector3(0f, 0.018f, 0.150f), new Vector3(0.019f, 0.019f, 0.030f), palette.Metal, layer);
             Piece(t, "accessory rail", new Vector3(0f, -0.008f, 0.105f), new Vector3(0.022f, 0.010f, 0.070f), palette.GunDark, layer);
             Piece(t, "beavertail", new Vector3(0f, -0.004f, -0.050f), new Vector3(0.028f, 0.016f, 0.034f), palette.GunDark, layer);
             Piece(t, "hammer", new Vector3(0f, 0.004f, -0.058f), new Vector3(0.012f, 0.030f, 0.014f), palette.Metal, layer, new Vector3(22f, 0f, 0f));

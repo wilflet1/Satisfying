@@ -76,7 +76,7 @@ namespace Satisfying.Shared
             p.HeadRadius = HeadR * k;
             p.NeckRadius = 0.055f * k;
             p.ChestRadius = 0.155f * k;
-            p.StomachRadius = 0.145f * k;
+            p.StomachRadius = 0.152f * k;
             p.UpperArmRadius = 0.062f * k;
             p.ForearmRadius = 0.052f * k;
             p.ThighRadius = 0.095f * k;
