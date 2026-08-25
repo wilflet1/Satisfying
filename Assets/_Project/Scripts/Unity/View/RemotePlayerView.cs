@@ -27,6 +27,7 @@ namespace Satisfying.Game
         Vector3? _grabTarget;
         float _reloadTimer;
         float _deathTimer;
+        Quaternion _deathFall = Quaternion.identity;
         float _stepPhase;
 
         readonly bool _firstPerson;
@@ -117,7 +118,7 @@ namespace Satisfying.Game
 
             Stride(in state, ref pose, dt, out footstepImpulse);
             if (!state.Alive) Collapse(ref pose, dt);
-            else _deathTimer = 0f;
+            else { _deathTimer = 0f; _deathFall = Quaternion.identity; }
 
             Place(in pose, in state, weapon);
         }
@@ -174,6 +175,19 @@ namespace Satisfying.Game
             Fold(ref pose.RightElbow, fall, pivot);
             Fold(ref pose.RightHand, fall, pivot);
 
+            // The arms need a second fold of their own, about the shoulder line they hang from.
+            // Tipping a man who is holding a rifle out in front of him backwards about his hips swings
+            // everything that was in front of him upwards - so the first version of this dropped a
+            // corpse that presented its weapon at the sky with one arm pointing straight up.
+            Quaternion arms = Quaternion.Euler(104f * k, 0f, 0f);
+            Vector3 shoulders = pose.Shoulders.ToUnity();
+            Fold(ref pose.LeftShoulder, arms, shoulders);
+            Fold(ref pose.LeftElbow, arms, shoulders);
+            Fold(ref pose.LeftHand, arms, shoulders);
+            Fold(ref pose.RightShoulder, arms, shoulders);
+            Fold(ref pose.RightElbow, arms, shoulders);
+            Fold(ref pose.RightHand, arms, shoulders);
+
             // The legs fold the other way, or a corpse ends up doing a bridge. The hips go with them,
             // or the thighs are drawn from where the hips used to be.
             Quaternion legs = Quaternion.Euler(52f * k, 0f, 0f);
@@ -190,6 +204,11 @@ namespace Satisfying.Game
             // off them, so the whole body comes down as one.
             float drop = Mathf.Lerp(0f, Mathf.Max(0f, pose.Pelvis.y - 0.17f * pose.Scale), k);
             pose.Translate(new Vec3(0f, -drop, 0f));
+
+            // The gun is hung off the firing hand by a rotation of its own, and that rotation knows
+            // nothing about any of the above. Without this the rifle stays perfectly level in the air
+            // while the man holding it lies on the floor.
+            _deathFall = arms * fall;
         }
 
         static void Fold(ref Vec3 joint, Quaternion rotation, Vector3 pivot)
@@ -223,8 +242,9 @@ namespace Satisfying.Game
             // The weapon is hung off the firing hand, not the chest: the hand comes out of BodyPose and
             // so does the arm hitbox, so lining the grip up with it is what keeps the gun, the arms and
             // the thing the server shoots at in one place.
-            Quaternion hold = Quaternion.Euler(state.Pitch, 0f, roll);
-            if (state.BlindFire > 0.01f)
+            Quaternion hold = Quaternion.Euler(state.Alive ? state.Pitch : 0f, 0f, state.Alive ? roll : 0f);
+            if (!state.Alive) hold = _deathFall * hold;
+            if (state.Alive && state.BlindFire > 0.01f)
             {
                 float dial = Mathf.Clamp(state.BlindAngle, -1f, 1f);
                 float elevation = dial >= 0f ? dial * _move.blindFirePitchMax : -dial * _move.blindFirePitchMin;
