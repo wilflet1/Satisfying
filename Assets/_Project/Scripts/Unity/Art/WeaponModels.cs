@@ -150,7 +150,8 @@ namespace Satisfying.Game
         /// front post that shows through the gap. A solid block of a rear sight reads as a wall.
         /// </summary>
         static void BuildIronSights(WeaponModel m, Transform t, Palette palette, int layer,
-                                    float sightTopY, float rearZ, float frontZ, float postWidth = 0.005f)
+                                    float sightTopY, float rearZ, float frontZ, float frontBaseY,
+                                    float postWidth = 0.005f)
         {
             GameObject group = Blockout.Group(t, "iron sights", Vector3.zero, layer);
             const float notchGap = 0.014f;
@@ -165,6 +166,18 @@ namespace Satisfying.Game
                 new Vector3(0.032f, 0.010f, 0.014f), palette.GunDark, layer);
 
             float postHeight = 0.026f;
+
+            // The post has to stand on something. Left to itself it is a sight blade hanging in mid
+            // air above the barrel - on the M4 the gap was 36 mm, which is plainly visible on the
+            // model and is the first thing you see down the sights.
+            float postBottom = sightTopY - postHeight;
+            if (postBottom - frontBaseY > 0.002f)
+            {
+                float baseHeight = postBottom - frontBaseY;
+                Piece(group.transform, "front sight base", new Vector3(0f, frontBaseY + baseHeight * 0.5f, frontZ),
+                    new Vector3(0.026f, baseHeight, 0.026f), palette.GunDark, layer);
+            }
+
             Piece(group.transform, "front post", new Vector3(0f, sightTopY - postHeight * 0.5f, frontZ),
                 new Vector3(postWidth, postHeight, 0.006f), palette.Metal, layer);
             // Protective ears, open at the top so the post stays readable.
@@ -298,7 +311,7 @@ namespace Satisfying.Game
             m.Magazine = magazine.transform;
             m.MagazineEject = new Vector3(0f, -0.26f, 0.02f);
 
-            BuildIronSights(m, t, palette, layer, 0.086f, -0.055f, 0.615f);
+            BuildIronSights(m, t, palette, layer, 0.086f, -0.055f, 0.615f, 0.020f);
             BuildRedDot(m, t, palette, layer, 0.072f, 0.02f);
             BuildHolo(m, t, palette, layer, 0.072f, 0.02f);
             m.SetSight((int)SightKind.Iron);
@@ -356,7 +369,7 @@ namespace Satisfying.Game
             m.Magazine = magazine.transform;
             m.MagazineEject = new Vector3(0f, -0.27f, 0.01f);
 
-            BuildIronSights(m, t, palette, layer, 0.079f, -0.030f, 0.365f);
+            BuildIronSights(m, t, palette, layer, 0.079f, -0.030f, 0.365f, 0.020f);
             BuildRedDot(m, t, palette, layer, 0.053f, 0.03f);
             BuildHolo(m, t, palette, layer, 0.053f, 0.03f);
             m.SetSight((int)SightKind.Iron);
@@ -411,7 +424,7 @@ namespace Satisfying.Game
 
             // The pistol's sights live on the frame rather than the slide: a sight picture that
             // reciprocates with every shot is not one you can aim with.
-            BuildIronSights(m, t, palette, layer, 0.056f, -0.020f, 0.138f, 0.004f);
+            BuildIronSights(m, t, palette, layer, 0.056f, -0.020f, 0.138f, 0.040f, 0.004f);
             BuildRedDot(m, t, palette, layer, 0.043f, 0.02f);
             BuildHolo(m, t, palette, layer, 0.043f, 0.02f);
             m.SetSight((int)SightKind.Iron);
