@@ -16,6 +16,7 @@ namespace UnityEngine
         public Vector2(float x, float y) { this.x = x; this.y = y; }
         public static Vector2 zero { get { return new Vector2(0f, 0f); } }
         public static Vector2 one { get { return new Vector2(1f, 1f); } }
+        public static Vector2 Lerp(Vector2 a, Vector2 b, float t) { return b; }
         public float magnitude { get { return (float)Math.Sqrt(x * x + y * y); } }
         public float sqrMagnitude { get { return x * x + y * y; } }
         public Vector2 normalized { get { float m = magnitude; return m < 1e-5f ? zero : new Vector2(x / m, y / m); } }
@@ -603,6 +604,7 @@ namespace UnityEngine
 
     public class GUIStyle
     {
+        public Vector2 CalcSize(GUIContent content) { return Vector2.zero; }
         public GUIStyle() { }
         public GUIStyle(GUIStyle other) { }
         public GUIStyleState normal { get; set; }

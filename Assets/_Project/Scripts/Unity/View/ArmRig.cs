@@ -59,8 +59,12 @@ namespace Satisfying.Game
             hand.transform.SetParent(arm.Forearm, false);
             hand.transform.localPosition = new Vector3(0f, 0f, forearmLength);
             arm.Hand = hand.transform;
-            Blockout.Box(arm.Hand, "palm", new Vector3(0f, 0f, 0.035f), new Vector3(0.062f, 0.038f, 0.085f), skin, false, layer);
-            Blockout.Box(arm.Hand, "thumb", new Vector3(-0.030f * side, 0.014f, 0.030f), new Vector3(0.024f, 0.024f, 0.050f), skin, false, layer);
+            // The palm is centred ON the wrist joint rather than 35 mm past it. The IK puts the wrist
+            // exactly on the grip anchor, so a palm drawn forward of the wrist is a palm drawn forward
+            // of the grip - the hand ends up wrapped round thin air in front of the gun.
+            Blockout.Box(arm.Hand, "palm", new Vector3(0f, 0f, 0.004f), new Vector3(0.062f, 0.038f, 0.085f), skin, false, layer);
+            Blockout.Box(arm.Hand, "thumb", new Vector3(-0.030f * side, 0.014f, 0.002f), new Vector3(0.024f, 0.024f, 0.050f), skin, false, layer);
+            Blockout.Box(arm.Hand, "fingers", new Vector3(0.004f * side, -0.026f, 0.020f), new Vector3(0.054f, 0.030f, 0.050f), skin, false, layer);
 
             return arm;
         }
@@ -69,6 +73,13 @@ namespace Satisfying.Game
         {
             if (Shoulder != null && Shoulder.gameObject.activeSelf != visible) Shoulder.gameObject.SetActive(visible);
         }
+
+        /// <summary>How far the hand can get from the shoulder. Used to tell whether it fell short.</summary>
+        public float Reach { get { return UpperLength + ForearmLength; } }
+
+        /// <summary>True when the last solve could not actually get there - the arm is straight and
+        /// the hand is not on the anchor. The view uses it to pull the gun back into reach.</summary>
+        public bool Overreached { get; private set; }
 
         /// <summary>
         /// Law-of-cosines IK. The pole direction decides which way the elbow breaks; for a human arm
@@ -82,6 +93,7 @@ namespace Satisfying.Game
             float distance = Mathf.Clamp(toTarget.magnitude, 0.02f, reach - 0.004f);
             if (toTarget.sqrMagnitude < 1e-6f) return;
 
+            Overreached = toTarget.magnitude > reach - 0.004f;
             Vector3 direction = toTarget.normalized;
             if (worldPole.sqrMagnitude < 1e-6f) worldPole = Vector3.down;
 

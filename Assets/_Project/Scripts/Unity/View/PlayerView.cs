@@ -104,10 +104,17 @@ namespace Satisfying.Game
             ViewmodelRoot = viewmodelRoot.transform;
 
             // Arms hang off the camera, not the weapon, and reach for it with IK.
-            _rightArm = ArmRig.Build(cameraGo.transform, "right arm", new Vector3(0.19f, -0.26f, -0.24f), 1f,
-                palette, palette.Hands, viewmodelLayer, 0.072f, 0.26f, 0.25f);
-            _leftArm = ArmRig.Build(cameraGo.transform, "left arm", new Vector3(-0.19f, -0.26f, -0.24f), -1f,
-                palette, palette.Hands, viewmodelLayer, 0.070f, 0.26f, 0.25f);
+            //
+            // They used to be 0.51 m long from a shoulder 0.24 m behind the eye, and the grip of an
+            // aimed rifle is about 0.64 m from there - so the hands could not reach the gun at all and
+            // no amount of moving the gun helped, because moving the gun moves the target with it.
+            // They are long enough now, and armLength/armForward can move them the rest of the way.
+            float armScale = Mathf.Clamp(feel.armLength, 0.7f, 1.6f);
+            float shoulderZ = -0.20f + feel.armForward;
+            _rightArm = ArmRig.Build(cameraGo.transform, "right arm", new Vector3(0.17f, -0.24f, shoulderZ), 1f,
+                palette, palette.Hands, viewmodelLayer, 0.072f, 0.325f * armScale, 0.315f * armScale);
+            _leftArm = ArmRig.Build(cameraGo.transform, "left arm", new Vector3(-0.17f, -0.24f, shoulderZ), -1f,
+                palette, palette.Hands, viewmodelLayer, 0.070f, 0.325f * armScale, 0.315f * armScale);
 
             SetWeapon(0);
         }
@@ -192,8 +199,11 @@ namespace Satisfying.Game
             // into a scope does narrow what you take in, and that is all.
             bool scoped = sight != null && sight.IsScope;
             float sightZoom = sight != null ? Mathf.Max(0.1f, sight.zoomMul) : 1f;
+            // A magnified optic does not touch the main camera AT ALL. Squeezing it even slightly is
+            // still zooming the world, and the whole point of the scope having a camera of its own is
+            // that everything outside the tube stays exactly where it was.
             float aimedFov = scoped
-                ? _feel.fieldOfView * Mathf.Lerp(1f, _feel.adsFovMul, 0.35f)
+                ? _feel.fieldOfView
                 : _feel.fieldOfView * _feel.adsFovMul * sightZoom;
             targetFov = Mathf.Lerp(targetFov, aimedFov, state.Ads);
             _fov = Mathf.Lerp(_fov, targetFov, 1f - Mathf.Exp(-_feel.fovLerpSpeed * dt));
@@ -203,7 +213,7 @@ namespace Satisfying.Game
             WeaponCamera.fieldOfView = Mathf.Lerp(_feel.viewmodelFov, _feel.viewmodelFov * 0.94f, state.Ads);
 
             RenderViewmodel(in state, move, weapon, yaw, pitch, dt, sprinting, bobX, bobY);
-            RenderScope(in state, sight);
+            RenderScope(in state, sight, dt);
         }
 
         /// <summary>
@@ -211,20 +221,30 @@ namespace Satisfying.Game
         /// the picture is worthless while the rifle is still coming up, and rendering the world a
         /// second time for a frame nobody can use is the one cost worth avoiding here.
         /// </summary>
-        void RenderScope(in PlayerSimState state, SightTuning sight)
+        void RenderScope(in PlayerSimState state, SightTuning sight, float dt)
         {
             if (Scope == null) return;
 
+            // How fast the rifle is being swung, in degrees a second. The scope uses it for eye relief;
+            // it is the same delta the sway is built from, so they agree about what "fast" means.
+            float safeDt = Mathf.Max(0.0001f, dt);
+            float turnRate = _scopeDeltaYaw / safeDt;
+            float pitchRate = _scopeDeltaPitch / safeDt;
+
             if (sight == null || !sight.IsScope || Weapon == null || Weapon.SightAnchor == null)
             {
-                Scope.Render(null, _fov, 1f, 0f);
+                Scope.Render(null, _fov, 1f, 0f, 0f, 0f, dt);
                 return;
             }
 
             // Nothing until the rifle is most of the way up, then in over the last quarter.
             float blend = Mathf.Clamp01((state.Ads - 0.72f) / 0.28f);
-            Scope.Render(Weapon.SightAnchor, _feel.fieldOfView, sight.ClampMagnification(Magnification), blend);
+            Scope.Render(Weapon.SightAnchor, _feel.fieldOfView, sight.ClampMagnification(Magnification),
+                         blend, turnRate, pitchRate, dt);
         }
+
+        float _scopeDeltaYaw;
+        float _scopeDeltaPitch;
 
         /// <summary>What the player has dialled the optic to. Local, like every other feel value.</summary>
         public float Magnification = 6f;
@@ -234,6 +254,8 @@ namespace Satisfying.Game
         {
             float deltaYaw = Mathf.DeltaAngle(_lastYaw, yaw);
             float deltaPitch = pitch - _lastPitch;
+            _scopeDeltaYaw = deltaYaw;
+            _scopeDeltaPitch = deltaPitch;
             _lastYaw = yaw;
             _lastPitch = pitch;
 

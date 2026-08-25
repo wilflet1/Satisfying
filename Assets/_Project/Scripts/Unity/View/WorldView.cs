@@ -62,6 +62,9 @@ namespace Satisfying.Game
                 view.Centre = bounds.Center.ToUnity();
                 view.Size = bounds.Size.ToUnity();
                 view.Glass = Blockout.Box(_root, "glass " + i, view.Centre, view.Size, _glassMaterial, true, worldLayer);
+                MeshRenderer glassRenderer = view.Glass.GetComponent<MeshRenderer>();
+                if (glassRenderer != null)
+                    glassRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 view.Barrier = view.Glass.GetComponent<Collider>();
                 _windows.Add(view);
             }
@@ -101,7 +104,11 @@ namespace Satisfying.Game
 
         static Material MakeGlass()
         {
-            Material m = Palette.Make("glass", new Color(0.62f, 0.76f, 0.86f, 0.26f), 0.92f, 0f);
+            // Barely there. A pane you cannot see through is a wall you can shoot, which is the worst
+            // of both - the point of glass is that it shows you the room and then stops being there.
+            // The tint is cool and very slightly green, which is what float glass actually looks like
+            // edge on, and the smoothness is what gives it a highlight to catch.
+            Material m = Palette.Make("glass", new Color(0.70f, 0.84f, 0.88f, 0.10f), 0.97f, 0.05f);
             // The Standard shader needs telling that it is transparent; it is opaque by default.
             if (m.HasProperty("_Mode")) m.SetFloat("_Mode", 3f);
             if (m.HasProperty("_SrcBlend")) m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
@@ -112,6 +119,9 @@ namespace Satisfying.Game
             m.EnableKeyword("_ALPHABLEND_ON");
             m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
             m.renderQueue = 3000;
+
+            // A pane that casts a solid black shadow gives itself away from across the map and looks
+            // like a sheet of steel from outside. It receives shadows; it does not throw one.
             return m;
         }
 

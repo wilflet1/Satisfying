@@ -369,35 +369,120 @@ namespace Satisfying.Game
                 else theirs = Mathf.Max(theirs, kv.Value.Kills);
             }
 
+            bool leading = mine > theirs;
+            Color mineColour = mine == theirs ? UiSkin.Ink : (leading ? UiSkin.Good : UiSkin.Bad);
+
             string phase;
             switch (Game.Phase)
             {
                 case MatchPhase.Warmup: phase = "waiting for an opponent"; break;
                 case MatchPhase.Countdown: phase = "starting..."; break;
-                case MatchPhase.Ended:
-                    phase = Game.Winner == Game.Client.PeerId ? "you win the duel" : "you lost the duel";
-                    break;
+                case MatchPhase.Ended: phase = ""; break;
                 default: phase = "first to " + Mathf.RoundToInt(Game.Client.Tuning.match.killsToWin); break;
             }
 
-            _skin.Text(new Rect(_width * 0.5f - 150f, 14f, 300f, 36f), mine + "   -   " + theirs, _score, UiSkin.Ink);
-            _skin.Text(new Rect(_width * 0.5f - 200f, 50f, 400f, 20f), phase, _centreSmall, UiSkin.InkDim);
+            _skin.Text(new Rect(_width * 0.5f - 150f, 14f, 140f, 36f), mine.ToString(), _score, mineColour);
+            _skin.Text(new Rect(_width * 0.5f - 20f, 14f, 40f, 36f), "-", _score, UiSkin.InkDim);
+            _skin.Text(new Rect(_width * 0.5f + 10f, 14f, 140f, 36f), theirs.ToString(), _score, UiSkin.Ink);
+            if (phase.Length > 0)
+                _skin.Text(new Rect(_width * 0.5f - 200f, 50f, 400f, 20f), phase, _centreSmall, UiSkin.InkDim);
+
+            if (Game.Phase == MatchPhase.Ended) DrawResult(mine, theirs);
         }
 
+        /// <summary>
+        /// The end of a duel, said properly. It used to be twenty pixels of dim grey text tucked under
+        /// the score, which is a strange way to tell someone they just won - you could finish a match
+        /// and not notice. Now it takes the middle of the screen.
+        /// </summary>
+        void DrawResult(int mine, int theirs)
+        {
+            bool won = Game.Winner == Game.Client.PeerId;
+            Color colour = won ? UiSkin.Good : UiSkin.Bad;
+
+            // A wash over the whole screen in the result's colour, and a band behind the word.
+            GUI.color = new Color(colour.r, colour.g, colour.b, 0.10f);
+            GUI.DrawTexture(new Rect(0f, 0f, _width, _height), _skin.White);
+
+            float bandHeight = 132f;
+            float bandY = _height * 0.36f;
+            GUI.color = new Color(0.05f, 0.055f, 0.07f, 0.88f);
+            GUI.DrawTexture(new Rect(0f, bandY, _width, bandHeight), _skin.White);
+            GUI.color = new Color(colour.r, colour.g, colour.b, 0.95f);
+            GUI.DrawTexture(new Rect(0f, bandY, _width, 3f), _skin.White);
+            GUI.DrawTexture(new Rect(0f, bandY + bandHeight - 3f, _width, 3f), _skin.White);
+            GUI.color = Color.white;
+
+            _skin.Text(new Rect(0f, bandY + 20f, _width, 60f), won ? "VICTORY" : "DEFEAT", _centreHeader, colour);
+            _skin.Text(new Rect(0f, bandY + 84f, _width, 28f),
+                       mine + " - " + theirs + "     " + (won ? "the duel is yours" : "better luck next round"),
+                       _centreSmall, UiSkin.InkDim);
+        }
+
+        /// <summary>
+        /// Who killed whom, in a form you can read without stopping to read it.
+        ///
+        /// It used to be one dim grey line of running text at 18 px, which in a firefight is
+        /// indistinguishable from not being there. Now each entry is a plate with the two names in
+        /// colour - yours in the accent, theirs in red - the zone called out where it matters, and
+        /// anything you did or that was done to you outlined so it catches the eye.
+        /// </summary>
         void DrawKillFeed()
         {
-            float y = 86f;
+            float rowHeight = 26f;
+            float width = 330f;
+            float y = 92f;
+
             for (int i = Game.KillFeed.Count - 1; i >= 0; i--)
             {
                 NetGame.KillFeedEntry entry = Game.KillFeed[i];
                 float age = Time.time - entry.Time;
-                float alpha = Mathf.Clamp01(2f - age * 0.35f);
+                float alpha = Mathf.Clamp01(2.4f - age * 0.4f);
+                if (alpha <= 0.01f) continue;
+
+                bool mineKill = Game.Client != null && entry.KillerId == Game.Client.PeerId;
+                bool myDeath = Game.Client != null && entry.VictimId == Game.Client.PeerId;
+                bool involved = mineKill || myDeath;
+
+                Rect row = new Rect(_width - width - 24f, y, width, rowHeight - 4f);
+
+                // A plate behind it, brighter when it was you at either end.
+                GUI.color = new Color(0.05f, 0.055f, 0.07f, alpha * (involved ? 0.82f : 0.55f));
+                GUI.DrawTexture(row, _skin.White);
+                if (involved)
+                {
+                    GUI.color = new Color(mineKill ? UiSkin.Accent.r : UiSkin.Bad.r,
+                                          mineKill ? UiSkin.Accent.g : UiSkin.Bad.g,
+                                          mineKill ? UiSkin.Accent.b : UiSkin.Bad.b, alpha * 0.9f);
+                    GUI.DrawTexture(new Rect(row.x, row.y, 3f, row.height), _skin.White);
+                }
+                GUI.color = Color.white;
+
+                Color killerColour = mineKill ? UiSkin.Accent : UiSkin.Ink;
+                Color victimColour = myDeath ? UiSkin.Bad : UiSkin.Ink;
+
+                float x = row.x + 10f;
+                x += Segment(entry.Killer, x, row.y, killerColour, alpha, _feed);
+                x += Segment("  >  ", x, row.y, UiSkin.InkDim, alpha, _feed);
+                x += Segment(entry.Victim, x, row.y, victimColour, alpha, _feed);
+
                 string zone = ZoneLabel(entry.Zone);
-                _skin.Text(new Rect(_width - 330f, y, 300f, 18f),
-                    entry.Killer + "  killed  " + entry.Victim + zone, _feed,
-                    new Color(UiSkin.Ink.r, UiSkin.Ink.g, UiSkin.Ink.b, alpha));
-                y += 19f;
+                if (zone.Length > 0)
+                    Segment(zone, x, row.y, entry.Zone == HitZone.Head ? UiSkin.Accent : UiSkin.InkDim,
+                            alpha, _feed);
+
+                y += rowHeight;
             }
+        }
+
+        /// <summary>Draws one run of coloured text and returns how wide it was, so the next one can
+        /// start where it finished.</summary>
+        float Segment(string text, float x, float y, Color colour, float alpha, GUIStyle style)
+        {
+            float width = style.CalcSize(new GUIContent(text)).x;
+            _skin.Text(new Rect(x, y, width + 4f, 22f), text, style,
+                       new Color(colour.r, colour.g, colour.b, alpha));
+            return width;
         }
 
         /// <summary>

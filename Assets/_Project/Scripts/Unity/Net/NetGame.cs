@@ -27,6 +27,10 @@ namespace Satisfying.Game
         {
             public string Killer;
             public string Victim;
+            // The ids as well as the names, so the feed can colour the line you are in without
+            // comparing strings - two players are allowed to pick the same name.
+            public int KillerId;
+            public int VictimId;
             public HitZone Zone;
             public float Time;
         }
@@ -576,6 +580,8 @@ namespace Satisfying.Game
             KillFeedEntry entry;
             entry.Killer = killer >= 0 ? Info(killer).Name : "the world";
             entry.Victim = Info(victim).Name;
+            entry.KillerId = killer;
+            entry.VictimId = victim;
             entry.Zone = zone;
             entry.Time = Time.time;
             KillFeed.Add(entry);

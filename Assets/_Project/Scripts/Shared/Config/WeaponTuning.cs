@@ -8,7 +8,9 @@ namespace Satisfying.Shared
     {
         public string name = "AR";
 
-        [Tune("Weapon", 60f, 1400f, Tip = "Rounds per minute.")]
+        // The bottom of the range is 20, not 60: a bolt gun is a shot every second and a half and the
+        // slider has to be able to say so.
+        [Tune("Weapon", 20f, 1400f, Tip = "Rounds per minute. A bolt action lives at the bottom of this.")]
         public float rpm = 650f;
 
         [Tune("Weapon", 1f, 150f, Tip = "Chest damage at point blank. Every other zone is relative to this.")]
@@ -213,7 +215,7 @@ namespace Satisfying.Shared
             // trade: you cannot take a snap shot with it and you do not need a second one.
             WeaponTuning sniper = new WeaponTuning();
             sniper.name = "M700";
-            sniper.rpm = 42f;
+            sniper.rpm = 40f;
             sniper.automatic = 0f;
 
             // 105 to the chest, and every zone but an arm is at or above 1.0, so anything except an

@@ -121,6 +121,16 @@ namespace Satisfying.Shared
         [Tune("Weapon feel", 35f, 80f, Tip = "Field of view the gun and hands are drawn with. Lower makes the weapon look bigger.")]
         public float viewmodelFov = 58f;
 
+        // The arms are a two bone IK chain reaching for anchors on the gun, so if they are shorter
+        // than the distance to the grip they simply stop short and the hands hang in the air behind
+        // it - which is not something the viewmodel offsets can fix, because moving the gun moves the
+        // target too. These two are the fix: how long the arms are, and where they hang from.
+        [Tune("Weapon feel", 0.7f, 1.6f, Tip = "Length of the viewmodel arms. Raise it if the hands do not reach the grip.")]
+        public float armLength = 1f;
+
+        [Tune("Weapon feel", -0.35f, 0.25f, Tip = "How far forward the viewmodel shoulders sit. Forward is towards the gun.")]
+        public float armForward = 0f;
+
         // ---------------------------------------------------------------- hud
         [Tune("HUD", 0f, 40f)]
         public float crosshairSize = 7f;

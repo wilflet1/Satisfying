@@ -46,6 +46,14 @@ namespace Satisfying.Game
         /// <summary>0 to 1: how far up the scope is. The picture fades and grows in over the last of it.</summary>
         public float Blend;
 
+        /// <summary>
+        /// Where the eye is sitting in the eyebox, in fractions of the tube's radius. Turning fast
+        /// pushes it off centre, which is what a real scope does to you and is the single cheapest
+        /// thing that makes one feel like glass rather than a hole cut in the HUD.
+        /// </summary>
+        Vector2 _eyeOffset;
+        Vector2 _eyeVelocity;
+
         public bool Active { get { return Blend > 0.01f; } }
         public RenderTexture Texture { get { return _target; } }
 
@@ -76,10 +84,24 @@ namespace Satisfying.Game
         /// Points the scope camera down the optic and renders it. Called once a frame while aiming a
         /// magnified sight, and not at all otherwise.
         /// </summary>
-        public void Render(Transform opticAxis, float fieldOfView, float magnification, float blend)
+        public void Render(Transform opticAxis, float fieldOfView, float magnification, float blend,
+                           float turnRate, float pitchRate, float dt)
         {
             Blend = Mathf.Clamp01(blend);
             Magnification = magnification;
+
+            // Eye relief. The faster you swing the rifle the further your eye falls out of the eyebox,
+            // and the shadow crescent comes in from the side you swung away from. It springs back when
+            // you settle, so a scope you are holding still is a clean circle.
+            //
+            // It scales with magnification because that is how eyeboxes work: 18x is unforgiving and
+            // 3.5x you can be halfway off and still see everything.
+            float forgiveness = Mathf.Lerp(0.35f, 1f, Mathf.InverseLerp(3.5f, 18f, magnification));
+            Vector2 target = new Vector2(Mathf.Clamp(-turnRate * 0.010f, -1.2f, 1.2f),
+                                         Mathf.Clamp(pitchRate * 0.010f, -1.2f, 1.2f)) * forgiveness;
+            float step = 1f - Mathf.Exp(-14f * Mathf.Max(0.0001f, dt));
+            _eyeVelocity = Vector2.Lerp(_eyeVelocity, target, step);
+            _eyeOffset = Vector2.Lerp(_eyeOffset, _eyeVelocity, step);
 
             if (!Active || opticAxis == null)
             {
@@ -142,14 +164,24 @@ namespace Satisfying.Game
             GUI.color = new Color(1f, 1f, 1f, Blend);
             GUI.DrawTexture(circle, _target, ScaleMode.ScaleAndCrop, false);
 
-            // 2. the eye relief shadow, which is what makes it read as glass rather than a hole
-            GUI.DrawTexture(circle, _shadow, ScaleMode.StretchToFill, true);
+            // 2. the eye relief shadow, offset by where the eye is sitting. Drawn oversized and
+            //    slid about, so the crescent closes in from one side rather than fading evenly.
+            float travel = circle.width * 0.16f;
+            Rect shadowRect = new Rect(circle.x + _eyeOffset.x * travel, circle.y - _eyeOffset.y * travel,
+                                       circle.width, circle.height);
+            GUI.DrawTexture(shadowRect, _shadow, ScaleMode.StretchToFill, true);
 
-            // 3. the reticle
+            // 3. the glass itself: a soft sheen across the top left, and a cool cast over the lot.
+            //    Two textures and no shader, and it is the difference between a picture in a circle
+            //    and something you are looking through.
+            GUI.color = new Color(1f, 1f, 1f, Blend * 0.5f);
+            GUI.DrawTexture(circle, _sheen, ScaleMode.StretchToFill, true);
+
+            // 4. the reticle
             GUI.color = new Color(0.05f, 0.05f, 0.06f, Blend);
             GUI.DrawTexture(ReticleRect(screenWidth, screenHeight), _reticle, ScaleMode.StretchToFill, true);
 
-            // 4. the body of the scope, over everything, hiding the square corners of the picture
+            // 5. the body of the scope, over everything, hiding the square corners of the picture
             GUI.color = new Color(1f, 1f, 1f, Blend);
             GUI.DrawTexture(new Rect(0f, 0f, screenWidth, screenHeight), _surround, ScaleMode.StretchToFill, true);
 
@@ -183,6 +215,11 @@ namespace Satisfying.Game
         }
 
         public Texture2D Surround { get { EnsureTextures(); return _surround; } }
+        public Texture2D Sheen { get { EnsureTextures(); return _sheen; } }
+
+        /// <summary>Where the eye is in the eyebox, so the shot sheet can put the shadow where the
+        /// game puts it rather than guessing.</summary>
+        public Vector2 EyeOffset { get { return _eyeOffset; } }
         public Texture2D Shadow { get { EnsureTextures(); return _shadow; } }
         public Texture2D Reticle { get { EnsureTextures(); return _reticle; } }
 
@@ -191,6 +228,48 @@ namespace Satisfying.Game
             EnsureShadow();
             EnsureReticle();
             EnsureSurround();
+            EnsureSheen();
+        }
+
+        /// <summary>
+        /// The reflection on the glass: a broad soft streak across the top left, and the faintest cool
+        /// wash over everything. Real glass is never perfectly clear and the eye reads "clear" as
+        /// "hole", so this is what stops the picture looking like a cut-out.
+        /// </summary>
+        Texture2D _sheen;
+
+        void EnsureSheen()
+        {
+            if (_sheen != null) return;
+
+            const int size = 128;
+            _sheen = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            _sheen.wrapMode = TextureWrapMode.Clamp;
+            _sheen.filterMode = FilterMode.Bilinear;
+
+            for (int py = 0; py < size; py++)
+            {
+                float ny = py / (float)(size - 1) * 2f - 1f;
+                for (int px = 0; px < size; px++)
+                {
+                    float nx = px / (float)(size - 1) * 2f - 1f;
+                    float d = Mathf.Sqrt(nx * nx + ny * ny);
+                    if (d > 1f) { _sheen.SetPixel(px, py, new Color(0f, 0f, 0f, 0f)); continue; }
+
+                    // A band running down and right, brightest towards the top left of the lens.
+                    float band = nx * 0.7f - ny * 0.7f;
+                    float streak = Mathf.Exp(-(band + 0.55f) * (band + 0.55f) * 9f) * 0.55f;
+                    streak += Mathf.Exp(-(band + 0.05f) * (band + 0.05f) * 40f) * 0.22f;
+
+                    // Nothing right at the rim, where the tube shades it anyway.
+                    streak *= Mathf.Clamp01((0.98f - d) / 0.25f);
+
+                    float wash = 0.06f * Mathf.Clamp01(1f - d);
+                    float alpha = Mathf.Clamp01(streak + wash);
+                    _sheen.SetPixel(px, py, new Color(0.78f, 0.88f, 0.95f, alpha));
+                }
+            }
+            _sheen.Apply();
         }
 
         /// <summary>
@@ -293,12 +372,17 @@ namespace Satisfying.Game
             for (int i = 0; i < pixels.Length; i++) pixels[i] = new Color(0f, 0f, 0f, 0f);
 
             float centre = (size - 1) * 0.5f;
-            float thin = size * 0.0022f;
-            float thick = size * 0.0075f;
-            float mil = size * 0.052f;          // one mil, in texels
+            float mil = size * 0.055f;
 
-            // The four stadia. Thin near the middle so they do not swallow the target, thickening
-            // towards the edge so the eye finds the centre fast in a busy picture.
+            // Four plain stadia in from the edge, stopping well short of the middle. The previous one
+            // had a horseshoe, a floating dot, wind dots and a holdover tree all fighting each other
+            // in the same two centimetres of glass; you could not see a man behind it. What is left is
+            // what a precision reticle is actually made of: a cross you can find, a gap you can see
+            // through, and marks you can count.
+            float inner = mil * 1.15f;
+            float outer = size * 0.455f;
+            float thin = size * 0.0026f;
+
             for (int py = 0; py < size; py++)
             {
                 for (int px = 0; px < size; px++)
@@ -307,60 +391,32 @@ namespace Satisfying.Game
                     float dy = py - centre;
                     float ax = Mathf.Abs(dx);
                     float ay = Mathf.Abs(dy);
-
                     float alpha = 0f;
 
-                    // Horizontal and vertical stadia, from 1 mil out to the edge of the glass.
-                    float taper = size * 0.0022f;
-                    if (ay <= Width(ax, size, thin, thick, taper) && ax > mil * 0.9f && ax < size * 0.46f) alpha = 1f;
-                    if (ax <= Width(ay, size, thin, thick, taper) && ay > mil * 0.9f && ay < size * 0.46f) alpha = 1f;
+                    // The stadia thicken towards the rim so the eye is led inwards.
+                    if (ax > inner && ax < outer && ay <= Taper(ax, size, thin)) alpha = 1f;
+                    if (ay > inner && ay < outer && ax <= Taper(ay, size, thin)) alpha = 1f;
 
-                    // The floating centre dot: small, and the only solid thing in the middle.
-                    float d = Mathf.Sqrt(dx * dx + dy * dy);
-                    if (d <= size * 0.0055f) alpha = 1f;
-
-                    // The horseshoe - a ring broken at the top, so it frames a target at low power
-                    // without hiding what is above it.
-                    float ringRadius = mil * 2.6f;
-                    float ringWidth = size * 0.0042f;
-                    if (Mathf.Abs(d - ringRadius) <= ringWidth)
-                    {
-                        // Open across the top third.
-                        bool openTop = dy > 0f && ay > ax * 1.1f;
-                        if (!openTop) alpha = 1f;
-                    }
+                    // One small dot in the middle, and nothing else anywhere near it.
+                    if (Mathf.Sqrt(dx * dx + dy * dy) <= size * 0.0042f) alpha = 1f;
 
                     if (alpha > 0f) pixels[py * size + px] = new Color(0f, 0f, 0f, alpha);
                 }
             }
 
-            // Mil hashes: below the centre for holdover, and either side for wind. Below goes further,
-            // because that is the half anyone uses.
-            for (int m = 1; m <= 10; m++)
+            // Mil marks: below the centre for holdover and either side for wind, every mil, with a
+            // longer one every fifth. Ticks only - no dots, no tree.
+            for (int m = 1; m <= 8; m++)
             {
                 float offset = mil * m;
-                if (offset > size * 0.44f) break;
+                if (offset > outer - size * 0.01f) break;
+                float length = (m % 5 == 0) ? size * 0.022f : size * 0.011f;
 
-                // Longer every fifth mark, and a number's worth of length on the tens.
-                float length = (m % 5 == 0) ? size * 0.026f : size * 0.013f;
-                Hash(pixels, size, centre, centre - offset, length, true);      // holdover, under the cross
-                if (m <= 6)
+                Tick(pixels, size, centre, centre - offset, length, true);
+                if (m <= 5)
                 {
-                    Hash(pixels, size, centre - offset, centre, length * 0.8f, false);
-                    Hash(pixels, size, centre + offset, centre, length * 0.8f, false);
-                }
-            }
-
-            // The tree: a couple of rows of wind dots hung off the holdover stadia, which is what
-            // makes it a precision reticle rather than a crosshair with ticks.
-            for (int row = 2; row <= 8; row += 2)
-            {
-                float y = centre - mil * row;
-                int wings = row / 2;
-                for (int w = 1; w <= wings; w++)
-                {
-                    Dot(pixels, size, centre - mil * w * 0.9f, y, size * 0.0038f);
-                    Dot(pixels, size, centre + mil * w * 0.9f, y, size * 0.0038f);
+                    Tick(pixels, size, centre - offset, centre, length * 0.85f, false);
+                    Tick(pixels, size, centre + offset, centre, length * 0.85f, false);
                 }
             }
 
@@ -368,43 +424,25 @@ namespace Satisfying.Game
             _reticle.Apply();
         }
 
-        /// <summary>Stadia thickness: hairline in the middle of the glass, heavier out at the edge.</summary>
-        static float Width(float distance, int size, float thin, float thick, float taper)
+        /// <summary>Hairline in the middle of the glass, a little heavier out at the rim.</summary>
+        static float Taper(float distance, int size, float thin)
         {
-            float k = Mathf.Clamp01((distance - size * 0.16f) / (size * 0.26f));
-            return Mathf.Lerp(thin, thick, k * k);
+            float k = Mathf.Clamp01((distance - size * 0.20f) / (size * 0.24f));
+            return Mathf.Lerp(thin, thin * 2.6f, k * k);
         }
 
-        static void Hash(Color[] pixels, int size, float x, float y, float length, bool vertical)
+        static void Tick(Color[] pixels, int size, float x, float y, float length, bool horizontal)
         {
-            float halfThickness = size * 0.0026f;
-            int x0 = Mathf.Max(0, Mathf.FloorToInt(x - (vertical ? length : halfThickness)));
-            int x1 = Mathf.Min(size - 1, Mathf.CeilToInt(x + (vertical ? length : halfThickness)));
-            int y0 = Mathf.Max(0, Mathf.FloorToInt(y - (vertical ? halfThickness : length)));
-            int y1 = Mathf.Min(size - 1, Mathf.CeilToInt(y + (vertical ? halfThickness : length)));
+            float half = size * 0.0022f;
+            int x0 = Mathf.Max(0, Mathf.FloorToInt(x - (horizontal ? length : half)));
+            int x1 = Mathf.Min(size - 1, Mathf.CeilToInt(x + (horizontal ? length : half)));
+            int y0 = Mathf.Max(0, Mathf.FloorToInt(y - (horizontal ? half : length)));
+            int y1 = Mathf.Min(size - 1, Mathf.CeilToInt(y + (horizontal ? half : length)));
 
             for (int py = y0; py <= y1; py++)
                 for (int px = x0; px <= x1; px++)
                     pixels[py * size + px] = new Color(0f, 0f, 0f, 1f);
         }
 
-        static void Dot(Color[] pixels, int size, float x, float y, float radius)
-        {
-            int x0 = Mathf.Max(0, Mathf.FloorToInt(x - radius));
-            int x1 = Mathf.Min(size - 1, Mathf.CeilToInt(x + radius));
-            int y0 = Mathf.Max(0, Mathf.FloorToInt(y - radius));
-            int y1 = Mathf.Min(size - 1, Mathf.CeilToInt(y + radius));
-
-            for (int py = y0; py <= y1; py++)
-            {
-                for (int px = x0; px <= x1; px++)
-                {
-                    float dx = px - x;
-                    float dy = py - y;
-                    if (dx * dx + dy * dy <= radius * radius)
-                        pixels[py * size + px] = new Color(0f, 0f, 0f, 1f);
-                }
-            }
-        }
     }
 }
