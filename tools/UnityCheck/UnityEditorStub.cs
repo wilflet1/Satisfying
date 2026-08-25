@@ -71,6 +71,7 @@ namespace UnityEditor
         public static T LoadAssetAtPath<T>(string path) where T : UnityEngine.Object { return null; }
         public static void SaveAssets() { }
         public static void Refresh() { }
+        public static void ImportAsset(string path) { }
         public static void CreateAsset(UnityEngine.Object asset, string path) { }
         public static bool IsValidFolder(string path) { return true; }
         public static string CreateFolder(string parent, string name) { return ""; }

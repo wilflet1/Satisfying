@@ -616,7 +616,7 @@ namespace Satisfying.Game
             GUILayout.BeginArea(area, _skin.Panel);
             GUILayout.Label("SATISFYING", _skin.Title);
             GUILayout.Label("a 1v1 movement duel - lean, slow lean, prone lean, side step, blind fire", _centreDim);
-            GUILayout.Label("build 2026-08-24 #3  -  slow-lean latch, grab drag fix, blindfire, tracer, no mouse-lean", _skin.SmallDim);
+            GUILayout.Label(BuildStamp.Describe(Protocol.Version), _skin.SmallDim);
             GUILayout.Space(10f);
 
             _menuScroll = GUILayout.BeginScrollView(_menuScroll);
