@@ -14,6 +14,7 @@ namespace Satisfying.Editor
     public static class BuildScript
     {
         const string BuildRoot = "Builds";
+        const string StampPath = "Assets/_Project/Scripts/Unity/Core/BuildStamp.cs";
 
         [MenuItem("Satisfying/Build/Windows 64", priority = 20)]
         public static void BuildWindows() { Build(BuildTarget.StandaloneWindows64, "Windows/Satisfying.exe", false); }
@@ -116,7 +117,10 @@ namespace Satisfying.Editor
             string commit = Git("rev-parse --short HEAD");
             string branch = Git("rev-parse --abbrev-ref HEAD");
             if (string.IsNullOrEmpty(commit)) commit = "no git";
-            if (!string.IsNullOrEmpty(Git("status --porcelain"))) commit += "+dirty";
+            // Not counting the stamp itself, which this method is about to rewrite: every build
+            // leaves it modified, so counting it would mean the second build in a row - and every
+            // build after that - claimed to be from a dirty tree whether or not anything had changed.
+            if (!string.IsNullOrEmpty(Git("status --porcelain -- . \":(exclude)" + StampPath + "\""))) commit += "+dirty";
 
             string source =
                 "namespace Satisfying.Game\n" +
@@ -137,7 +141,7 @@ namespace Satisfying.Editor
                 "    }\n" +
                 "}\n";
 
-            string path = "Assets/_Project/Scripts/Unity/Core/BuildStamp.cs";
+            string path = StampPath;
             string existing = File.Exists(path) ? File.ReadAllText(path) : null;
             if (existing == source) return;          // no churn when nothing moved
 
