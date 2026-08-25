@@ -59,7 +59,7 @@ namespace Satisfying.Editor
             PlayerSettings.Android.targetSdkVersion = AndroidSdkVersions.AndroidApiLevelAuto;
 
             // A duel is landscape. Portrait would put both thumbs over the middle of the screen.
-            PlayerSettings.defaultInterfaceOrientation = UnityEngine.ScreenOrientation.LandscapeLeft;
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
             PlayerSettings.allowedAutorotateToLandscapeLeft = true;
             PlayerSettings.allowedAutorotateToLandscapeRight = true;
             PlayerSettings.allowedAutorotateToPortrait = false;

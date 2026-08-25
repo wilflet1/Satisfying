@@ -1,6 +1,13 @@
 // -----------------------------------------------------------------------------------------------
 // COMPILE-CHECK STUB - see UnityEngineStub.cs. Covers the UnityEditor surface the project's editor
 // scripts use, so the one-click setup and build menu are type-checked too.
+//
+// A WRONG STUB IS WORSE THAN A MISSING ONE. A missing member is an error here and gets noticed; a
+// member stubbed with the wrong type passes here and fails in Unity, which is the one thing this
+// file exists to prevent. PlayerSettings.defaultInterfaceOrientation was typed ScreenOrientation
+// when it is really UIOrientation - two similarly named enums in different namespaces - and the
+// build broke on a machine with a real editor. When adding to this file, copy the signature from
+// the actual API rather than from memory of it.
 // -----------------------------------------------------------------------------------------------
 using System;
 using UnityEngine;
@@ -112,7 +119,7 @@ namespace UnityEditor
         public static int defaultScreenWidth { get; set; }
         public static int defaultScreenHeight { get; set; }
         public static UnityEngine.FullScreenMode fullScreenMode { get; set; }
-        public static UnityEngine.ScreenOrientation defaultInterfaceOrientation { get; set; }
+        public static UIOrientation defaultInterfaceOrientation { get; set; }
         public static bool allowedAutorotateToPortrait { get; set; }
         public static bool allowedAutorotateToPortraitUpsideDown { get; set; }
         public static bool allowedAutorotateToLandscapeLeft { get; set; }
@@ -143,6 +150,19 @@ namespace UnityEditor
     }
 
     public enum AndroidBuildType { Debug = 0, Development = 1, Release = 2 }
+
+    /// <summary>
+    /// UnityEditor's own orientation enum. Deliberately NOT UnityEngine.ScreenOrientation - they are
+    /// different types with overlapping names, and conflating them is what this stub got wrong.
+    /// </summary>
+    public enum UIOrientation
+    {
+        Portrait = 0,
+        PortraitUpsideDown = 1,
+        LandscapeRight = 2,
+        LandscapeLeft = 3,
+        AutoRotation = 4
+    }
 
     public enum ScriptingImplementation { Mono2x = 0, IL2CPP = 1 }
     public enum AndroidSdkVersions { AndroidApiLevel23 = 23, AndroidApiLevel24 = 24, AndroidApiLevel29 = 29, AndroidApiLevel33 = 33, AndroidApiLevelAuto = 0 }
