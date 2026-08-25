@@ -14,7 +14,9 @@ import: clone it, open it, press play.
 **Windows, in one paste:** run `tools/Install-Satisfying.ps1` in a PowerShell window. It downloads
 the project, registers it with Unity Hub and opens it. Once you have a copy,
 `tools/Update-Satisfying.ps1` pulls the latest and reopens it — it stashes anything you changed
-rather than clobbering it, and refuses to pull while the editor has the project open. Otherwise:
+rather than clobbering it, and refuses to pull while the editor has the project open.
+`tools/Start-ClaudeSession.ps1` pulls, sets up permissions and opens a Claude Code session on the
+project pointed at `HANDOVER.md`. Otherwise:
 
 1. Open the folder in Unity **6000.3** (anything from 2021.3 up will work — the project uses no
    packages beyond Unity's built-in modules, so there is nothing to download and nothing to resolve).
@@ -145,7 +147,7 @@ The simulation and netcode have **no UnityEngine dependency at all**, which mean
 Unity compiles also compiles and runs under plain .NET:
 
 ```bash
-dotnet run --project tools/SimTests    # 99 tests: movement, lean, slide, vault, melee, props, combat, netcode
+dotnet run --project tools/SimTests    # 157 tests: movement, lean, slide, vault, melee, props, combat, shapes, netcode
 dotnet build tools/UnityCheck          # type-checks the Unity layer against a stub UnityEngine
 dotnet run --project tools/Playground  # launches the real game headlessly and reports what happened
 ```

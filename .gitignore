@@ -115,3 +115,6 @@ InitTestScene*.unity*
 # Headless simulation test harness (.NET)
 tools/**/bin/
 tools/**/obj/
+
+# Per-machine Claude Code permissions. The shared ones are in .claude/settings.json.
+.claude/settings.local.json

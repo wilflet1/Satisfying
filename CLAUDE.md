@@ -42,7 +42,7 @@ tools/                 SimTests, UnityCheck, Playground - plain .NET, outside Un
 Three commands, none of which need Unity. Run all three before saying something works:
 
 ```bash
-dotnet run --project tools/SimTests      # the real Shared source, ~99 tests
+dotnet run --project tools/SimTests      # the real Shared source, ~157 tests
 dotnet build tools/UnityCheck            # type-checks the Unity + Editor layer against a stub
 dotnet run --project tools/Playground    # runs a real server + predicting client + bots headlessly
 ```
