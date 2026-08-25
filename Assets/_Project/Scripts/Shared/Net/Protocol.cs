@@ -61,7 +61,7 @@ namespace Satisfying.Shared
     public static class Protocol
     {
         /// <summary>Bumped whenever the packet layout or the simulation changes shape.</summary>
-        public const ushort Version = 11;
+        public const ushort Version = 12;
 
         public const int DefaultPort = 7777;
         // Peer ids travel in 3 bits. 0 is the server and 7 is the "nobody" sentinel that a suicide or

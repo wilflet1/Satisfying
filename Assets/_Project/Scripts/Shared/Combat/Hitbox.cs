@@ -1,56 +1,97 @@
 namespace Satisfying.Shared
 {
+    /// <summary>
+    /// What you hit. Seven parts and a miss, which is exactly three bits - the width the wire already
+    /// spends on this, so a proper breakdown costs nothing to replicate.
+    /// </summary>
     public enum HitZone : byte
     {
         None = 0,
         Head = 1,
-        Body = 2,
-        Limb = 3
+        Neck = 2,
+        Chest = 3,
+        Stomach = 4,
+        Arm = 5,
+        Leg = 6,
+        Foot = 7
     }
 
     /// <summary>
-    /// The shootable shape of a player, derived from the exact same state the simulation produces -
-    /// including lean and side step, so peeking a corner really does expose your head and nothing else.
+    /// The shootable shape of a player: fifteen capsules laid over BodyPose, which is the same skeleton
+    /// the model is drawn from. Feet, shins, thighs, pelvis, stomach, chest, neck, head and both arms
+    /// are all separate, so a leg peeking past a doorframe is a leg and nothing else.
+    ///
+    /// The old shape was a head sphere and one capsule from the ankles to the neck, which meant a shot
+    /// at the gap between someone's legs hit them, and a shot at an arm held out over cover did not.
     /// </summary>
     public struct PlayerHitbox
     {
-        public Vec3 BodyBottom;   // centre of the lower sphere of the body capsule
-        public Vec3 BodyTop;      // centre of the upper sphere (leans with the torso)
-        public float BodyRadius;
-        public Vec3 HeadCenter;
-        public float HeadRadius;
-        public float LegTopY;     // below this height a body hit counts as a limb
+        /// <summary>World-space skeleton. Every segment below is two of its joints and a radius.</summary>
+        public BodyPose Pose;
 
-        public static PlayerHitbox FromState(in PlayerSimState s, MovementTuning t)
+        /// <summary>Broad phase: one sphere round the lot, so a pellet that misses costs one dot product.</summary>
+        public Vec3 BoundsCenter;
+        public float BoundsRadius;
+
+        public const int SegmentCount = 15;
+
+        public Vec3 HeadCenter { get { return Pose.Head; } }
+        public float HeadRadius { get { return Pose.HeadRadius; } }
+
+        /// <summary>
+        /// The weapon is not optional: it decides where the support arm is, and an arm is a hit zone.
+        /// Two call sites disagreeing about which gun someone is holding would be two call sites
+        /// disagreeing about where their left elbow is.
+        /// </summary>
+        public static PlayerHitbox FromState(in PlayerSimState s, MovementTuning t, WeaponTuning weapon)
         {
             PlayerHitbox h = new PlayerHitbox();
-            float lean = s.EffectiveLean(t);
-            Vec3 right = ViewMath.FlatRight(s.Yaw);
+            h.Pose = BodyPose.Build(in s, t, weapon).ToWorld(s.Position, s.Yaw);
 
-            h.BodyRadius = t.radius * 0.82f;
-            h.HeadRadius = 0.14f;
-
-            // The torso capsule stops at the neck. If it reached the crown its rounded cap would sit in
-            // front of the head sphere and eat headshots, because the nearest surface wins.
-            float top = MathK.Max(h.BodyRadius + 0.01f, s.Height - 0.42f);
-            Vec3 leanShift = right * (lean * t.leanOffset) + Vec3.Down * (MathK.Abs(lean) * t.leanDrop);
-
-            h.BodyBottom = s.Position + Vec3.Up * h.BodyRadius;
-            h.BodyTop = s.Position + Vec3.Up * top + leanShift;
-            h.HeadCenter = s.Position + Vec3.Up * (s.EyeHeight(t) + 0.05f) + leanShift;
-            h.LegTopY = s.Position.y + s.Height * 0.42f;
-
-            if (s.Stance == Stance.Prone)
+            Vec3 lo = h.Pose.Head;
+            Vec3 hi = h.Pose.Head;
+            float fat = 0f;
+            for (int i = 0; i < SegmentCount; i++)
             {
-                // Prone spreads the body out along the facing direction instead of standing it up.
-                Vec3 fwd = ViewMath.FlatForward(s.Yaw);
-                h.BodyBottom = s.Position + Vec3.Up * h.BodyRadius - fwd * 0.35f;
-                h.BodyTop = s.Position + Vec3.Up * h.BodyRadius + fwd * 0.35f + leanShift;
-                h.HeadCenter = s.Position + Vec3.Up * (s.EyeHeight(t) + 0.02f) + fwd * 0.5f + leanShift;
-                h.LegTopY = s.Position.y - 1f; // nothing counts as a leg when you are flat
+                Vec3 a, b;
+                float radius;
+                HitZone zone;
+                h.Segment(i, out a, out b, out radius, out zone);
+                lo = Vec3.Min(lo, Vec3.Min(a, b));
+                hi = Vec3.Max(hi, Vec3.Max(a, b));
+                if (radius > fat) fat = radius;
             }
 
+            h.BoundsCenter = (lo + hi) * 0.5f;
+            h.BoundsRadius = (hi - lo).Magnitude * 0.5f + fat;
             return h;
+        }
+
+        /// <summary>
+        /// One capsule. Indexed rather than stored in an array because this is rebuilt for every pellet
+        /// of every shot against every rewound opponent, and an allocation there is an allocation in the
+        /// server's hot loop.
+        /// </summary>
+        public void Segment(int index, out Vec3 a, out Vec3 b, out float radius, out HitZone zone)
+        {
+            switch (index)
+            {
+                case 0:  a = Pose.Head;          b = Pose.Head;         radius = Pose.HeadRadius;     zone = HitZone.Head;    return;
+                case 1:  a = Pose.NeckBase;      b = Pose.Head;         radius = Pose.NeckRadius;     zone = HitZone.Neck;    return;
+                case 2:  a = Pose.ChestBase;     b = Pose.ChestTop;     radius = Pose.ChestRadius;    zone = HitZone.Chest;   return;
+                case 3:  a = Pose.Pelvis;        b = Pose.ChestBase;    radius = Pose.StomachRadius;  zone = HitZone.Stomach; return;
+                case 4:  a = Pose.LeftShoulder;  b = Pose.LeftElbow;    radius = Pose.UpperArmRadius; zone = HitZone.Arm;     return;
+                case 5:  a = Pose.LeftElbow;     b = Pose.LeftHand;     radius = Pose.ForearmRadius;  zone = HitZone.Arm;     return;
+                case 6:  a = Pose.RightShoulder; b = Pose.RightElbow;   radius = Pose.UpperArmRadius; zone = HitZone.Arm;     return;
+                case 7:  a = Pose.RightElbow;    b = Pose.RightHand;    radius = Pose.ForearmRadius;  zone = HitZone.Arm;     return;
+                case 8:  a = Pose.LeftHip;       b = Pose.LeftKnee;     radius = Pose.ThighRadius;    zone = HitZone.Leg;     return;
+                case 9:  a = Pose.LeftKnee;      b = Pose.LeftAnkle;    radius = Pose.ShinRadius;     zone = HitZone.Leg;     return;
+                case 10: a = Pose.RightHip;      b = Pose.RightKnee;    radius = Pose.ThighRadius;    zone = HitZone.Leg;     return;
+                case 11: a = Pose.RightKnee;     b = Pose.RightAnkle;   radius = Pose.ShinRadius;     zone = HitZone.Leg;     return;
+                case 12: a = Pose.LeftAnkle;     b = Pose.LeftToe;      radius = Pose.FootRadius;     zone = HitZone.Foot;    return;
+                case 13: a = Pose.RightAnkle;    b = Pose.RightToe;     radius = Pose.FootRadius;     zone = HitZone.Foot;    return;
+                default: a = Pose.Pelvis;        b = Pose.Pelvis;       radius = Pose.StomachRadius;  zone = HitZone.Stomach; return;
+            }
         }
     }
 
@@ -116,26 +157,34 @@ namespace Satisfying.Shared
             return true;
         }
 
-        /// <summary>Head first, then body. Returns the nearest zone the ray enters.</summary>
+        /// <summary>
+        /// Nearest part of the body the ray enters. Nearest wins outright - there is no priority list,
+        /// because a rule that promotes a head over a nearer arm is a rule that lets you shoot through
+        /// your opponent's own forearm.
+        /// </summary>
         public static bool TestPlayer(Vec3 ro, Vec3 rd, in PlayerHitbox h, float maxDistance, out HitTestResult result)
         {
             result = new HitTestResult();
+
+            float tBounds;
+            if (!Sphere(ro, rd, h.BoundsCenter, h.BoundsRadius, out tBounds) || tBounds > maxDistance)
+                return false;
+
             float best = maxDistance;
             HitZone zone = HitZone.None;
 
-            float tHead;
-            if (Sphere(ro, rd, h.HeadCenter, h.HeadRadius, out tHead) && tHead >= 0f && tHead < best)
+            for (int i = 0; i < PlayerHitbox.SegmentCount; i++)
             {
-                best = tHead;
-                zone = HitZone.Head;
-            }
+                Vec3 a, b;
+                float radius;
+                HitZone segmentZone;
+                h.Segment(i, out a, out b, out radius, out segmentZone);
 
-            float tBody;
-            if (Capsule(ro, rd, h.BodyBottom, h.BodyTop, h.BodyRadius, out tBody) && tBody >= 0f && tBody < best)
-            {
-                best = tBody;
-                Vec3 p = ro + rd * tBody;
-                zone = p.y < h.LegTopY ? HitZone.Limb : HitZone.Body;
+                float t;
+                if (!Capsule(ro, rd, a, b, radius, out t)) continue;
+                if (t < 0f || t >= best) continue;
+                best = t;
+                zone = segmentZone;
             }
 
             if (zone == HitZone.None) return false;

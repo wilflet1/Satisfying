@@ -370,11 +370,29 @@ namespace Satisfying.Game
                 NetGame.KillFeedEntry entry = Game.KillFeed[i];
                 float age = Time.time - entry.Time;
                 float alpha = Mathf.Clamp01(2f - age * 0.35f);
-                string zone = entry.Zone == HitZone.Head ? "  [head]" : "";
+                string zone = ZoneLabel(entry.Zone);
                 _skin.Text(new Rect(_width - 330f, y, 300f, 18f),
                     entry.Killer + "  killed  " + entry.Victim + zone, _feed,
                     new Color(UiSkin.Ink.r, UiSkin.Ink.g, UiSkin.Ink.b, alpha));
                 y += 19f;
+            }
+        }
+
+        /// <summary>
+        /// Where it landed. The chest is not called out because it is the ordinary case, and a feed that
+        /// labels everything labels nothing.
+        /// </summary>
+        static string ZoneLabel(HitZone zone)
+        {
+            switch (zone)
+            {
+                case HitZone.Head: return "  [head]";
+                case HitZone.Neck: return "  [neck]";
+                case HitZone.Stomach: return "  [stomach]";
+                case HitZone.Arm: return "  [arm]";
+                case HitZone.Leg: return "  [leg]";
+                case HitZone.Foot: return "  [foot]";
+                default: return "";
             }
         }
 

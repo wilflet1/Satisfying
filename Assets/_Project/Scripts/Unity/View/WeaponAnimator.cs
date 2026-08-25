@@ -63,13 +63,17 @@ namespace Satisfying.Game
         /// <summary>
         /// progress goes 0 -> 1 across the weapon's reload time. Phases are laid out so the support hand
         /// is always somewhere believable: mag well, down for a fresh magazine, back up, then the charge.
+        ///
+        /// empty holds the bolt back on the guns that do that, which is the only "out of ammo" tell that
+        /// works without looking at the HUD - including on the opponent, since ammo is replicated.
         /// </summary>
-        public void Update(float dt, bool reloading, float progress, float adsBlend)
+        public void Update(float dt, bool reloading, float progress, float adsBlend, bool empty = false)
         {
             if (Model == null) return;
 
             _boltHold -= dt;
             if (_boltHold <= 0f) _bolt = Mathf.MoveTowards(_bolt, 0f, dt / 0.05f);
+            if (empty && !reloading && Model.HoldsOpenWhenEmpty) _bolt = 1f;
             if (Model.Bolt != null) Model.Bolt.localPosition = Model.BoltTravel * _bolt;
 
             if (!reloading)

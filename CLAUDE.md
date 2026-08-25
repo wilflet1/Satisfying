@@ -25,7 +25,8 @@ in `Scripts/Unity/` and you are writing presentation, not simulation.
 Assets/_Project/
   Scripts/Shared/      simulation, netcode, tuning - engine free
     Math/              Vec3, MathK, ViewMath
-    Sim/               MovementCore is the single source of truth for how a player moves
+    Sim/               MovementCore is the single source of truth for how a player moves,
+                       BodyPose for where every bone of them is, ViewmodelPose for the gun
     Combat/            deterministic spread, hitboxes, damage
     World/             breakable glass, draggable objects, practice targets
     Net/               protocol, server, predicting client, port mapping
@@ -90,6 +91,16 @@ defaults on the clipboard as text, which is the right way to receive tuning from
   round stops on the wall and the glass can never be shot out.
 - **Client tick numbering starts at the server's.** Anything that sanity-checks an incoming tick
   must do so relative to a stream that has actually been adopted.
+- **A `Blockout.Box`'s `localScale` IS its size, not a multiplier.** The character used to be posed by
+  writing `localScale = (1, heightFactor, 1)` onto the leg boxes, which turned each leg into a slab a
+  metre wide and a metre deep. Crouching put one in front of your camera and going prone put you
+  inside it - that was the "can't see anything down the sights when crouched" report. Meshes now hang
+  off `Blockout.Bone` joints and nothing but `Bone.Set` touches a mesh scale.
+- **Two things describing one body will disagree.** The hitbox and the model are both built from
+  `BodyPose` now. If a limb needs to move, move it there, not in the view.
+- **At full ADS the sight sits on the exact centre of the screen.** Every flourish that moves the gun
+  goes into one accumulator scaled by `(1 - Ads)` in `ViewmodelPose`. Adding an offset after that
+  blend is how the crouch and prone sight pictures got broken in the first place.
 
 ## Running it
 

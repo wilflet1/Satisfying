@@ -327,7 +327,7 @@ namespace Satisfying.Shared
                     bool targetHead;
                     float targetDistance;
                     if (pellet == 0 && Model.RaycastTargets(origin, dir, limit + 0.05f, out targetIndex, out targetHead, out targetDistance))
-                        shooter.Reliable.Queue(GameEvents.TargetHit(targetHead ? HitZone.Head : HitZone.Body, targetDistance));
+                        shooter.Reliable.Queue(GameEvents.TargetHit(targetHead ? HitZone.Head : HitZone.Chest, targetDistance));
 
                     ServerPlayer victim = null;
                     HitTestResult best = new HitTestResult();
@@ -342,7 +342,7 @@ namespace Satisfying.Shared
                         PlayerSimState rewound = target.Sim;
                         if (LagCompensation && !RewindPlayer(target, cmd.RenderTick, out rewound)) continue;
 
-                        PlayerHitbox box = PlayerHitbox.FromState(in rewound, Tuning.move);
+                        PlayerHitbox box = PlayerHitbox.FromState(in rewound, Tuning.move, Tuning.Weapon(rewound.Weapon.Index));
                         HitTestResult hit;
                         if (!RayGeometry.TestPlayer(origin, dir, in box, best.Distance, out hit)) continue;
 
@@ -397,7 +397,7 @@ namespace Satisfying.Shared
                     PlayerSimState rewound = target.Sim;
                     if (LagCompensation && !RewindPlayer(target, cmd.RenderTick, out rewound)) continue;
 
-                    PlayerHitbox box = PlayerHitbox.FromState(in rewound, Tuning.move);
+                    PlayerHitbox box = PlayerHitbox.FromState(in rewound, Tuning.move, Tuning.Weapon(rewound.Weapon.Index));
                     HitTestResult hit;
                     if (!RayGeometry.TestPlayer(origin, aim, in box, best.Distance, out hit)) continue;
                     best = hit;
@@ -408,7 +408,8 @@ namespace Satisfying.Shared
             if (victim != null && (!hitWindow || best.Distance <= windowDistance))
             {
                 float damage = Tuning.move.meleeDamage;
-                if (best.Zone == HitZone.Head) damage *= Tuning.move.meleeHeadMultiplier;
+                // A stock across the throat counts the same as one across the face.
+                if (best.Zone == HitZone.Head || best.Zone == HitZone.Neck) damage *= Tuning.move.meleeHeadMultiplier;
                 ApplyDamage(victim, attacker, damage, best.Zone, best.Distance);
                 return;
             }

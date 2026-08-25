@@ -4,9 +4,12 @@ using Satisfying.Shared;
 namespace Satisfying.Game
 {
     /// <summary>
-    /// The opponent, drawn from interpolated snapshots. The pose is driven by the same replicated values
-    /// the server uses for hit registration, so what you shoot at is what the server tests - including
-    /// the lean, the stance and the raised weapon of a blind fire.
+    /// The opponent, drawn from interpolated snapshots.
+    ///
+    /// Every bone is placed straight out of BodyPose - the same skeleton PlayerHitbox lays its capsules
+    /// over - so the model is not an interpretation of the hit registration, it is the same numbers.
+    /// Nothing here poses anything by hand; if a limb looks wrong, it is wrong in Shared and it is wrong
+    /// for the server too, which is exactly where you want that kind of bug to live.
     /// </summary>
     public sealed class RemotePlayerView
     {
@@ -16,12 +19,9 @@ namespace Satisfying.Game
 
         readonly MovementTuning _move;
         readonly Palette _palette;
-        readonly Material _skin;
         readonly int _layer;
         readonly WeaponAnimator _animator = new WeaponAnimator();
         readonly Transform _weaponHolder;
-        ArmRig _rightArm;
-        ArmRig _leftArm;
 
         int _weaponIndex = -1;
         Vector3? _grabTarget;
@@ -33,8 +33,8 @@ namespace Satisfying.Game
 
         /// <summary>
         /// firstPerson builds the same character for the player wearing it: look down and your own legs
-        /// and chest are there. The head comes off (the camera lives inside it) and the arms and weapon
-        /// are left to the viewmodel, which already draws them at the right scale.
+        /// and chest are there. The head and neck come off (the camera lives inside them) and the arms
+        /// and weapon are left to the viewmodel, which already draws them at the right scale.
         /// </summary>
         public RemotePlayerView(Transform parent, int peerId, Palette palette, MovementTuning move, int layer,
                                 bool firstPerson = false)
@@ -44,27 +44,16 @@ namespace Satisfying.Game
             _move = move;
             _palette = palette;
             _layer = layer;
-            _skin = palette.Enemy;
 
-            Character = Blockout.Duellist(parent, "Opponent " + peerId, palette, palette.Enemy, layer);
+            Character = Blockout.Duellist(parent, "Duellist " + peerId, palette, palette.Enemy, layer,
+                move.standHeight / 1.82f);
 
-            GameObject holder = new GameObject("weapon holder");
-            holder.layer = layer;
-            holder.transform.SetParent(Character.Chest, false);
-            holder.transform.localPosition = new Vector3(0.10f, -0.06f, 0.20f);
-            _weaponHolder = holder.transform;
-
-            _rightArm = ArmRig.Build(Character.Chest, "right arm", new Vector3(0.24f, -0.02f, 0.0f), 1f,
-                palette, palette.RemoteArms, layer, 0.10f, 0.28f, 0.27f);
-            _leftArm = ArmRig.Build(Character.Chest, "left arm", new Vector3(-0.24f, -0.02f, 0.0f), -1f,
-                palette, palette.RemoteArms, layer, 0.10f, 0.28f, 0.27f);
+            _weaponHolder = Blockout.Group(Character.Root.transform, "weapon holder", Vector3.zero, layer).transform;
 
             if (_firstPerson)
             {
-                // Your own head would fill the screen, and your own arms are the viewmodel's job.
-                Character.Head.gameObject.SetActive(false);
-                _rightArm.SetVisible(false);
-                _leftArm.SetVisible(false);
+                Character.SetFirstPerson();
+                Character.SetArmsVisible(false);
                 _weaponHolder.gameObject.SetActive(false);
             }
             else
@@ -92,10 +81,7 @@ namespace Satisfying.Game
             if (Character.Root.activeSelf != visible) Character.Root.SetActive(visible);
         }
 
-        public void OnShot()
-        {
-            _animator.OnShot();
-        }
+        public void OnShot() { _animator.OnShot(); }
 
         public WeaponAnimator.SoundCue ConsumeWeaponCue() { return _animator.ConsumeCue(); }
 
@@ -104,7 +90,7 @@ namespace Satisfying.Game
 
         public Vector3 MuzzlePosition()
         {
-            return Weapon != null && Weapon.Muzzle != null ? Weapon.Muzzle.position : Character.Chest.position;
+            return Weapon != null && Weapon.Muzzle != null ? Weapon.Muzzle.position : Character.Chest.Joint.position;
         }
 
         public void Render(in PlayerNetState state, float dt, WeaponTuning weapon, out float footstepImpulse)
@@ -113,155 +99,165 @@ namespace Satisfying.Game
             SetWeapon(state.WeaponIndex);
             if (Weapon != null) Weapon.SetSight(state.SightIndex);
 
-            Transform root = Character.Root.transform;
-            Vector3 position = state.Position.ToUnity();
-
             _reloadTimer = state.Reloading ? _reloadTimer + dt : 0f;
             float reloadProgress = state.Reloading && weapon != null && weapon.reloadTime > 0.01f
                 ? Mathf.Clamp01(_reloadTimer / weapon.reloadTime)
                 : 0f;
-            _animator.Update(dt, state.Reloading, reloadProgress, state.Ads);
+            _animator.Update(dt, state.Reloading, reloadProgress, state.Ads, state.Ammo <= 0);
+            if (Weapon != null) Weapon.SetSupportGrip(weapon);
 
-            if (!state.Alive)
-            {
-                _deathTimer = Mathf.Min(1f, _deathTimer + dt * 3.5f);
-                root.position = position;
-                root.rotation = Quaternion.Euler(0f, state.Yaw, 0f);
-                Character.Body.localRotation = Quaternion.Euler(Mathf.Lerp(0f, 88f, _deathTimer), 0f, 0f);
-                Character.Body.localPosition = new Vector3(0f, Mathf.Lerp(0f, -0.85f, _deathTimer), Mathf.Lerp(0f, 0.35f, _deathTimer));
-                Character.Body.localScale = Vector3.one;
-                Character.Head.localPosition = Vector3.Lerp(new Vector3(0f, 1.69f, 0f), new Vector3(0f, 0.28f, 0.62f), _deathTimer);
-                Character.Head.localRotation = Quaternion.Euler(Mathf.Lerp(0f, 80f, _deathTimer), 0f, 0f);
-                Character.Chest.localPosition = Vector3.Lerp(new Vector3(0f, 1.34f, 0f), new Vector3(0f, 0.30f, 0.28f), _deathTimer);
-                Character.Chest.localRotation = Quaternion.Euler(Mathf.Lerp(0f, 80f, _deathTimer), 0f, 0f);
-                SolveArms();
-                return;
-            }
-            _deathTimer = 0f;
-
-            root.position = position;
+            Transform root = Character.Root.transform;
+            root.position = state.Position.ToUnity();
             root.rotation = Quaternion.Euler(0f, state.Yaw, 0f);
 
+            PlayerSimState shown = state.ToDisplayState(_move.staminaMax);
+            BodyPose pose = BodyPose.Build(in shown, _move, weapon);
+
+            Stride(in state, ref pose, dt, out footstepImpulse);
+            if (!state.Alive) Collapse(ref pose, dt);
+            else _deathTimer = 0f;
+
+            Place(in pose, in state, weapon);
+        }
+
+        /// <summary>
+        /// The walk cycle. This is the one thing on the body that is NOT in BodyPose, because the phase
+        /// is not replicated - it would cost a byte a tick to make a foot swing agree to the centimetre.
+        /// So the amplitude is kept small enough that a stepping leg never travels more than about a
+        /// shin's width from the capsule that is actually being shot at.
+        /// </summary>
+        void Stride(in PlayerNetState state, ref BodyPose pose, float dt, out float footstepImpulse)
+        {
+            footstepImpulse = 0f;
+            float speed = state.Velocity.Flat.Magnitude;
+            if (!state.Grounded || state.Sliding || state.Vaulting || speed <= 0.4f || !state.Alive) return;
+
+            float previousPhase = _stepPhase;
+            _stepPhase += dt * Mathf.Clamp(speed * 1.5f, 1f, 14f);
+
+            float swing = Mathf.Sin(_stepPhase) * Mathf.Clamp01(speed / 5f) * 0.10f;
+            Nudge(ref pose.LeftKnee, swing * 0.5f);
+            Nudge(ref pose.LeftAnkle, swing);
+            Nudge(ref pose.LeftToe, swing);
+            Nudge(ref pose.RightKnee, -swing * 0.5f);
+            Nudge(ref pose.RightAnkle, -swing);
+            Nudge(ref pose.RightToe, -swing);
+
+            if (Mathf.FloorToInt(previousPhase / Mathf.PI) != Mathf.FloorToInt(_stepPhase / Mathf.PI))
+                footstepImpulse = Mathf.Clamp01(speed / 6f);
+        }
+
+        static void Nudge(ref Vec3 joint, float forward) { joint.z += forward; }
+
+        /// <summary>
+        /// Going down. The whole skeleton is rotated about the hips rather than each bone being animated,
+        /// which costs four lines and means a body that folds instead of a body that sinks into the floor.
+        /// </summary>
+        void Collapse(ref BodyPose pose, float dt)
+        {
+            _deathTimer = Mathf.Min(1f, _deathTimer + dt * 2.6f);
+            float k = Mathf.SmoothStep(0f, 1f, _deathTimer);
+            Quaternion fall = Quaternion.Euler(-86f * k, 22f * k, 0f);
+            Vector3 pivot = pose.Pelvis.ToUnity();
+
+            Fold(ref pose.Head, fall, pivot);
+            Fold(ref pose.NeckBase, fall, pivot);
+            Fold(ref pose.Shoulders, fall, pivot);
+            Fold(ref pose.ChestTop, fall, pivot);
+            Fold(ref pose.ChestBase, fall, pivot);
+            Fold(ref pose.LeftShoulder, fall, pivot);
+            Fold(ref pose.LeftElbow, fall, pivot);
+            Fold(ref pose.LeftHand, fall, pivot);
+            Fold(ref pose.RightShoulder, fall, pivot);
+            Fold(ref pose.RightElbow, fall, pivot);
+            Fold(ref pose.RightHand, fall, pivot);
+
+            // The legs fold the other way, or a corpse ends up doing a bridge. The hips go with them,
+            // or the thighs are drawn from where the hips used to be.
+            Quaternion legs = Quaternion.Euler(52f * k, 0f, 0f);
+            Fold(ref pose.LeftHip, legs, pivot);
+            Fold(ref pose.RightHip, legs, pivot);
+            Fold(ref pose.LeftKnee, legs, pivot);
+            Fold(ref pose.LeftAnkle, legs, pivot);
+            Fold(ref pose.LeftToe, legs, pivot);
+            Fold(ref pose.RightKnee, legs, pivot);
+            Fold(ref pose.RightAnkle, legs, pivot);
+            Fold(ref pose.RightToe, legs, pivot);
+
+            // Rotating about the hips alone leaves the hips at standing height with a corpse hanging
+            // off them, so the whole body comes down as one.
+            float drop = Mathf.Lerp(0f, Mathf.Max(0f, pose.Pelvis.y - 0.17f * pose.Scale), k);
+            pose.Translate(new Vec3(0f, -drop, 0f));
+        }
+
+        static void Fold(ref Vec3 joint, Quaternion rotation, Vector3 pivot)
+        {
+            Vector3 turned = pivot + rotation * (joint.ToUnity() - pivot);
+            joint = turned.ToSim();
+        }
+
+        void Place(in BodyPose pose, in PlayerNetState state, WeaponTuning weapon)
+        {
+            // The chest is DRAWN to the shoulder line; the hitbox capsule stops a radius short of it so
+            // its rounded cap lands there instead of bulging over the collarbones. Same extent, so the
+            // model and the capsule still end in the same place.
+            Character.Chest.Set(pose.ChestBase.ToUnity(), pose.Shoulders.ToUnity());
+            Character.Stomach.Set(pose.Pelvis.ToUnity(), pose.ChestBase.ToUnity());
+            Character.Neck.Set(pose.NeckBase.ToUnity(), pose.Head.ToUnity());
+
+            Character.LeftThigh.Set(pose.LeftHip.ToUnity(), pose.LeftKnee.ToUnity());
+            Character.LeftShin.Set(pose.LeftKnee.ToUnity(), pose.LeftAnkle.ToUnity());
+            Character.LeftFoot.Set(pose.LeftAnkle.ToUnity(), pose.LeftToe.ToUnity());
+            Character.RightThigh.Set(pose.RightHip.ToUnity(), pose.RightKnee.ToUnity());
+            Character.RightShin.Set(pose.RightKnee.ToUnity(), pose.RightAnkle.ToUnity());
+            Character.RightFoot.Set(pose.RightAnkle.ToUnity(), pose.RightToe.ToUnity());
+
             float lean = LeanFor(in state);
-            float heightFactor = Mathf.Clamp(state.Height / Mathf.Max(0.3f, _move.standHeight), 0.2f, 1.2f);
+            float roll = -lean * _move.leanAngle;
 
-            if (state.Sliding)
-            {
-                // Leg out in front, torso back over it: reads as a slide from any angle.
-                Character.Body.localRotation = Quaternion.Euler(-28f, 0f, -lean * _move.leanAngle * 0.4f);
-                Character.Body.localPosition = new Vector3(0f, -0.42f, 0.1f);
-                Character.Body.localScale = new Vector3(1f, 0.78f, 1f);
-                Character.LeftLeg.localScale = new Vector3(1f, 0.9f, 1f);
-                Character.RightLeg.localScale = new Vector3(1f, 0.9f, 1f);
-                Character.LeftLeg.localPosition = new Vector3(-0.11f, 0.26f, 0.42f);
-                Character.RightLeg.localPosition = new Vector3(0.11f, 0.2f, 0.1f);
-            }
-            else if (state.Vaulting)
-            {
-                // Tucked over the railing.
-                Character.Body.localRotation = Quaternion.Euler(46f, 0f, 0f);
-                Character.Body.localPosition = new Vector3(0f, -0.2f, 0.1f);
-                Character.Body.localScale = new Vector3(1f, 0.9f, 1f);
-                Character.LeftLeg.localPosition = new Vector3(-0.11f, 0.45f, 0.3f);
-                Character.RightLeg.localPosition = new Vector3(0.11f, 0.5f, 0.15f);
-                Character.LeftLeg.localScale = new Vector3(1f, 0.7f, 1f);
-                Character.RightLeg.localScale = new Vector3(1f, 0.7f, 1f);
-            }
-            else if (state.Stance == Stance.Prone)
-            {
-                Character.Body.localRotation = Quaternion.Euler(82f, 0f, -lean * _move.leanAngle * 0.6f);
-                Character.Body.localPosition = new Vector3(lean * _move.leanOffset, -0.72f, 0.28f);
-                Character.Body.localScale = Vector3.one;
-                Character.LeftLeg.localScale = new Vector3(1f, 0.35f, 1f);
-                Character.RightLeg.localScale = new Vector3(1f, 0.35f, 1f);
-            }
-            else
-            {
-                Character.Body.localRotation = Quaternion.Euler(0f, 0f, -lean * _move.leanAngle);
-                Character.Body.localPosition = new Vector3(lean * _move.leanOffset,
-                    (heightFactor - 1f) * _move.standHeight * 0.55f - Mathf.Abs(lean) * _move.leanDrop, 0f);
-                Character.Body.localScale = new Vector3(1f, heightFactor, 1f);
-                Character.LeftLeg.localScale = new Vector3(1f, heightFactor, 1f);
-                Character.RightLeg.localScale = new Vector3(1f, heightFactor, 1f);
-            }
+            Character.Head.localPosition = pose.Head.ToUnity();
+            Character.Head.localRotation = Quaternion.Euler(state.Alive ? state.Pitch * 0.8f : 0f, 0f, roll * 0.5f);
 
-            // The head is placed to land exactly where PlayerHitbox puts it, so the thing you aim at and
-            // the thing the server tests are the same object. Lean really does move the head.
-            float eyeHeight = state.Height + _move.eyeDrop;
-            Vector3 leanShift = new Vector3(lean * _move.leanOffset, -Mathf.Abs(lean) * _move.leanDrop, 0f);
-
-            if (state.Stance == Stance.Prone)
-            {
-                Character.Head.localPosition = new Vector3(0f, eyeHeight + 0.02f, 0.5f) + leanShift;
-                Character.Chest.localPosition = new Vector3(0f, eyeHeight * 0.85f, 0.24f) + leanShift * 0.9f;
-            }
-            else
-            {
-                Character.Head.localPosition = new Vector3(0f, eyeHeight + 0.05f, 0f) + leanShift;
-                Character.Chest.localPosition = new Vector3(0f, eyeHeight * 0.78f, 0f) + leanShift * 0.9f;
-            }
-            if (!_firstPerson)
-                Character.Head.localRotation = Quaternion.Euler(state.Pitch * 0.75f, 0f, -lean * _move.leanAngle * 0.5f);
-
-            // Chest pitches with the aim so the weapon points where they are actually shooting.
-            float chestPitch = state.Pitch * 0.85f;
-            Vector3 holderPosition = new Vector3(0.10f, -0.06f, 0.20f);
-            Vector3 holderEuler = Vector3.zero;
-
+            // The weapon is hung off the firing hand, not the chest: the hand comes out of BodyPose and
+            // so does the arm hitbox, so lining the grip up with it is what keeps the gun, the arms and
+            // the thing the server shoots at in one place.
+            Quaternion hold = Quaternion.Euler(state.Pitch, 0f, roll);
             if (state.BlindFire > 0.01f)
             {
                 float dial = Mathf.Clamp(state.BlindAngle, -1f, 1f);
                 float elevation = dial >= 0f ? dial * _move.blindFirePitchMax : -dial * _move.blindFirePitchMin;
-                holderPosition = Vector3.Lerp(holderPosition, new Vector3(0.08f, 0.42f, 0.16f), state.BlindFire);
-                holderEuler = Vector3.Lerp(holderEuler, new Vector3(-elevation - chestPitch, lean * _move.blindFireYaw, -18f), state.BlindFire);
+                hold = Quaternion.Euler(state.Pitch - elevation * state.BlindFire,
+                                        lean * _move.blindFireYaw * state.BlindFire,
+                                        roll - 18f * state.BlindFire);
             }
-            else if (state.Ads > 0.01f)
+
+            Vector3 rightHand = pose.RightHand.ToUnity();
+            Vector3 leftHand = pose.LeftHand.ToUnity();
+
+            if (!_firstPerson)
             {
-                holderPosition = Vector3.Lerp(holderPosition, new Vector3(0f, -0.02f, 0.24f), state.Ads);
+                Vector3 grip = Weapon != null && Weapon.GripAnchor != null ? Weapon.GripAnchor.localPosition : Vector3.zero;
+                _weaponHolder.localRotation = hold;
+                _weaponHolder.localPosition = rightHand - hold * grip;
+
+                // Reloads and drags pull the support hand off the gun; the arm follows it there.
+                if (_grabTarget.HasValue)
+                    leftHand = Character.Root.transform.InverseTransformPoint(_grabTarget.Value);
+                else if (_animator.SupportHandBlend > 0.001f && Weapon != null && Weapon.Root != null)
+                    leftHand = Vector3.Lerp(leftHand,
+                        Character.Root.transform.InverseTransformPoint(_animator.SupportHandWorld()),
+                        _animator.SupportHandBlend);
+
+                Character.LeftUpperArm.Set(pose.LeftShoulder.ToUnity(), pose.LeftElbow.ToUnity());
+                Character.LeftForearm.Set(pose.LeftElbow.ToUnity(), leftHand);
+                Character.RightUpperArm.Set(pose.RightShoulder.ToUnity(), pose.RightElbow.ToUnity());
+                Character.RightForearm.Set(pose.RightElbow.ToUnity(), rightHand);
+
+                Character.LeftHand.localPosition = leftHand;
+                Character.LeftHand.localRotation = hold;
+                Character.RightHand.localPosition = rightHand;
+                Character.RightHand.localRotation = hold;
             }
-
-            Character.Chest.localRotation = Quaternion.Euler(chestPitch, 0f, -lean * _move.leanAngle);
-            _weaponHolder.localPosition = holderPosition;
-            _weaponHolder.localRotation = Quaternion.Euler(holderEuler);
-
-            float speed = state.Velocity.Flat.Magnitude;
-            if (state.Sliding || state.Vaulting)
-            {
-                // The pose above already places the legs.
-            }
-            else if (state.Grounded && speed > 0.4f)
-            {
-                float previousPhase = _stepPhase;
-                _stepPhase += dt * Mathf.Clamp(speed * 1.5f, 1f, 14f);
-                float swing = Mathf.Sin(_stepPhase) * Mathf.Clamp01(speed / 5f) * 0.22f;
-                Character.LeftLeg.localPosition = new Vector3(-0.11f, 0.35f * (state.Stance == Stance.Stand ? 1f : 0.7f), swing);
-                Character.RightLeg.localPosition = new Vector3(0.11f, 0.35f * (state.Stance == Stance.Stand ? 1f : 0.7f), -swing);
-                if (Mathf.FloorToInt(previousPhase / Mathf.PI) != Mathf.FloorToInt(_stepPhase / Mathf.PI))
-                    footstepImpulse = Mathf.Clamp01(speed / 6f);
-            }
-            else
-            {
-                Character.LeftLeg.localPosition = new Vector3(-0.11f, 0.35f, 0f);
-                Character.RightLeg.localPosition = new Vector3(0.11f, 0.35f, 0f);
-            }
-
-            SolveArms();
-        }
-
-        void SolveArms()
-        {
-            if (_firstPerson || Weapon == null || Weapon.Root == null) return;
-            Quaternion weaponRotation = Weapon.Root.transform.rotation;
-            Vector3 rightPole = Character.Chest.rotation * new Vector3(0.6f, -1f, -0.25f);
-            Vector3 leftPole = Character.Chest.rotation * new Vector3(-0.6f, -1f, -0.25f);
-
-            if (Weapon.GripAnchor != null)
-                _rightArm.Solve(Weapon.GripAnchor.position, rightPole, weaponRotation * Quaternion.Euler(-8f, 0f, 0f));
-            Vector3 support = _grabTarget.HasValue ? _grabTarget.Value : _animator.SupportHandWorld();
-            Quaternion handRotation = _grabTarget.HasValue
-                ? Quaternion.LookRotation((support - _leftArm.Shoulder.position).normalized, Vector3.up)
-                : weaponRotation * Quaternion.Euler(-14f, 0f, 6f);
-            _leftArm.Solve(support, leftPole, handRotation);
         }
 
         float LeanFor(in PlayerNetState state)

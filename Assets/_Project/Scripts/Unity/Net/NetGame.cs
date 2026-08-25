@@ -488,7 +488,7 @@ namespace Satisfying.Game
             {
                 if (kv.Key == Client.PeerId || !kv.Value.HasRender || !kv.Value.Alive) continue;
                 PlayerSimState shown = kv.Value.Render.ToDisplayState(Client.Tuning.move.staminaMax);
-                PlayerHitbox box = PlayerHitbox.FromState(in shown, Client.Tuning.move);
+                PlayerHitbox box = PlayerHitbox.FromState(in shown, Client.Tuning.move, Client.Tuning.Weapon(shown.Weapon.Index));
                 HitTestResult result;
                 if (!RayGeometry.TestPlayer(simOrigin, simDir, in box, best, out result)) continue;
                 best = result.Distance;

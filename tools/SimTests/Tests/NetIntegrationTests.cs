@@ -210,10 +210,10 @@ namespace Satisfying.Tests
                 Assert.Near(r.Render.Lean, 1f, 0.05f, "full lean replicated");
 
                 PlayerSimState shown = r.Render.ToDisplayState(100f);
-                PlayerHitbox box = PlayerHitbox.FromState(in shown, h.Clients[0].Tuning.move);
+                PlayerHitbox box = PlayerHitbox.FromState(in shown, h.Clients[0].Tuning.move, h.Clients[0].Tuning.Weapon(shown.Weapon.Index));
                 PlayerSimState centred = shown;
                 centred.Lean = 0f;
-                PlayerHitbox centredBox = PlayerHitbox.FromState(in centred, h.Clients[0].Tuning.move);
+                PlayerHitbox centredBox = PlayerHitbox.FromState(in centred, h.Clients[0].Tuning.move, h.Clients[0].Tuning.Weapon(centred.Weapon.Index));
                 Assert.Greater(Vec3.Distance(box.HeadCenter, centredBox.HeadCenter), 0.2f, "leaning really does move the head hitbox");
             });
 

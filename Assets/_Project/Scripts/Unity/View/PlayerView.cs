@@ -198,7 +198,8 @@ namespace Satisfying.Game
             float reloadProgress = reloading && weapon.reloadTime > 0.01f
                 ? 1f - Mathf.Clamp01(state.Weapon.ReloadTimer / weapon.reloadTime)
                 : 0f;
-            _animator.Update(dt, reloading, reloadProgress, state.Ads);
+            _animator.Update(dt, reloading, reloadProgress, state.Ads, state.Weapon.Ammo <= 0);
+            if (Weapon != null) Weapon.SetSupportGrip(weapon);
 
             float swayScale = Weapon != null ? Weapon.SwayScale : 1f;
             float smooth = 1f - Mathf.Exp(-_feel.swaySmooth * dt);
@@ -211,61 +212,19 @@ namespace Satisfying.Game
             MathK.Spring(ref _viewmodelKick.y, ref _viewmodelKickVelocity.y, 0f, _feel.recoilStiffness, _feel.recoilDamping, dt);
             MathK.Spring(ref _viewmodelKick.z, ref _viewmodelKickVelocity.z, 0f, _feel.recoilStiffness, _feel.recoilDamping, dt);
 
-            Vector3 feelNudge = new Vector3(_feel.viewmodelX, _feel.viewmodelY, _feel.viewmodelZ);
-            Vector3 hip = (Weapon != null ? Weapon.HipOffset : new Vector3(0.14f, -0.13f, 0.28f)) + feelNudge;
-
-            // Aiming lines the weapon's own sight up with the exact centre of the screen, whatever gun it is.
+            // Where the gun sits is worked out in Shared, where it can be tested: the rule that the
+            // sight lands on the centre of the screen at full ADS is a rule with a test behind it now.
+            Vector3 hip = Weapon != null ? Weapon.HipOffset : new Vector3(0.14f, -0.13f, 0.28f);
             Vector3 sightLocal = Weapon != null && Weapon.SightAnchor != null ? Weapon.SightAnchor.localPosition : Vector3.zero;
-            Vector3 ads = -sightLocal + new Vector3(0f, 0f, _feel.adsSightDistance) + feelNudge * 0.25f;
+            ViewmodelPose pose = ViewmodelPose.Build(in state, move, _feel, hip.ToSim(), sightLocal.ToSim(), sprinting);
 
-            Vector3 basePosition = Vector3.Lerp(hip, ads, state.Ads);
-            Vector3 baseEuler = Vector3.zero;
+            Vector3 basePosition = pose.Position.ToUnity();
+            Vector3 baseEuler = pose.Euler.ToUnity();
 
-            if (state.Sliding)
-            {
-                // Gun comes in tight and tips with the slide.
-                basePosition += new Vector3(-0.03f, 0.02f, -0.08f);
-                baseEuler += new Vector3(-6f, 10f, 16f);
-            }
-            else if (state.IsSwinging)
-            {
-                // Wind the stock back over the shoulder, then drive it forward.
-                float total = MathK.Max(0.05f, move.meleeWindup + move.meleeRecover);
-                float k = Mathf.Clamp01(state.MeleeTimer / total);
-                float windup = Mathf.Clamp01(state.MeleeTimer / MathK.Max(0.02f, move.meleeWindup));
-                float follow = Mathf.Clamp01((state.MeleeTimer - move.meleeWindup) / MathK.Max(0.02f, move.meleeRecover));
-                float swing = state.MeleeTimer < move.meleeWindup ? -windup : Mathf.Lerp(1f, 0f, follow);
-
-                basePosition += new Vector3(-0.16f * Mathf.Abs(swing), 0.10f * swing, 0.14f * swing);
-                baseEuler += new Vector3(-38f * swing, 30f * swing, 55f * swing);
-            }
-            else if (state.Stance == Stance.Prone) basePosition += new Vector3(0f, 0.03f, -0.06f);
-            else if (state.Stance == Stance.Crouch) basePosition += new Vector3(0f, 0.012f, 0f);
-
-            float sprintBlend = sprinting ? 1f : 0f;
-            basePosition += new Vector3(0.05f, -0.05f, -0.06f) * sprintBlend;
-            baseEuler += new Vector3(6f, -18f, _feel.sprintTilt) * sprintBlend;
-
-            // Blind fire: the gun goes up over the cover and swings with the lean, the camera does not move.
-            if (state.BlindFire > 0.001f)
-            {
-                float dial = Mathf.Clamp(state.BlindAngle, -1f, 1f);
-                float elevation = dial >= 0f ? dial * move.blindFirePitchMax : -dial * move.blindFirePitchMin;
-                Vector3 blindPosition = new Vector3(hip.x * 0.35f, 0.30f, hip.z * 0.75f);
-                Vector3 blindEuler = new Vector3(-elevation, state.EffectiveLean(move) * move.blindFireYaw, -22f * Mathf.Sign(hip.x));
-                basePosition = Vector3.Lerp(basePosition, blindPosition, state.BlindFire);
-                baseEuler = Vector3.Lerp(baseEuler, blindEuler, state.BlindFire);
-            }
-
-            float bobMul = 1f - state.Ads * 0.75f;
+            // Bob is a breathing motion rather than a pose, so it is cut back hard when aiming rather
+            // than removed - a perfectly dead sight picture reads as a screenshot.
+            float bobMul = 1f - state.Ads * 0.85f;
             Vector3 bobOffset = new Vector3(bobX, bobY, 0f) * 1.6f * bobMul;
-
-            // Carrying something drops the muzzle: one hand is busy.
-            if (_grabTarget.HasValue)
-            {
-                basePosition += new Vector3(0.02f, -0.06f, -0.05f);
-                baseEuler += new Vector3(14f, -6f, -8f);
-            }
 
             ViewmodelRoot.localPosition = basePosition + _animator.PoseOffset + _swayOffset * (1f - state.Ads * 0.6f) + _viewmodelKick + bobOffset;
             ViewmodelRoot.localRotation = Quaternion.Euler(baseEuler + _animator.PoseEuler + _swayRotation * (1f - state.Ads * 0.6f));

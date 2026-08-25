@@ -11,13 +11,19 @@ namespace Satisfying.Shared
         [Tune("Weapon", 60f, 1400f, Tip = "Rounds per minute.")]
         public float rpm = 650f;
 
-        [Tune("Weapon", 1f, 150f, Tip = "Body damage at point blank.")]
+        [Tune("Weapon", 1f, 150f, Tip = "Chest damage at point blank. Every other zone is relative to this.")]
         public float damage = 24f;
 
         [Tune("Weapon", 1f, 5f, Tip = "Headshot damage multiplier.")]
         public float headMultiplier = 2.6f;
 
-        [Tune("Weapon", 0.2f, 1.5f, Tip = "Leg/arm damage multiplier.")]
+        [Tune("Weapon", 1f, 4f, Tip = "Neck damage multiplier - the sliver above the plate carrier.")]
+        public float neckMultiplier = 1.9f;
+
+        [Tune("Weapon", 0.5f, 3f, Tip = "Stomach damage multiplier - under the armour, over the belt.")]
+        public float stomachMultiplier = 1.25f;
+
+        [Tune("Weapon", 0.2f, 1.5f, Tip = "Arm, leg and foot damage multiplier.")]
         public float limbMultiplier = 0.78f;
 
         [Tune("Weapon", 1f, 200f, Tip = "Distance where damage starts dropping.")]
@@ -71,6 +77,12 @@ namespace Satisfying.Shared
         [Tune("Weapon", 0.2f, 6f)]
         public float reloadTime = 2.1f;
 
+        [Tune("Weapon", 0f, 0.7f, Tip = "How far ahead of the firing hand the support hand sits. A rifle is a long way; a pistol is no distance at all.")]
+        public float supportHandReach = 0.34f;
+
+        [Tune("Weapon", -0.15f, 0.2f, Tip = "How far above the firing hand the support hand sits, measured along the weapon rather than the world.")]
+        public float supportHandRise = 0.045f;
+
         [Tune("Weapon", 0.05f, 1.5f, Tip = "Seconds to fully aim this weapon.")]
         public float adsTime = 0.2f;
 
@@ -102,6 +114,8 @@ namespace Satisfying.Shared
             m4.rpm = 760f;
             m4.damage = 25f;
             m4.headMultiplier = 2.5f;
+            m4.neckMultiplier = 1.9f;
+            m4.stomachMultiplier = 1.25f;
             m4.limbMultiplier = 0.8f;
             m4.falloffStart = 32f;
             m4.falloffEnd = 100f;
@@ -116,6 +130,8 @@ namespace Satisfying.Shared
             m4.recoilRecoverFraction = 0.74f;
             m4.magSize = 30f;
             m4.reloadTime = 2.15f;
+            m4.supportHandReach = 0.415f;
+            m4.supportHandRise = 0.055f;
             m4.adsTime = 0.21f;
 
             WeaponTuning mp5 = new WeaponTuning();
@@ -123,6 +139,8 @@ namespace Satisfying.Shared
             mp5.rpm = 800f;
             mp5.damage = 18f;
             mp5.headMultiplier = 2.2f;
+            mp5.neckMultiplier = 1.7f;
+            mp5.stomachMultiplier = 1.2f;
             mp5.limbMultiplier = 0.85f;
             mp5.falloffStart = 16f;
             mp5.falloffEnd = 48f;
@@ -137,6 +155,8 @@ namespace Satisfying.Shared
             mp5.recoilRecoverFraction = 0.8f;
             mp5.magSize = 30f;
             mp5.reloadTime = 1.85f;
+            mp5.supportHandReach = 0.305f;
+            mp5.supportHandRise = 0.037f;
             mp5.adsTime = 0.15f;
 
             WeaponTuning usp = new WeaponTuning();
@@ -144,6 +164,8 @@ namespace Satisfying.Shared
             usp.rpm = 420f;
             usp.damage = 41f;
             usp.headMultiplier = 2.4f;
+            usp.neckMultiplier = 1.85f;
+            usp.stomachMultiplier = 1.3f;
             usp.limbMultiplier = 0.75f;
             usp.falloffStart = 18f;
             usp.falloffEnd = 55f;
@@ -158,6 +180,8 @@ namespace Satisfying.Shared
             usp.recoilRecoverFraction = 0.85f;
             usp.magSize = 12f;
             usp.reloadTime = 1.7f;
+            usp.supportHandReach = 0.020f;
+            usp.supportHandRise = -0.025f;
             usp.adsTime = 0.13f;
             usp.automatic = 0f;
 

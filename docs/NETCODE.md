@@ -124,8 +124,13 @@ Every input command carries the fractional server tick the client was *rendering
 the server processes a shot it rewinds each target to that tick, rebuilds the hitboxes from the
 historical state, and tests the ray against those.
 
-The hitboxes come from the same `PlayerSimState` that drives the visuals, so a lean really does
-move the head you are shooting at. One second of history is kept per player.
+The hitboxes come from the same `PlayerSimState` that drives the visuals - both go through
+`BodyPose`, so a lean really does move the head you are shooting at, and the fifteen capsules the
+server tests are the fifteen bones the model is built from. One second of history is kept per player.
+
+The hit zone travels in three bits, which is exactly eight values: a miss and seven parts of a body.
+That was already the field's width when it only carried head/body/limb, so the full breakdown cost
+nothing on the wire.
 
 Two tests hold this honest: one fires at a strafing opponent through 140 ms of latency and asserts
 the hits land; the other turns `NetServer.LagCompensation` off and asserts the same shots miss.

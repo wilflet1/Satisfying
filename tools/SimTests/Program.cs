@@ -80,6 +80,7 @@ namespace Satisfying.Tests
             NetAddressTests.Register();
             RealSocketTests.Register();
             TouchRigTests.Register();
+            ViewmodelTests.Register();
             ReachabilityTests.Register();
 
             int passed = 0;

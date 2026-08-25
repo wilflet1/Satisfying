@@ -26,12 +26,20 @@ namespace Satisfying.Shared
             return (fwd * MathK.Cos(radius) + offset).Normalized;
         }
 
+        /// <summary>
+        /// What a part is worth. The chest is the baseline every other number is relative to, which is
+        /// why it has no knob of its own - move the weapon's damage instead.
+        /// </summary>
         public static float ZoneMultiplier(HitZone zone, WeaponTuning w)
         {
             switch (zone)
             {
                 case HitZone.Head: return w.headMultiplier;
-                case HitZone.Limb: return w.limbMultiplier;
+                case HitZone.Neck: return w.neckMultiplier;
+                case HitZone.Stomach: return w.stomachMultiplier;
+                case HitZone.Arm:
+                case HitZone.Leg:
+                case HitZone.Foot: return w.limbMultiplier;
                 default: return 1f;
             }
         }

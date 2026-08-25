@@ -71,6 +71,30 @@ and the choice travels in the input stream so the server applies exactly what th
 Irons are the fastest onto target and the hardest to see through; the holo is the clearest picture
 and the slowest to settle.
 
+## Where you hit them
+
+A duellist is fifteen capsules, not a cylinder with a ball on top: feet, shins, thighs, pelvis,
+stomach, chest, neck, head and both arms, each its own zone. They are laid over `BodyPose`, which is
+the same skeleton the model is drawn from, so the silhouette is not an artist's impression of the
+hit registration - it is the hit registration.
+
+| Zone | Multiplier | Why |
+|------|-----------|-----|
+| Head | `headMultiplier` (2.2-2.5) | The peek you were taking |
+| Neck | `neckMultiplier` (1.9) | The sliver above the plate, exposed by looking up |
+| Chest | 1.0 | The ordinary case everything else is measured against |
+| Stomach | `stomachMultiplier` (1.25) | Under the armour, over the belt |
+| Arm, leg, foot | `limbMultiplier` (0.75-0.85) | Cheap to expose, cheap to take |
+
+Two things follow from splitting the body up that did not before. There is now a **gap between the
+legs**, so a low shot at a man in a doorway can go clean between his shins. And an **arm held out
+over cover is a real target** - blind firing puts your forearm where your head is not, and someone
+can hit it.
+
+Stance changes the shape rather than scaling it. Crouching folds the legs and leaves the torso the
+size it was; going prone lays the body out **behind** the head, roughly 1.2 m of it, so lying down
+in a doorway leaves your boots in the next room.
+
 ## Sound as information
 
 Footsteps are the second source of truth in a duel, so they are treated like a weapon. Steps fall

@@ -191,6 +191,7 @@ Assets/_Project/
   Scripts/Shared/      engine-free simulation, netcode and tuning (asmdef: noEngineReferences)
     Math/              vectors and helpers, no UnityEngine
     Sim/               MovementCore - the single source of truth for how a player moves
+                       BodyPose - and the single source of truth for where their bones are
     Combat/            deterministic spread, hitboxes, damage
     World/             breakable glass and draggable objects, simulated identically both ends
     Net/               protocol, transports, server, predicting client
