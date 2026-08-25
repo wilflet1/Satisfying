@@ -86,6 +86,7 @@ namespace UnityEngine
     {
         public static Matrix4x4 identity { get { return new Matrix4x4(); } }
         public static Matrix4x4 TRS(Vector3 pos, Quaternion q, Vector3 scale) { return identity; }
+        public Vector3 MultiplyPoint3x4(Vector3 point) { return point; }
     }
 
     public struct Color
@@ -114,6 +115,9 @@ namespace UnityEngine
     {
         public Vector3 center, size;
         public Bounds(Vector3 center, Vector3 size) { this.center = center; this.size = size; }
+        public Vector3 extents { get { return size * 0.5f; } }
+        public void Encapsulate(Bounds other) { }
+        public void Encapsulate(Vector3 point) { }
     }
 
     public static class Mathf
@@ -174,7 +178,8 @@ namespace UnityEngine
     public enum CameraClearFlags { Skybox = 1, Color = 2, SolidColor = 2, Depth = 3, Nothing = 4 }
     public enum AudioRolloffMode { Logarithmic, Linear, Custom }
     public enum QueryTriggerInteraction { UseGlobal, Ignore, Collide }
-    public enum TextureFormat { RGBA32 = 4, ARGB32 = 5 }
+    public enum TextureFormat { RGB24 = 3, RGBA32 = 4, ARGB32 = 5 }
+    public enum RenderTextureFormat { ARGB32 = 0, Depth = 1, RFloat = 14 }
     public enum TextureWrapMode { Repeat, Clamp, Mirror }
     public enum FilterMode { Point, Bilinear, Trilinear }
     public enum TextAnchor { UpperLeft, UpperCenter, UpperRight, MiddleLeft, MiddleCenter, MiddleRight, LowerLeft, LowerCenter, LowerRight }
@@ -245,6 +250,7 @@ namespace UnityEngine
         public Vector3 TransformPoint(Vector3 local) { return local; }
         public Vector3 InverseTransformPoint(Vector3 world) { return world; }
         public Vector3 TransformDirection(Vector3 local) { return local; }
+        public Matrix4x4 localToWorldMatrix { get { return Matrix4x4.identity; } }
     }
 
     public class GameObject : Object
@@ -255,6 +261,7 @@ namespace UnityEngine
         public string tag { get; set; }
         public Transform transform { get; set; }
         public bool activeSelf { get { return true; } }
+        public bool activeInHierarchy { get { return true; } }
         public void SetActive(bool active) { }
         public T AddComponent<T>() where T : Component, new() { return new T(); }
         public T GetComponent<T>() where T : Component { return null; }
@@ -272,7 +279,25 @@ namespace UnityEngine
         public TextureWrapMode wrapMode { get; set; }
         public FilterMode filterMode { get; set; }
         public void SetPixel(int x, int y, Color color) { }
+        public Color GetPixel(int x, int y) { return Color.black; }
+        public void ReadPixels(Rect source, int destX, int destY) { }
         public void Apply() { }
+        public int width { get { return 0; } }
+        public int height { get { return 0; } }
+        public byte[] EncodeToPNG() { return new byte[0]; }
+    }
+
+    /// <summary>
+    /// An off-screen target. The shot sheet renders the duellist and the sight picture into one of
+    /// these rather than the screen, which is the only way a headless editor run can take a photograph.
+    /// </summary>
+    public class RenderTexture : Texture
+    {
+        public RenderTexture(int width, int height, int depth) { }
+        public RenderTexture(int width, int height, int depth, RenderTextureFormat format) { }
+        public int antiAliasing { get; set; }
+        public void Release() { }
+        public static RenderTexture active { get; set; }
     }
 
     public class Shader : Object
@@ -310,6 +335,7 @@ namespace UnityEngine
     {
         public Material material { get; set; }
         public Material sharedMaterial { get; set; }
+        public Bounds bounds { get { return new Bounds(Vector3.zero, Vector3.zero); } }
         public Rendering.ShadowCastingMode shadowCastingMode { get; set; }
         public bool receiveShadows { get; set; }
         public bool enabled { get; set; }
@@ -370,6 +396,8 @@ namespace UnityEngine
         public static Camera main { get { return null; } }
         public Vector3 WorldToScreenPoint(Vector3 position) { return Vector3.zero; }
         public Vector3 ScreenToWorldPoint(Vector3 position) { return Vector3.zero; }
+        public RenderTexture targetTexture { get; set; }
+        public void Render() { }
     }
 
     public class Light : Behaviour
@@ -472,6 +500,7 @@ namespace UnityEngine
         public static void Quit() { }
         public static void Quit(int exitCode) { }
         public static bool isFocused { get { return true; } }
+        public static bool isPlaying { get { return true; } }
         public static bool isMobilePlatform { get { return false; } }
         public static RuntimePlatform platform { get { return RuntimePlatform.WindowsPlayer; } }
     }

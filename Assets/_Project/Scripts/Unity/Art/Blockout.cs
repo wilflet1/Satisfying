@@ -19,7 +19,7 @@ namespace Satisfying.Game
             go.transform.localScale = size;
 
             Collider collider = go.GetComponent<Collider>();
-            if (!withCollider && collider != null) Object.Destroy(collider);
+            if (!withCollider && collider != null) Discard(collider);
 
             MeshRenderer renderer = go.GetComponent<MeshRenderer>();
             if (material != null) renderer.sharedMaterial = material;
@@ -36,7 +36,7 @@ namespace Satisfying.Game
             go.transform.localPosition = center;
             go.transform.localScale = Vector3.one * diameter;
             Collider collider = go.GetComponent<Collider>();
-            if (collider != null) Object.Destroy(collider);
+            if (collider != null) Discard(collider);
             if (material != null) go.GetComponent<MeshRenderer>().sharedMaterial = material;
             return go;
         }
@@ -60,6 +60,17 @@ namespace Satisfying.Game
             if (material != null) renderer.sharedMaterial = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
             return go;
+        }
+
+        /// <summary>
+        /// Throwing away a primitive's collider. Object.Destroy is deferred to the end of the frame,
+        /// which never comes outside play mode - and the shot sheet builds these bodies from an editor
+        /// menu item, where a deferred destroy is an error in the console and a collider that stays.
+        /// </summary>
+        static void Discard(Object o)
+        {
+            if (Application.isPlaying) Object.Destroy(o);
+            else Object.DestroyImmediate(o);
         }
 
         public static GameObject Rotated(GameObject go, Vector3 euler)

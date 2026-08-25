@@ -1,0 +1,472 @@
+using System.Collections.Generic;
+using System.IO;
+using UnityEditor;
+using UnityEditor.SceneManagement;
+using UnityEngine;
+using Satisfying.Shared;
+
+namespace Satisfying.Game
+{
+    /// <summary>
+    /// Renders the duellist and the first-person sight picture to PNGs, so a body that has only ever
+    /// been proved correct by arithmetic can actually be looked at.
+    ///
+    /// It drives the real view classes - RemotePlayerView and PlayerView - with real tuning, so what
+    /// comes out is what the game draws, not a second opinion about it.
+    /// </summary>
+    public static class ShotSheet
+    {
+        const int Width = 1024;
+        const int Height = 768;
+
+        static string _outDir = "Screenshots";
+
+        struct Shot
+        {
+            public string Name;
+            public string Focus;        // which joint to frame on; "body" for all of him
+            public float Radius;        // metres, ignored for "body"
+            public float Around;        // degrees round him: 0 in front, 90 off his right
+            public float Elevation;
+
+            public Shot(string name, string focus, float radius, float around, float elevation = 0f)
+            {
+                Name = name; Focus = focus; Radius = radius; Around = around; Elevation = elevation;
+            }
+        }
+
+        [MenuItem("Satisfying/Shots/Character sheet", priority = 60)]
+        public static void Character()
+        {
+            Prepare();
+            Palette palette = Palette.Build();
+            MovementTuning move = new MovementTuning();
+            WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
+
+            GameObject stage = Stage(palette, true);
+            Camera cam = ShotCamera();
+
+            Shot[] both = { new Shot("front", "body", 0f, 0f), new Shot("side", "body", 0f, 90f) };
+            Shot[] joints =
+            {
+                new Shot("head", "head", 0.28f, 20f, 5f),
+                new Shot("shoulder", "shoulders", 0.42f, 35f, 10f),
+                new Shot("hips", "pelvis", 0.42f, 40f, 0f),
+                new Shot("knee", "knee", 0.34f, 70f, 0f),
+                new Shot("foot", "foot", 0.28f, 75f, 12f),
+                new Shot("hands", "hands", 0.34f, 45f, 8f)
+            };
+
+            Sheet(cam, palette, move, weapons[0], Base(move, Stance.Stand), 1, "stand", both);
+            Sheet(cam, palette, move, weapons[0], Base(move, Stance.Stand), 1, "stand", joints);
+            Sheet(cam, palette, move, weapons[0], Base(move, Stance.Crouch), 1, "crouch", both);
+            Sheet(cam, palette, move, weapons[0], Base(move, Stance.Crouch), 1, "crouch", joints);
+            Sheet(cam, palette, move, weapons[0], Base(move, Stance.Prone), 1, "prone", both);
+            Sheet(cam, palette, move, weapons[0], Base(move, Stance.Prone), 1, "prone",
+                new Shot[] { new Shot("top", "body", 0f, 90f, 62f), new Shot("head", "head", 0.4f, 35f, 12f) });
+
+            PlayerNetState run = Base(move, Stance.Stand);
+            run.Velocity = new Vec3(0f, 0f, 6.4f);
+            Sheet(cam, palette, move, weapons[0], run, 26, "sprint", both);
+
+            PlayerNetState slide = Base(move, Stance.Crouch);
+            slide.Velocity = new Vec3(0f, 0f, 7.2f);
+            slide.Sliding = true;
+            Sheet(cam, palette, move, weapons[0], slide, 1, "slide", both);
+
+            PlayerNetState dead = Base(move, Stance.Stand);
+            dead.Alive = false;
+            Sheet(cam, palette, move, weapons[0], dead, 45, "dead",
+                new Shot[] { new Shot("side", "body", 0f, 90f), new Shot("angle", "body", 0f, 35f, 22f) });
+
+            for (int w = 0; w < weapons.Length; w++)
+            {
+                PlayerNetState ads = Base(move, Stance.Stand);
+                ads.Ads = 1f;
+                ads.WeaponIndex = (byte)w;
+                Sheet(cam, palette, move, weapons[w], ads, 1, "ads-w" + w,
+                    new Shot[]
+                    {
+                        new Shot("side", "body", 0f, 90f),
+                        new Shot("front", "body", 0f, 0f),
+                        new Shot("hands", "hands", 0.45f, 50f, 12f)
+                    });
+            }
+
+            PlayerNetState lean = Base(move, Stance.Stand);
+            lean.Lean = 1f;
+            Sheet(cam, palette, move, weapons[0], lean, 1, "lean", both);
+
+            PlayerNetState vault = Base(move, Stance.Stand);
+            vault.Vaulting = true;
+            vault.Grounded = false;
+            vault.Velocity = new Vec3(0f, 1.2f, 3.4f);
+            Sheet(cam, palette, move, weapons[0], vault, 1, "vault", both);
+
+            Object.DestroyImmediate(stage);
+            Debug.Log("[shots] character sheet written to " + Path.GetFullPath(_outDir));
+        }
+
+        /// <summary>
+        /// The sight picture, from inside the player's own head: every weapon, every sight, every
+        /// stance. A magenta cross is drawn on the exact centre pixel of each frame afterwards, so
+        /// "lined up on the centre of the screen" is something you can see rather than take on trust.
+        /// </summary>
+        [MenuItem("Satisfying/Shots/Sight pictures", priority = 61)]
+        public static void Sights()
+        {
+            Prepare();
+            Palette palette = Palette.Build();
+            MovementTuning move = new MovementTuning();
+            FeelTuning feel = new FeelTuning();
+            WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
+            SightTuning[] sights = SightTuning.Defaults();
+
+            GameObject stage = Stage(palette, true);
+            Target(palette, new Vector3(0f, 0f, 22f));
+
+            GameObject rig = new GameObject("first person");
+            PlayerView view = new PlayerView(rig.transform, feel, palette, GameBootstrap.LayerViewmodel);
+
+            Stance[] stances = { Stance.Stand, Stance.Crouch, Stance.Prone };
+            string[] stanceNames = { "stand", "crouch", "prone" };
+
+            for (int w = 0; w < weapons.Length; w++)
+            {
+                for (int g = 0; g < sights.Length; g++)
+                {
+                    for (int s = 0; s < stances.Length; s++)
+                    {
+                        PlayerSimState state = SimBase(move, stances[s]);
+                        state.Weapon.Index = (byte)w;
+                        state.Weapon.Sight = (byte)g;
+                        state.Ads = 1f;
+
+                        // Settle: the fov, the sway and the ADS blend are all springs, and a single
+                        // frame would photograph them mid-flight.
+                        Settle(view, in state, move, weapons[w], sights[g], 0f);
+                        Capture(view, "ads-w" + w + "-s" + g + "-" + stanceNames[s], true);
+                    }
+                }
+            }
+
+            // And what you see looking down in each stance - the first-person body is drawn by the
+            // same class as the opponent, so a leg in your face would be a leg in his too.
+            RemotePlayerView own = new RemotePlayerView(rig.transform, 0, palette, move, GameBootstrap.LayerPlayer, true);
+            for (int s = 0; s < stances.Length; s++)
+            {
+                PlayerSimState state = SimBase(move, stances[s]);
+                PlayerNetState net = PlayerNetState.FromSim(0, in state, true, 100f);
+                float impulse;
+                own.Render(in net, 1f / 120f, weapons[0], out impulse);
+
+                Settle(view, in state, move, weapons[0], sights[0], -78f);
+                Capture(view, "down-" + stanceNames[s], false);
+
+                PlayerSimState aiming = state;
+                aiming.Ads = 1f;
+                Settle(view, in aiming, move, weapons[0], sights[0], -60f);
+                Capture(view, "down-ads-" + stanceNames[s], false);
+            }
+
+            Object.DestroyImmediate(rig);
+            Object.DestroyImmediate(stage);
+            Debug.Log("[shots] sight pictures written to " + Path.GetFullPath(_outDir));
+        }
+
+        public static void All()
+        {
+            Character();
+            Sights();
+        }
+
+        static void Settle(PlayerView view, in PlayerSimState state, MovementTuning move, WeaponTuning weapon,
+                           SightTuning sight, float pitch)
+        {
+            for (int i = 0; i < 300; i++)
+                view.Render(in state, state.Position.ToUnity(), move, weapon, sight, 0f, pitch, 1f / 120f, false);
+        }
+
+        // ------------------------------------------------------------------ scene
+
+        static void Prepare()
+        {
+            string[] args = System.Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+                if (args[i] == "-shotsOut") _outDir = args[i + 1];
+            Directory.CreateDirectory(_outDir);
+
+            if (!Application.isPlaying)
+                EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+        }
+
+        static GameObject Stage(Palette palette, bool facingMarker)
+        {
+            GameObject stage = new GameObject("stage");
+
+            GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ground.name = "ground";
+            ground.transform.SetParent(stage.transform, false);
+            ground.transform.localPosition = new Vector3(0f, -0.5f, 0f);
+            ground.transform.localScale = new Vector3(60f, 1f, 60f);
+            ground.GetComponent<MeshRenderer>().sharedMaterial = palette.Ground;
+            ground.layer = GameBootstrap.LayerWorld;
+
+            if (facingMarker)
+            {
+                // Which way he is facing, drawn on the floor. Every "is that foot on backwards?"
+                // argument is settled by having the answer in the frame.
+                GameObject arrow = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                arrow.name = "facing";
+                arrow.transform.SetParent(stage.transform, false);
+                arrow.transform.localPosition = new Vector3(0f, 0.004f, 0.55f);
+                arrow.transform.localScale = new Vector3(0.03f, 0.008f, 1.1f);
+                arrow.GetComponent<MeshRenderer>().sharedMaterial = palette.Accent;
+                arrow.layer = GameBootstrap.LayerWorld;
+
+                GameObject tip = GameObject.CreatePrimitive(PrimitiveType.Cube);
+                tip.name = "facing tip";
+                tip.transform.SetParent(stage.transform, false);
+                tip.transform.localPosition = new Vector3(0f, 0.004f, 1.05f);
+                tip.transform.localRotation = Quaternion.Euler(0f, 45f, 0f);
+                tip.transform.localScale = new Vector3(0.12f, 0.008f, 0.12f);
+                tip.GetComponent<MeshRenderer>().sharedMaterial = palette.Accent;
+                tip.layer = GameBootstrap.LayerWorld;
+            }
+
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor = new Color(0.42f, 0.45f, 0.52f);
+            RenderSettings.ambientEquatorColor = new Color(0.32f, 0.33f, 0.36f);
+            RenderSettings.ambientGroundColor = new Color(0.18f, 0.18f, 0.2f);
+
+            Key(stage.transform, "key", new Vector3(46f, -35f, 0f), 1.15f, new Color(1f, 0.97f, 0.9f), true);
+            Key(stage.transform, "fill", new Vector3(20f, 150f, 0f), 0.45f, new Color(0.72f, 0.8f, 1f), false);
+            Key(stage.transform, "rim", new Vector3(8f, 205f, 0f), 0.35f, new Color(0.9f, 0.9f, 1f), false);
+            return stage;
+        }
+
+        static void Key(Transform parent, string name, Vector3 euler, float intensity, Color color, bool shadows)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.rotation = Quaternion.Euler(euler);
+            Light light = go.AddComponent<Light>();
+            light.type = LightType.Directional;
+            light.intensity = intensity;
+            light.color = color;
+            // A contact shadow is the only thing in a still frame that says whether he is standing on
+            // the floor or hovering half a metre above it.
+            light.shadows = shadows ? LightShadows.Soft : LightShadows.None;
+            light.shadowStrength = 0.75f;
+        }
+
+        /// <summary>Something to aim at, at a believable distance, so a sight picture has a subject.</summary>
+        static void Target(Palette palette, Vector3 at)
+        {
+            GameObject post = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            post.name = "target";
+            post.transform.position = at + new Vector3(0f, 1.55f, 0f);
+            post.transform.localScale = new Vector3(0.55f, 0.85f, 0.12f);
+            post.GetComponent<MeshRenderer>().sharedMaterial = palette.Accent;
+            post.layer = GameBootstrap.LayerWorld;
+        }
+
+        static Camera ShotCamera()
+        {
+            GameObject go = new GameObject("shot camera");
+            Camera cam = go.AddComponent<Camera>();
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(0.13f, 0.14f, 0.17f);
+            cam.fieldOfView = 32f;
+            cam.nearClipPlane = 0.05f;
+            cam.farClipPlane = 200f;
+            cam.cullingMask = ~0;
+            return cam;
+        }
+
+        // ------------------------------------------------------------------ states
+
+        static PlayerNetState Base(MovementTuning move, Stance stance)
+        {
+            PlayerNetState n = new PlayerNetState();
+            n.Alive = true;
+            n.Health = 100;
+            n.Position = new Vec3(0f, 0f, 0f);
+            n.Height = move.HeightFor(stance);
+            n.Stance = stance;
+            n.Grounded = true;
+            n.Stamina = move.staminaMax;
+            n.Ammo = 30;
+            n.Yaw = 0f;
+            return n;
+        }
+
+        static PlayerSimState SimBase(MovementTuning move, Stance stance)
+        {
+            PlayerSimState s = new PlayerSimState();
+            s.Position = new Vec3(0f, 0f, 0f);
+            s.Height = move.HeightFor(stance);
+            s.Stance = stance;
+            s.Grounded = true;
+            s.Stamina = move.staminaMax;
+            s.Weapon.Ammo = 30;
+            return s;
+        }
+
+        // ------------------------------------------------------------------ shooting
+
+        /// <summary>
+        /// One duellist, one state, several framings. `ticks` runs the view forward first, which is how
+        /// the walk cycle and the death fold get anywhere - both are time based and one frame catches
+        /// them at zero.
+        /// </summary>
+        static void Sheet(Camera cam, Palette palette, MovementTuning move, WeaponTuning weapon,
+                          PlayerNetState state, int ticks, string prefix, Shot[] shots)
+        {
+            GameObject holder = new GameObject("subject");
+            RemotePlayerView view = new RemotePlayerView(holder.transform, 1, palette, move, GameBootstrap.LayerPlayer);
+
+            float impulse;
+            for (int i = 0; i < Mathf.Max(1, ticks); i++)
+                view.Render(in state, 1f / 64f, weapon, out impulse);
+
+            PlayerSimState shown = state.ToDisplayState(move.staminaMax);
+            BodyPose pose = BodyPose.Build(in shown, move, weapon);
+
+            for (int i = 0; i < shots.Length; i++)
+            {
+                Bounds bounds = shots[i].Focus == "body"
+                    ? Framing(view.Character.Root)
+                    : new Bounds(Joint(in pose, shots[i].Focus), Vector3.one * (shots[i].Radius * 2f));
+
+                float radius = Mathf.Max(0.12f, bounds.extents.magnitude);
+                float distance = radius / Mathf.Sin(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * 1.08f;
+                Quaternion around = Quaternion.Euler(shots[i].Elevation, shots[i].Around, 0f);
+                Vector3 direction = around * new Vector3(0f, 0.10f, 1f).normalized;
+
+                cam.transform.position = bounds.center + direction * distance;
+                cam.transform.rotation = Quaternion.LookRotation((bounds.center - cam.transform.position).normalized, Vector3.up);
+
+                Write(Render(cam, null), prefix + "-" + shots[i].Name);
+            }
+
+            Object.DestroyImmediate(holder);
+        }
+
+        static Vector3 Joint(in BodyPose pose, string focus)
+        {
+            switch (focus)
+            {
+                case "head": return pose.Head.ToUnity();
+                case "shoulders": return pose.RightShoulder.ToUnity();
+                case "pelvis": return pose.Pelvis.ToUnity();
+                case "knee": return pose.RightKnee.ToUnity();
+                case "foot": return pose.RightAnkle.ToUnity();
+                case "hands": return pose.RightHand.ToUnity();
+                default: return pose.ChestBase.ToUnity();
+            }
+        }
+
+        static Bounds Framing(GameObject root)
+        {
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>();
+            Bounds bounds = new Bounds(root.transform.position, Vector3.zero);
+            bool any = false;
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                if (!renderers[i].enabled || !renderers[i].gameObject.activeInHierarchy) continue;
+                if (!any) { bounds = renderers[i].bounds; any = true; }
+                else bounds.Encapsulate(renderers[i].bounds);
+            }
+            return bounds;
+        }
+
+        /// <summary>The world camera and the viewmodel camera, into one frame, the way the game does it.</summary>
+        static void Capture(PlayerView view, string name, bool crosshair)
+        {
+            Texture2D shot = Render(view.Camera, view.WeaponCamera);
+            if (crosshair)
+            {
+                // The zoom is taken before the cross is drawn on the full frame, so the crop is the
+                // sight picture itself and not a picture of the marker.
+                Write(Zoom(shot, 6), name + "-zoom");
+                Cross(shot, 22, 5);
+            }
+            Write(shot, name);
+        }
+
+        /// <summary>
+        /// The middle of the frame, blown up. A sight is a couple of hundred pixels across at ADS and
+        /// "the post is in the notch" is not a judgement you can make from the whole screen.
+        /// </summary>
+        static Texture2D Zoom(Texture2D source, int factor)
+        {
+            int cropW = Width / factor;
+            int cropH = Height / factor;
+            int x0 = (Width - cropW) / 2;
+            int y0 = (Height - cropH) / 2;
+
+            Texture2D zoomed = new Texture2D(cropW * factor, cropH * factor, TextureFormat.RGB24, false);
+            for (int y = 0; y < cropH * factor; y++)
+                for (int x = 0; x < cropW * factor; x++)
+                    zoomed.SetPixel(x, y, source.GetPixel(x0 + x / factor, y0 + y / factor));
+            zoomed.Apply();
+            Cross(zoomed, 60, 14);
+            return zoomed;
+        }
+
+        static Texture2D Render(Camera first, Camera second)
+        {
+            RenderTexture rt = new RenderTexture(Width, Height, 24, RenderTextureFormat.ARGB32);
+            rt.antiAliasing = 8;
+
+            RenderTexture previous = first.targetTexture;
+            first.targetTexture = rt;
+            first.Render();
+            first.targetTexture = previous;
+
+            if (second != null)
+            {
+                RenderTexture previousSecond = second.targetTexture;
+                second.targetTexture = rt;
+                second.Render();
+                second.targetTexture = previousSecond;
+            }
+
+            RenderTexture active = RenderTexture.active;
+            RenderTexture.active = rt;
+            Texture2D texture = new Texture2D(Width, Height, TextureFormat.RGB24, false);
+            texture.ReadPixels(new Rect(0f, 0f, Width, Height), 0, 0);
+            texture.Apply();
+            RenderTexture.active = active;
+
+            rt.Release();
+            Object.DestroyImmediate(rt);
+            return texture;
+        }
+
+        /// <summary>Marks the exact centre pixel. Half a millimetre of sight misalignment is a test's
+        /// job; a sight sitting visibly off centre is this cross's.</summary>
+        static void Cross(Texture2D texture, int arm, int gap)
+        {
+            int cx = texture.width / 2;
+            int cy = texture.height / 2;
+            Color mark = new Color(1f, 0f, 1f);
+            for (int i = -arm; i <= arm; i++)
+            {
+                if (i > -gap && i < gap) continue;   // leave the middle clear so the sight shows through
+                texture.SetPixel(cx + i, cy, mark);
+                texture.SetPixel(cx, cy + i, mark);
+            }
+            texture.Apply();
+        }
+
+        static void Write(Texture2D texture, string name)
+        {
+            string path = Path.Combine(_outDir, name + ".png");
+            File.WriteAllBytes(path, texture.EncodeToPNG());
+            Object.DestroyImmediate(texture);
+            Debug.Log("[shots] " + path);
+        }
+    }
+}

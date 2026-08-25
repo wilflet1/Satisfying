@@ -24,7 +24,11 @@ Z. That is what lets `Blockout.Bone` scale one by (width, depth, length) and get
 wide, that deep and that long. Break the normalisation and every proportion in the game moves at
 once.
 
-**Nothing drawn on a duellist may stick out past the capsules `PlayerHitbox` tests.** A helmet that
+**Nothing drawn on a duellist may stick out past the capsules `PlayerHitbox` tests.** This is now
+checkable rather than asserted: **Satisfying → Shots → Check the silhouette** measures every vertex of
+every mesh on the body against all fifteen capsules in every stance and prints what is outside and by
+how much. As of writing it prints twenty-two parts, the worst 111 mm - so read the rule below as what
+the character is meant to be, not as what it currently is. A helmet that
 overhangs the head sphere is a helmet you can put a round through for no damage, and from the
 shooting end that is indistinguishable from the netcode being broken. The one deliberate exception
 is the shoulders: the chest capsule is 0.31 m across and the drawn shoulders are 0.40, because the
