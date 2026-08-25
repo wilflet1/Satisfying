@@ -174,10 +174,96 @@ namespace Satisfying.Game
             Debug.Log("[shots] sight pictures written to " + Path.GetFullPath(_outDir));
         }
 
+        /// <summary>
+        /// The two things a hit produces that nobody has looked at: the blood the server's confirmation
+        /// spawns, and what a head hit you survive does to your vision.
+        /// </summary>
+        [MenuItem("Satisfying/Shots/Hit effects", priority = 62)]
+        public static void Hits()
+        {
+            Prepare();
+            Palette palette = Palette.Build();
+            MovementTuning move = new MovementTuning();
+            FeelTuning feel = new FeelTuning();
+            WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
+            SightTuning[] sights = SightTuning.Defaults();
+
+            GameObject stage = Stage(palette, false);
+            Camera cam = ShotCamera();
+
+            // ---- blood, on a duellist, at the moment the round lands and a beat later.
+            GameObject holder = new GameObject("subject");
+            RemotePlayerView view = new RemotePlayerView(holder.transform, 1, palette, move,
+                                                         GameBootstrap.LayerPlayer);
+            PlayerNetState state = Base(move, Stance.Stand);
+            float impulse;
+            view.Render(in state, 1f / 64f, weapons[0], out impulse);
+
+            CombatFx fx = new CombatFx(stage.transform, palette, GameBootstrap.LayerFx);
+            PlayerSimState shown = state.ToDisplayState(move.staminaMax);
+            BodyPose pose = BodyPose.Build(in shown, move, weapons[0]);
+
+            Vector3 chest = pose.ChestBase.ToUnity() + Vector3.up * 0.2f;
+            Vector3 along = new Vector3(0.15f, 0.05f, -1f).normalized;   // shot from the front, going through
+            fx.Blood(chest, along, 0.7f);
+
+            Bounds bounds = new Bounds(chest, Vector3.one * 1.5f);
+            Frame(cam, bounds, 55f, 6f);
+            Write(Render(cam, null), "blood-0-impact");
+
+            for (int i = 0; i < 8; i++) fx.Update(1f / 60f);
+            Write(Render(cam, null), "blood-1-spray");
+
+            for (int i = 0; i < 14; i++) fx.Update(1f / 60f);
+            Write(Render(cam, null), "blood-2-falling");
+
+            // A head hit, which throws it from higher up and further.
+            fx.Blood(pose.Head.ToUnity(), along, 1f);
+            for (int i = 0; i < 6; i++) fx.Update(1f / 60f);
+            Frame(cam, new Bounds(pose.Head.ToUnity(), Vector3.one * 1.4f), 50f, 8f);
+            Write(Render(cam, null), "blood-3-head");
+
+            Object.DestroyImmediate(holder);
+
+            // ---- the concussion blur, at the strengths the three weapons actually produce.
+            Target(palette, new Vector3(0f, 0f, 22f));
+            GameObject rig = new GameObject("first person");
+            PlayerView player = new PlayerView(rig.transform, feel, palette, GameBootstrap.LayerViewmodel);
+
+            PlayerSimState aiming = SimBase(move, Stance.Stand);
+            aiming.Ads = 1f;
+            Settle(player, in aiming, move, weapons[0], sights[0], 0f);
+
+            player.Blur.Clear();
+            Capture(player, "blur-0-clear", false);
+
+            for (int w = 0; w < weapons.Length; w++)
+            {
+                player.Blur.Clear();
+                player.Blur.Hit(weapons[w].concussionStrength, weapons[w].concussionTime);
+                Capture(player, "blur-w" + w + "-" + weapons[w].name.ToLowerInvariant(), false);
+            }
+
+            Object.DestroyImmediate(rig);
+            Object.DestroyImmediate(stage);
+            Debug.Log("[shots] hit effects written to " + Path.GetFullPath(_outDir));
+        }
+
+        static void Frame(Camera cam, Bounds bounds, float around, float elevation)
+        {
+            float radius = Mathf.Max(0.12f, bounds.extents.magnitude);
+            float distance = radius / Mathf.Sin(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * 1.08f;
+            Vector3 direction = Quaternion.Euler(elevation, around, 0f) * new Vector3(0f, 0.10f, 1f).normalized;
+            cam.transform.position = bounds.center + direction * distance;
+            cam.transform.rotation = Quaternion.LookRotation((bounds.center - cam.transform.position).normalized,
+                                                             Vector3.up);
+        }
+
         public static void All()
         {
             Character();
             Sights();
+            Hits();
         }
 
         static void Settle(PlayerView view, in PlayerSimState state, MovementTuning move, WeaponTuning weapon,

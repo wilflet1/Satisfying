@@ -12,6 +12,7 @@ namespace Satisfying.Game
     {
         public Camera Camera;
         public Camera WeaponCamera;
+        public ConcussionBlur Blur;
         public Transform Rig;
         public Transform ViewmodelRoot;
         public WeaponModel Weapon;
@@ -74,6 +75,9 @@ namespace Satisfying.Game
             Camera.fieldOfView = feel.fieldOfView;
             Camera.cullingMask = ~(1 << viewmodelLayer);
             cameraGo.AddComponent<AudioListener>();
+            // On the world camera, not the weapon camera: your gun stays sharp when your head rings,
+            // which is both how it works and the only thing keeping the effect playable.
+            Blur = cameraGo.AddComponent<ConcussionBlur>();
             _fov = feel.fieldOfView;
 
             // A second camera draws the gun and hands so they never clip through walls.

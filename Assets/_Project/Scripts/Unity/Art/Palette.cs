@@ -20,6 +20,7 @@ namespace Satisfying.Game
         public Material Glow;
         public Material Hands;
         public Material RemoteArms;
+        public Material Blood;
 
         static Shader FindShader()
         {
@@ -64,6 +65,8 @@ namespace Satisfying.Game
             p.Glow = Make("glow", new Color(1f, 0.82f, 0.45f), 0.5f, 0f, true);
             p.Hands = Make("hands", new Color(0.42f, 0.36f, 0.31f), 0.12f, 0f);
             p.RemoteArms = Make("remote arms", new Color(0.36f, 0.30f, 0.27f), 0.12f, 0f);
+            // Dark and matte. Bright red reads as paint, and a glossy one reads as jam.
+            p.Blood = Make("blood", new Color(0.38f, 0.03f, 0.04f), 0.08f, 0f);
             return p;
         }
     }

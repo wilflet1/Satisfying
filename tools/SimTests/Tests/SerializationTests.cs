@@ -32,6 +32,84 @@ namespace Satisfying.Tests
                 Assert.True(r.ReadVec3() == new Vec3(1.5f, -2.25f, 3f), "vector");
             });
 
+            // A sink that records exactly what came out the other end, so an event's fields can be
+            // checked rather than assumed. Every one of these has a client drawing something from it.
+            TestRunner.Add("events/a hit confirm carries where the round landed", () =>
+            {
+                RecordingSink sink = new RecordingSink();
+                GameEvents.Dispatch(
+                    GameEvents.HitConfirm(3, HitZone.Neck, 41.5f, false, new Vec3(-12.5f, 1.75f, 30.25f)), sink);
+
+                Assert.Equal(sink.HitTarget, 3, "target");
+                Assert.True(sink.HitZone == HitZone.Neck, "zone");
+                Assert.Near(sink.HitDamage, 41.5f, 0.2f, "damage");
+                Assert.False(sink.HitKilled, "not a kill");
+                Assert.Near(sink.HitPoint.x, -12.5f, 0.01f, "point x");
+                Assert.Near(sink.HitPoint.y, 1.75f, 0.01f, "point y");
+                Assert.Near(sink.HitPoint.z, 30.25f, 0.01f, "point z");
+            });
+
+            TestRunner.Add("events/being damaged says what did it", () =>
+            {
+                RecordingSink sink = new RecordingSink();
+                GameEvents.Dispatch(GameEvents.Damaged(2, HitZone.Head, 2, 62f, false), sink);
+
+                Assert.Equal(sink.DamagedBy, 2, "attacker");
+                Assert.True(sink.DamagedZone == HitZone.Head, "zone");
+                Assert.Equal(sink.DamagedWeapon, 2, "weapon index");
+                Assert.False(sink.DamagedKilled, "survived");
+            });
+
+            TestRunner.Add("events/a shot says whether it landed on a man", () =>
+            {
+                RecordingSink sink = new RecordingSink();
+                GameEvents.Dispatch(
+                    GameEvents.Shot(1, Vec3.Zero, new Vec3(0f, 0f, 1f), 0, true, new Vec3(0f, 1.5f, 8f), true), sink);
+                Assert.True(sink.ShotHitPlayer, "hit a player");
+
+                RecordingSink wall = new RecordingSink();
+                GameEvents.Dispatch(
+                    GameEvents.Shot(1, Vec3.Zero, new Vec3(0f, 0f, 1f), 0, true, new Vec3(0f, 1.5f, 8f), false), wall);
+                Assert.False(wall.ShotHitPlayer, "hit the wall");
+
+                // A miss writes no point at all, and reading one that is not there is how a buffer
+                // overrun becomes a mystery crash six months later.
+                RecordingSink miss = new RecordingSink();
+                GameEvents.Dispatch(
+                    GameEvents.Shot(1, Vec3.Zero, new Vec3(0f, 0f, 1f), 0, false, Vec3.Zero, false), miss);
+                Assert.False(miss.ShotHitPlayer, "a miss hit nobody");
+            });
+
+            TestRunner.Add("events/a head hit that kills you does not also concuss you", () =>
+            {
+                // The client gates the blur on this bit, so it is the bit that matters.
+                RecordingSink sink = new RecordingSink();
+                GameEvents.Dispatch(GameEvents.Damaged(1, HitZone.Head, 0, 200f, true), sink);
+                Assert.True(sink.DamagedKilled, "killed");
+            });
+
+            TestRunner.Add("weapons/a rifle rings your helmet harder and longer than a pistol", () =>
+            {
+                WeaponTuning[] loadout = WeaponTuning.DefaultLoadout();
+                WeaponTuning rifle = loadout[0];
+                WeaponTuning pistol = loadout[2];
+
+                Assert.True(rifle.concussionTime > pistol.concussionTime, "rifle lasts longer");
+                Assert.True(rifle.concussionStrength > pistol.concussionStrength, "rifle is worse");
+                Assert.True(pistol.concussionTime > 0f, "a pistol still does something");
+
+                // And it has to be survivable at full health, or the effect never plays.
+                float head = ShotSolver.Damage(rifle, HitZone.Head, 30f);
+                Assert.True(head < 100f, "a head hit at range is survivable");
+            });
+
+            TestRunner.Add("weapons/a rifle carries further than a boot", () =>
+            {
+                WeaponTuning[] loadout = WeaponTuning.DefaultLoadout();
+                Assert.True(loadout[0].soundCarry > loadout[2].soundCarry, "rifle over pistol");
+                Assert.True(loadout[2].soundCarry > 25f, "a pistol still beats a footstep");
+            });
+
             TestRunner.Add("net/input command round trips inside quantisation error", () =>
             {
                 InputCommand c = InputCommand.Default(1000);
@@ -119,6 +197,49 @@ namespace Satisfying.Tests
                     Assert.Near(g.move.leanAngle, f.Min, 0f, "clamped to min");
                 }
             });
+        }
+    }
+
+    /// <summary>Keeps whatever it was told, so a dispatched event can be inspected field by field.</summary>
+    sealed class RecordingSink : IEventSink
+    {
+        public int HitTarget = -1;
+        public HitZone HitZone;
+        public float HitDamage;
+        public bool HitKilled;
+        public Vec3 HitPoint;
+
+        public int DamagedBy = -1;
+        public HitZone DamagedZone;
+        public int DamagedWeapon = -1;
+        public bool DamagedKilled;
+
+        public bool ShotHitPlayer;
+
+        public void OnPlayerJoined(int peerId, string name) { }
+        public void OnPlayerLeft(int peerId, DisconnectReason reason) { }
+        public void OnSpawn(int peerId, Vec3 position, float yaw) { }
+        public void OnDeath(int victim, int killer, HitZone zone, float distance) { }
+        public void OnTargetHit(HitZone zone, float distance) { }
+        public void OnScore(int peerId, int kills, int deaths) { }
+        public void OnMatchPhase(MatchPhase phase, float timer, int winner) { }
+        public void OnTuning(string tuningText) { }
+        public void OnWindowBroken(int windowIndex, Vec3 centre) { }
+
+        public void OnHitConfirm(int target, HitZone zone, float damage, bool killed, Vec3 point)
+        {
+            HitTarget = target; HitZone = zone; HitDamage = damage; HitKilled = killed; HitPoint = point;
+        }
+
+        public void OnDamaged(int attacker, HitZone zone, byte weaponIndex, float damage, bool killed)
+        {
+            DamagedBy = attacker; DamagedZone = zone; DamagedWeapon = weaponIndex; DamagedKilled = killed;
+        }
+
+        public void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit,
+                                 Vec3 hitPoint, bool hitPlayer)
+        {
+            ShotHitPlayer = hitPlayer;
         }
     }
 }

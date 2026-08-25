@@ -82,6 +82,13 @@ namespace Satisfying.Game
 
         /// <summary>Prop this player is dragging, -1 when empty handed. Used by the HUD.</summary>
         public int HeldProp = -1;
+        /// <summary>
+        /// A boot carries about twenty-five metres of open ground, which is a tenth of what a rifle
+        /// does. That difference is the whole reason you can hear a shot through a wall and not a
+        /// footstep - the transmission model reads it, it is not two separate rules.
+        /// </summary>
+        const float FootstepCarry = 25f;
+
         public float HitMarkerTimer;
         public bool HitMarkerHeadshot;
         public float DamageFlashTimer;
@@ -307,6 +314,21 @@ namespace Satisfying.Game
             }
         }
 
+        int _stepVariant;
+
+        /// <summary>
+        /// What is underfoot, decided by whether there is a roof over it. The arena has no material
+        /// data and does not need any: outside is poured concrete and anything you can stand under is
+        /// boards, which is true of both maps and stays true of any map anyone builds later.
+        /// </summary>
+        StepSurface SurfaceUnder(Vector3 position)
+        {
+            return Physics.Raycast(position + Vector3.up * 0.2f, Vector3.up, 7f,
+                                   1 << GameBootstrap.LayerWorld, QueryTriggerInteraction.Ignore)
+                ? StepSurface.Wood
+                : StepSurface.Concrete;
+        }
+
         /// <summary>
         /// Footsteps are driven by distance travelled rather than a timer, so the analog speed dial
         /// changes how loud and how often you are - creeping really is quieter.
@@ -328,8 +350,9 @@ namespace Satisfying.Game
             if (state.Stance == Stance.Crouch) loudness *= 0.45f;
             else if (state.Stance == Stance.Prone) loudness *= 0.25f;
 
-            Sound.PlayAt(Audio.Footstep, View.Camera.transform.position, 0.25f + loudness * 0.5f,
-                Random.Range(0.9f, 1.1f));
+            Vector3 feet = Client.RenderPosition.ToUnity();
+            Sound.PlayAt(Audio.StepFor(SurfaceUnder(feet), _stepVariant++), View.Camera.transform.position,
+                0.25f + loudness * 0.5f, Random.Range(0.94f, 1.06f));
         }
 
         /// <summary>
@@ -375,7 +398,8 @@ namespace Satisfying.Game
                 {
                     float quiet = kv.Value.Render.Stance == Stance.Prone ? 0.25f
                                 : (kv.Value.Render.Stance == Stance.Crouch ? 0.5f : 1f);
-                    Sound.PlayOccluded(Audio.Footstep, where, 0.7f * footstep * quiet, Random.Range(0.92f, 1.08f), true);
+                    Sound.Play(Audio.StepFor(SurfaceUnder(where), _stepVariant++), where,
+                        0.7f * footstep * quiet, Random.Range(0.92f, 1.08f), FootstepCarry);
                 }
                 PlayWeaponCue(view.ConsumeWeaponCue(), where, 0.7f);
 
@@ -528,6 +552,7 @@ namespace Satisfying.Game
             if (Client == null || peerId != Client.PeerId) return;
             Client.ForceSpawn(position, yaw);
             Input.ResetView(yaw, 0f);
+            if (View != null && View.Blur != null) View.Blur.Clear();
             _lastHealth = Client.Tuning.match.maxHealth;
             RespawnCountdown = 0f;
         }
@@ -553,11 +578,32 @@ namespace Satisfying.Game
             }
         }
 
-        public void OnHitConfirm(int target, HitZone zone, float damage, bool killed)
+        public void OnHitConfirm(int target, HitZone zone, float damage, bool killed, Vec3 point)
         {
             HitMarkerTimer = 0.28f;
             HitMarkerHeadshot = zone == HitZone.Head;
             Sound.Play2D(zone == HitZone.Head ? Audio.HeadshotMarker : Audio.HitMarker, 0.45f);
+
+            // The shooter is not sent their own Shot event, so their blood comes from here instead.
+            // Either way it is drawn on the server's word and never on the trigger pull.
+            if (Fx == null || View == null) return;
+            Vector3 at = point.ToUnity();
+            Vector3 along = (at - View.Camera.transform.position).normalized;
+            Fx.Blood(at, along, Mathf.Clamp01(damage / 45f));
+        }
+
+        /// <summary>
+        /// You took one. A head hit you walked away from leaves you unable to see properly for a
+        /// moment, and how long for depends on what hit you: a rifle round rings a helmet far harder
+        /// than a pistol round does, and both are survivable at full health.
+        /// </summary>
+        public void OnDamaged(int attacker, HitZone zone, byte weaponIndex, float damage, bool killed)
+        {
+            if (killed || View == null || View.Blur == null) return;
+            if (zone != HitZone.Head) return;
+
+            WeaponTuning weapon = Client.Tuning.Weapon(weaponIndex);
+            View.Blur.Hit(weapon.concussionStrength, weapon.concussionTime);
         }
 
         /// <summary>
@@ -604,7 +650,8 @@ namespace Satisfying.Game
         /// </summary>
         public void OnWindowBroken(int windowIndex, Vec3 centre) { }
 
-        public void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint)
+        public void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit,
+                                 Vec3 hitPoint, bool hitPlayer)
         {
             Vector3 from = origin.ToUnity();
 
@@ -623,8 +670,14 @@ namespace Satisfying.Game
             // Far enough away and you hear the report rather than the crack.
             float distance = Vector3.Distance(from, View.Camera.transform.position);
             AudioClip report = distance > 35f ? Audio.DistantShotFor(weaponIndex) : Audio.ShotFor(weaponIndex);
-            Sound.PlayOccluded(report, from, 0.85f, Random.Range(0.95f, 1.05f), true);
-            if (hit) Fx.Impact(to, -direction.ToUnity());
+            Sound.Play(report, from, 0.85f, Random.Range(0.95f, 1.05f),
+                       Client.Tuning.Weapon(weaponIndex).soundCarry);
+            if (!hit) return;
+
+            // The server said this round landed on someone, so everyone watching draws the blood -
+            // it is the same event that told them the round landed at all.
+            if (hitPlayer) Fx.Blood(to, direction.ToUnity(), 0.6f);
+            else Fx.Impact(to, -direction.ToUnity());
         }
     }
 }

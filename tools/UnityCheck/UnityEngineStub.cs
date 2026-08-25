@@ -63,6 +63,9 @@ namespace UnityEngine
         public static Vector3 MoveTowards(Vector3 a, Vector3 b, float d) { return b; }
         public static Vector3 ProjectOnPlane(Vector3 v, Vector3 n) { return v - n * Dot(v, n); }
         public static Vector3 Normalize(Vector3 v) { return v.normalized; }
+        public void Normalize() { }
+        public static Vector3 Slerp(Vector3 a, Vector3 b, float t) { return b; }
+        public static float Angle(Vector3 a, Vector3 b) { return 0f; }
         public override string ToString() { return "(" + x + ", " + y + ", " + z + ")"; }
     }
 
@@ -166,6 +169,7 @@ namespace UnityEngine
         public static float value { get { return 0.5f; } }
         public static Quaternion rotation { get { return Quaternion.identity; } }
         public static Vector3 insideUnitSphere { get { return Vector3.zero; } }
+        public static Vector3 onUnitSphere { get { return Vector3.up; } }
     }
 
     public enum HideFlags { None = 0, HideAndDontSave = 61 }
@@ -230,6 +234,12 @@ namespace UnityEngine
     }
 
     public class MonoBehaviour : Behaviour { }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class DisallowMultipleComponentAttribute : Attribute { }
+
+    [AttributeUsage(AttributeTargets.Class)]
+    public sealed class ExecuteAlwaysAttribute : Attribute { }
 
     public class Transform : Component
     {
@@ -296,8 +306,20 @@ namespace UnityEngine
         public RenderTexture(int width, int height, int depth) { }
         public RenderTexture(int width, int height, int depth, RenderTextureFormat format) { }
         public int antiAliasing { get; set; }
+        public FilterMode filterMode { get; set; }
+        public int width { get { return 0; } }
+        public int height { get { return 0; } }
+        public RenderTextureFormat format { get { return RenderTextureFormat.ARGB32; } }
         public void Release() { }
         public static RenderTexture active { get; set; }
+        public static RenderTexture GetTemporary(int width, int height, int depth, RenderTextureFormat format) { return null; }
+        public static void ReleaseTemporary(RenderTexture rt) { }
+    }
+
+    public static class Graphics
+    {
+        public static void Blit(Texture source, RenderTexture destination) { }
+        public static void Blit(Texture source, RenderTexture destination, Material material) { }
     }
 
     public class Shader : Object
@@ -374,6 +396,8 @@ namespace UnityEngine
         public static bool Raycast(Vector3 origin, Vector3 direction, out RaycastHit hit, float maxDistance, int layerMask, QueryTriggerInteraction q) { hit = new RaycastHit(); return false; }
         public static bool Raycast(Vector3 origin, Vector3 direction, out RaycastHit hit, float maxDistance, int layerMask) { hit = new RaycastHit(); return false; }
         public static bool Raycast(Vector3 origin, Vector3 direction, out RaycastHit hit, float maxDistance) { hit = new RaycastHit(); return false; }
+        public static bool Raycast(Vector3 origin, Vector3 direction, float maxDistance, int layerMask, QueryTriggerInteraction q) { return false; }
+        public static void SyncTransforms() { }
         public static bool CapsuleCast(Vector3 p1, Vector3 p2, float radius, Vector3 direction, out RaycastHit hit, float maxDistance, int layerMask, QueryTriggerInteraction q) { hit = new RaycastHit(); return false; }
         public static bool SphereCast(Vector3 origin, float radius, Vector3 direction, out RaycastHit hit, float maxDistance, int layerMask, QueryTriggerInteraction q) { hit = new RaycastHit(); return false; }
         public static bool CheckCapsule(Vector3 start, Vector3 end, float radius, int layerMask, QueryTriggerInteraction q) { return false; }

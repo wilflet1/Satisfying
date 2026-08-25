@@ -27,7 +27,8 @@ namespace Satisfying.Shared
         MatchPhase = 7,
         TuningSync = 8,
         Shot = 9,
-        TargetHit = 10
+        TargetHit = 10,
+        Damaged = 11
     }
 
     /// <summary>
@@ -61,7 +62,7 @@ namespace Satisfying.Shared
     public static class Protocol
     {
         /// <summary>Bumped whenever the packet layout or the simulation changes shape.</summary>
-        public const ushort Version = 12;
+        public const ushort Version = 13;
 
         public const int DefaultPort = 7777;
         // Peer ids travel in 3 bits. 0 is the server and 7 is the "nobody" sentinel that a suicide or

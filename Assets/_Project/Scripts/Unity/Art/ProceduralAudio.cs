@@ -1,4 +1,5 @@
 using UnityEngine;
+using Satisfying.Shared;
 
 namespace Satisfying.Game
 {
@@ -23,6 +24,12 @@ namespace Satisfying.Game
         public AudioClip Impact;
         public AudioClip Hurt;
         public AudioClip Death;
+        /// <summary>
+        /// Four of each, because one footstep played over and over is the single most obvious
+        /// synthetic thing in a game - the ear locks onto the repeat within about three steps.
+        /// </summary>
+        public AudioClip[] StepsConcrete;
+        public AudioClip[] StepsWood;
         public AudioClip Footstep;
         public AudioClip Jump;
         public AudioClip Land;
@@ -63,7 +70,14 @@ namespace Satisfying.Game
             b.Impact = Synth.Noise("impact", 0.09f, 0.35f, 3200f);
             b.Hurt = Synth.Tone("hurt", 0.18f, 220f, 0.4f, -0.5f);
             b.Death = Synth.Tone("death", 0.6f, 330f, 0.45f, -0.75f);
-            b.Footstep = Synth.Noise("step", 0.09f, 0.22f, 900f);
+            b.StepsConcrete = new AudioClip[4];
+            b.StepsWood = new AudioClip[4];
+            for (int i = 0; i < 4; i++)
+            {
+                b.StepsConcrete[i] = Synth.Footstep("step concrete " + i, false, (uint)(i * 2654435761u + 17u));
+                b.StepsWood[i] = Synth.Footstep("step wood " + i, true, (uint)(i * 2246822519u + 101u));
+            }
+            b.Footstep = b.StepsConcrete[0];
             b.Jump = Synth.Noise("jump", 0.10f, 0.2f, 700f);
             b.Land = Synth.Noise("land", 0.16f, 0.34f, 500f);
             b.StanceChange = Synth.Noise("stance", 0.16f, 0.18f, 480f);
@@ -84,11 +98,28 @@ namespace Satisfying.Game
             return Shots[weaponIndex < 0 || weaponIndex >= Shots.Length ? 0 : weaponIndex];
         }
 
+        /// <summary>A step on the surface underfoot. The variant is the caller's business - pass a
+        /// counter or a random number, anything that is not the same twice running.</summary>
+        public AudioClip StepFor(StepSurface surface, int variant)
+        {
+            AudioClip[] set = surface == StepSurface.Wood ? StepsWood : StepsConcrete;
+            if (set == null || set.Length == 0) return Footstep;
+            int index = variant % set.Length;
+            return set[index < 0 ? index + set.Length : index];
+        }
+
         public AudioClip DistantShotFor(int weaponIndex)
         {
             if (ShotsDistant == null || ShotsDistant.Length == 0) return ShotDistant;
             return ShotsDistant[weaponIndex < 0 || weaponIndex >= ShotsDistant.Length ? 0 : weaponIndex];
         }
+    }
+
+    /// <summary>What is underfoot. Outside is poured concrete; inside the building it is boards.</summary>
+    public enum StepSurface : byte
+    {
+        Concrete = 0,
+        Wood = 1
     }
 
     public static class Synth
@@ -103,6 +134,11 @@ namespace Satisfying.Game
         }
 
         static uint _seed = 0x1BADB002u;
+
+        /// <summary>So a numbered variant is the same sound every run rather than whatever the
+        /// generator happened to be up to.</summary>
+        public static void Seed(uint seed) { _seed = seed == 0u ? 0x1BADB002u : seed; }
+
         static float NextNoise()
         {
             unchecked
@@ -141,6 +177,79 @@ namespace Satisfying.Game
                 data[i] = Mathf.Clamp(sample * volume * (1f - k * 0.15f), -1f, 1f);
             }
             return FromSamples(name, data);
+        }
+
+        /// <summary>
+        /// A footstep, which is not one sound: it is a heel landing, the ball of the foot following it
+        /// a few dozen milliseconds later, and the surface ringing in between. The old one was a
+        /// single lowpassed noise burst, which is why it read as a click rather than a boot.
+        ///
+        /// Concrete is a bright slap that stops dead. Wood is quieter at the front and rings after it,
+        /// because a floorboard is a plate with air under it - that hollowness is the whole difference
+        /// between being inside and being outside, and it is worth more than any amount of level.
+        /// </summary>
+        public static AudioClip Footstep(string name, bool wood, uint variant)
+        {
+            Seed(variant);
+            float duration = wood ? 0.30f : 0.20f;
+            int count = Mathf.Max(16, (int)(duration * SampleRate));
+            float[] data = new float[count];
+
+            // Every variant is a slightly different boot on a slightly different spot.
+            float pitch = 0.88f + (variant % 71u) / 71f * 0.26f;
+            float toeDelay = wood ? 0.034f : 0.026f;
+            toeDelay *= 0.8f + (variant % 37u) / 37f * 0.5f;
+            float toeLevel = 0.42f + (variant % 53u) / 53f * 0.28f;
+
+            float grit = 0f;
+            float bright = 0f;
+            float previous = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                float t = i / (float)SampleRate;
+                float noise = NextNoise();
+
+                // One pole each way: a dull rumble and a bright hiss, mixed differently per surface.
+                grit = Mathf.Lerp(grit, noise, wood ? 0.10f : 0.22f);
+                bright = noise - previous;
+                previous = noise;
+
+                float sample = Strike(t, 0f, 1f, wood, pitch, grit, bright);
+                sample += Strike(t, toeDelay, toeLevel, wood, pitch * 1.06f, grit, bright);
+
+                data[i] = Mathf.Clamp(sample * (wood ? 0.34f : 0.42f), -1f, 1f);
+            }
+            return FromSamples(name, data);
+        }
+
+        /// <summary>One impact of a footstep: the knock, what the floor does about it, and the scuff.</summary>
+        static float Strike(float t, float at, float level, bool wood, float pitch, float grit, float bright)
+        {
+            float local = t - at;
+            if (local < 0f) return 0f;
+
+            // The knock. Short and hard on concrete, softer and slower off boards.
+            float knock = Mathf.Exp(-local * (wood ? 210f : 330f));
+            float sample = bright * knock * (wood ? 0.55f : 0.95f);
+
+            if (wood)
+            {
+                // A board is a plate: a couple of low modes that carry on after the foot has gone.
+                float ring = Mathf.Exp(-local * 30f);
+                sample += Mathf.Sin(2f * Mathf.PI * 186f * pitch * local) * ring * 0.55f;
+                sample += Mathf.Sin(2f * Mathf.PI * 297f * pitch * local) * Mathf.Exp(-local * 41f) * 0.30f;
+                sample += Mathf.Sin(2f * Mathf.PI * 452f * pitch * local) * Mathf.Exp(-local * 62f) * 0.14f;
+                sample += grit * Mathf.Exp(-local * 46f) * 0.22f;
+            }
+            else
+            {
+                // Concrete does not ring. It thuds once and the rest is the sole dragging on grit.
+                sample += Mathf.Sin(2f * Mathf.PI * 104f * pitch * local) * Mathf.Exp(-local * 58f) * 0.42f;
+                sample += grit * Mathf.Exp(-local * 34f) * 0.46f;
+            }
+
+            return sample * level;
         }
 
         public static AudioClip Noise(string name, float duration, float volume, float cutoffHz)
@@ -205,11 +314,35 @@ namespace Satisfying.Game
         public float MasterVolume = 0.7f;
 
         /// <summary>Layer mask geometry is tested against for occlusion. Broken glass has no collider.</summary>
-        public int OcclusionMask;
-        public Transform Listener;
+        public int OcclusionMask
+        {
+            get { return _propagation.Mask; }
+            set { _propagation.Mask = value; }
+        }
+
+        public Transform Listener
+        {
+            get { return _propagation.Listener; }
+            set { _propagation.Listener = value; }
+        }
+
+        public FeelTuning Feel
+        {
+            get { return _propagation.Feel; }
+            set { _propagation.Feel = value; }
+        }
+
+        readonly SoundPropagation _propagation = new SoundPropagation();
+
+        const float MinDistance = 3f;
+        const float MaxDistance = 70f;
 
         public SoundPlayer(Transform parent, int voices = 12)
         {
+            _propagation.Feel = new FeelTuning();
+            _propagation.MinDistance = MinDistance;
+            _propagation.MaxDistance = MaxDistance;
+
             _sources = new AudioSource[voices];
             _filters = new AudioLowPassFilter[voices];
             for (int i = 0; i < voices; i++)
@@ -220,8 +353,8 @@ namespace Satisfying.Game
                 source.playOnAwake = false;
                 source.spatialBlend = 1f;
                 source.rolloffMode = AudioRolloffMode.Linear;
-                source.minDistance = 3f;
-                source.maxDistance = 70f;
+                source.minDistance = MinDistance;
+                source.maxDistance = MaxDistance;
                 source.dopplerLevel = 0f;
                 _sources[i] = source;
 
@@ -239,15 +372,15 @@ namespace Satisfying.Game
 
         public void PlayAt(AudioClip clip, Vector3 position, float volume = 1f, float pitch = 1f)
         {
-            PlayOccluded(clip, position, volume, pitch, false);
+            Play(clip, position, volume, pitch, 0f);
         }
 
         /// <summary>
-        /// Distance is handled by the rolloff; this adds what is BETWEEN you and the sound. Three rays
-        /// give a soft edge rather than a switch, and anything that stops a ray stops sound - so
-        /// breaking a window opens a listening path through it at the same moment it opens a firing one.
+        /// Distance is handled by the rolloff; carry decides what happens when there is something in
+        /// the way. Pass 0 for a sound that should not be occluded at all - your own gun, a UI ding -
+        /// and the weapon's soundCarry for anything that has to get through a wall.
         /// </summary>
-        public void PlayOccluded(AudioClip clip, Vector3 position, float volume, float pitch, bool occlude)
+        public void Play(AudioClip clip, Vector3 position, float volume, float pitch, float carry)
         {
             if (clip == null) return;
 
@@ -256,32 +389,28 @@ namespace Satisfying.Game
             AudioSource source = _sources[index];
             AudioLowPassFilter filter = _filters[index];
 
-            source.transform.position = position;
+            SoundPath path = carry > 0f
+                ? _propagation.Solve(position, carry)
+                : Clear(position);
+
+            source.transform.position = path.Position;
             source.spatialBlend = 1f;
             source.pitch = pitch;
-
-            float blocked = occlude ? Occlusion(position) : 0f;
-            if (filter != null) filter.cutoffFrequency = Mathf.Lerp(22000f, 700f, blocked);
-            source.PlayOneShot(clip, volume * MasterVolume * Mathf.Lerp(1f, 0.22f, blocked));
+            if (filter != null) filter.cutoffFrequency = path.Cutoff;
+            source.PlayOneShot(clip, volume * MasterVolume * path.Gain);
         }
 
-        /// <summary>0 = clear line, 1 = fully blocked.</summary>
-        public float Occlusion(Vector3 position)
+        static SoundPath Clear(Vector3 position)
         {
-            if (Listener == null || OcclusionMask == 0) return 0f;
-
-            Vector3 ear = Listener.position;
-            Vector3 toSource = position - ear;
-            float distance = toSource.magnitude;
-            if (distance < 0.5f) return 0f;
-
-            Vector3 side = Vector3.Cross(toSource / distance, Vector3.up) * 0.45f;
-            int blocked = 0;
-            if (Physics.Linecast(ear, position, OcclusionMask, QueryTriggerInteraction.Ignore)) blocked++;
-            if (Physics.Linecast(ear + side, position + side, OcclusionMask, QueryTriggerInteraction.Ignore)) blocked++;
-            if (Physics.Linecast(ear - side, position - side, OcclusionMask, QueryTriggerInteraction.Ignore)) blocked++;
-            return blocked / 3f;
+            SoundPath path = new SoundPath();
+            path.Position = position;
+            path.Gain = 1f;
+            path.Cutoff = 22000f;
+            return path;
         }
+
+        /// <summary>Exposed so the sound can be reasoned about from outside - the drill HUD reads it.</summary>
+        public SoundPath Solve(Vector3 position, float carry) { return _propagation.Solve(position, carry); }
 
         public void Play2D(AudioClip clip, float volume = 1f, float pitch = 1f)
         {

@@ -92,6 +92,15 @@ namespace Satisfying.Shared
         [Tune("Weapon", 0f, 1f, Tip = "1 = full auto, 0 = semi automatic.")]
         public float automatic = 1f;
 
+        [Tune("Weapon", 0f, 5f, Tip = "Seconds your vision is wrecked by a head hit you survive. A rifle round rings a helmet a great deal harder than a pistol round does.")]
+        public float concussionTime = 1.9f;
+
+        [Tune("Weapon", 0f, 1f, Tip = "How badly a survived head hit blurs your vision, at its worst.")]
+        public float concussionStrength = 0.85f;
+
+        [Tune("Weapon", 10f, 400f, Tip = "Metres this weapon's report carries. It decides how much wall a shot can be heard through, not just how loud it is up close.")]
+        public float soundCarry = 170f;
+
         public bool IsAutomatic { get { return automatic >= 0.5f; } }
         public float ShotInterval { get { return 60f / MathK.Max(1f, rpm); } }
         public int MagSizeInt { get { return MathK.Max(1, MathK.RoundToInt(magSize)); } }
@@ -130,6 +139,9 @@ namespace Satisfying.Shared
             m4.recoilRecoverFraction = 0.74f;
             m4.magSize = 30f;
             m4.reloadTime = 2.15f;
+            m4.concussionTime = 2.3f;
+            m4.concussionStrength = 0.95f;
+            m4.soundCarry = 210f;
             m4.supportHandReach = 0.415f;
             m4.supportHandRise = 0.055f;
             m4.adsTime = 0.21f;
@@ -155,6 +167,9 @@ namespace Satisfying.Shared
             mp5.recoilRecoverFraction = 0.8f;
             mp5.magSize = 30f;
             mp5.reloadTime = 1.85f;
+            mp5.concussionTime = 1.5f;
+            mp5.concussionStrength = 0.7f;
+            mp5.soundCarry = 150f;
             mp5.supportHandReach = 0.305f;
             mp5.supportHandRise = 0.037f;
             mp5.adsTime = 0.15f;
@@ -180,6 +195,9 @@ namespace Satisfying.Shared
             usp.recoilRecoverFraction = 0.85f;
             usp.magSize = 12f;
             usp.reloadTime = 1.7f;
+            usp.concussionTime = 0.85f;
+            usp.concussionStrength = 0.45f;
+            usp.soundCarry = 120f;
             usp.supportHandReach = 0.020f;
             usp.supportHandRise = -0.025f;
             usp.adsTime = 0.13f;

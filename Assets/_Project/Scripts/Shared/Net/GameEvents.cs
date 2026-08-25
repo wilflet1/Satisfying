@@ -9,12 +9,15 @@ namespace Satisfying.Shared
         void OnPlayerLeft(int peerId, DisconnectReason reason);
         void OnSpawn(int peerId, Vec3 position, float yaw);
         void OnDeath(int victim, int killer, HitZone zone, float distance);
-        void OnHitConfirm(int target, HitZone zone, float damage, bool killed);
+        void OnHitConfirm(int target, HitZone zone, float damage, bool killed, Vec3 point);
+        /// <summary>You took it. Only the victim is told, and only they need to be.</summary>
+        void OnDamaged(int attacker, HitZone zone, byte weaponIndex, float damage, bool killed);
         void OnTargetHit(HitZone zone, float distance);
         void OnScore(int peerId, int kills, int deaths);
         void OnMatchPhase(MatchPhase phase, float timer, int winner);
         void OnTuning(string tuningText);
-        void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint);
+        void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint,
+                          bool hitPlayer);
         /// <summary>A pane just went from intact to broken - the state itself arrives in the snapshot.</summary>
         void OnWindowBroken(int windowIndex, Vec3 centre);
     }
@@ -64,11 +67,32 @@ namespace Satisfying.Shared
             return b.ToArray();
         }
 
-        public static byte[] HitConfirm(int target, HitZone zone, float damage, bool killed)
+        /// <summary>
+        /// The shooter's confirmation. It carries where the round landed as well as what it hit,
+        /// because the blood is drawn by whoever is told about the hit and the shooter is not sent
+        /// their own Shot event.
+        /// </summary>
+        public static byte[] HitConfirm(int target, HitZone zone, float damage, bool killed, Vec3 point)
         {
             NetBuffer b = Writer(NetEventType.HitConfirm);
             b.WriteBits((uint)target, 3);
             b.WriteBits((uint)zone, 3);
+            b.WriteQ(damage, 0f, 400f, 12);
+            b.WriteBool(killed);
+            b.WriteVec3(point);
+            return b.ToArray();
+        }
+
+        /// <summary>
+        /// Sent to the victim alone. The weapon is in it because what a hit does to you depends on
+        /// what fired it - a rifle round off your helmet is not a pistol round off your helmet.
+        /// </summary>
+        public static byte[] Damaged(int attacker, HitZone zone, byte weaponIndex, float damage, bool killed)
+        {
+            NetBuffer b = Writer(NetEventType.Damaged);
+            b.WriteBits((uint)(attacker < 0 ? 7 : attacker), 3);
+            b.WriteBits((uint)zone, 3);
+            b.WriteBits(weaponIndex, 3);
             b.WriteQ(damage, 0f, 400f, 12);
             b.WriteBool(killed);
             return b.ToArray();
@@ -110,7 +134,13 @@ namespace Satisfying.Shared
             return b.ToArray();
         }
 
-        public static byte[] Shot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint)
+        /// <summary>
+        /// One trigger pull, as everyone else needs to see it. hitPlayer rides along because the
+        /// blood is drawn from this event, and drawing it means knowing the round landed on a man
+        /// rather than on the wall behind him - a distinction only the server is entitled to make.
+        /// </summary>
+        public static byte[] Shot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit,
+                                  Vec3 hitPoint, bool hitPlayer)
         {
             NetBuffer b = Writer(NetEventType.Shot);
             b.WriteBits((uint)shooter, 3);
@@ -118,7 +148,7 @@ namespace Satisfying.Shared
             b.WriteQVec3(direction, -1f, 1f, 12);
             b.WriteBits(weaponIndex, 3);
             b.WriteBool(hit);
-            if (hit) b.WriteVec3(hitPoint);
+            if (hit) { b.WriteVec3(hitPoint); b.WriteBool(hitPlayer); }
             return b.ToArray();
         }
 
@@ -153,7 +183,18 @@ namespace Satisfying.Shared
                     HitZone zone = (HitZone)b.ReadBits(3);
                     float dmg = b.ReadQ(0f, 400f, 12);
                     bool killed = b.ReadBool();
-                    sink.OnHitConfirm(target, zone, dmg, killed);
+                    Vec3 point = b.ReadVec3();
+                    sink.OnHitConfirm(target, zone, dmg, killed, point);
+                    break;
+                }
+                case NetEventType.Damaged:
+                {
+                    int attacker = (int)b.ReadBits(3);
+                    HitZone zone = (HitZone)b.ReadBits(3);
+                    byte weapon = (byte)b.ReadBits(3);
+                    float dmg = b.ReadQ(0f, 400f, 12);
+                    bool killed = b.ReadBool();
+                    sink.OnDamaged(attacker == 7 ? -1 : attacker, zone, weapon, dmg, killed);
                     break;
                 }
                 case NetEventType.TargetHit:
@@ -185,7 +226,8 @@ namespace Satisfying.Shared
                     byte weapon = (byte)b.ReadBits(3);
                     bool hit = b.ReadBool();
                     Vec3 point = hit ? b.ReadVec3() : Vec3.Zero;
-                    sink.OnRemoteShot(shooter, origin, dir.Normalized, weapon, hit, point);
+                    bool hitPlayer = hit && b.ReadBool();
+                    sink.OnRemoteShot(shooter, origin, dir.Normalized, weapon, hit, point, hitPlayer);
                     break;
                 }
             }

@@ -17,6 +17,8 @@ namespace Satisfying.Game
             public bool ScaleDown;
             public Light Light;
             public float LightIntensity;
+            public Vector3 Velocity;        // set for anything that has to fall
+            public bool Falls;
         }
 
         readonly Transform _root;
@@ -24,6 +26,7 @@ namespace Satisfying.Game
         readonly List<Item> _active = new List<Item>();
         readonly Stack<Item> _tracerPool = new Stack<Item>();
         readonly Stack<Item> _sparkPool = new Stack<Item>();
+        readonly Stack<Item> _bloodPool = new Stack<Item>();
         readonly int _layer;
 
         public CombatFx(Transform parent, Palette palette, int layer)
@@ -96,6 +99,43 @@ namespace Satisfying.Game
             }
         }
 
+        /// <summary>
+        /// A round going into someone. Drawn on whoever is told about the hit, and they are only told
+        /// once the server has resolved it - so this never appears for a shot the server disagreed
+        /// with, which is the whole reason it is driven by the hit event rather than by pulling the
+        /// trigger.
+        ///
+        /// A spray of small dark flecks thrown along the round's path, under gravity. Not a decal:
+        /// there are no textures in this project and a puff of geometry reads better than a red
+        /// square would.
+        /// </summary>
+        public void Blood(Vector3 position, Vector3 direction, float amount)
+        {
+            int flecks = Mathf.Clamp(Mathf.RoundToInt(5f + amount * 12f), 5, 22);
+            Vector3 along = direction.sqrMagnitude > 1e-4f ? direction.normalized : Vector3.forward;
+
+            for (int i = 0; i < flecks; i++)
+            {
+                Item item = _bloodPool.Count > 0 ? _bloodPool.Pop() : CreateBlood();
+                item.Transform.gameObject.SetActive(true);
+                item.Transform.position = position + Random.insideUnitSphere * 0.05f;
+                item.Transform.rotation = Random.rotation;
+
+                float scale = Mathf.Lerp(0.012f, 0.045f, Random.value) * Mathf.Lerp(0.7f, 1.4f, amount);
+                item.Transform.localScale = new Vector3(scale, scale, scale * Mathf.Lerp(1f, 2.2f, Random.value));
+                item.BaseScale = item.Transform.localScale;
+
+                // Mostly onward through the wound, with a cone of scatter round it.
+                item.Velocity = (along * Mathf.Lerp(1.6f, 4.5f, Random.value)
+                                 + Random.onUnitSphere * Mathf.Lerp(0.8f, 2.4f, Random.value))
+                                * Mathf.Lerp(0.8f, 1.2f, amount);
+                item.Falls = true;
+                item.Expiry = Time.time + Random.Range(0.45f, 0.9f);
+                item.ScaleDown = true;
+                _active.Add(item);
+            }
+        }
+
         public void Impact(Vector3 position, Vector3 normal, float life = 0.16f)
         {
             Item item = _sparkPool.Count > 0 ? _sparkPool.Pop() : CreateSpark();
@@ -117,6 +157,19 @@ namespace Satisfying.Game
             go.layer = _layer;
             Object.Destroy(go.GetComponent<Collider>());
             go.GetComponent<MeshRenderer>().sharedMaterial = _palette.Glow;
+            go.transform.SetParent(_root, false);
+            Item item = new Item();
+            item.Transform = go.transform;
+            return item;
+        }
+
+        Item CreateBlood()
+        {
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            go.name = "blood";
+            go.layer = _layer;
+            Object.Destroy(go.GetComponent<Collider>());
+            go.GetComponent<MeshRenderer>().sharedMaterial = _palette.Blood;
             go.transform.SetParent(_root, false);
             Item item = new Item();
             item.Transform = go.transform;
@@ -146,7 +199,13 @@ namespace Satisfying.Game
             return item;
         }
 
-        public void Update()
+        public void Update() { Update(Time.deltaTime); }
+
+        /// <summary>
+        /// Stepped by an explicit dt so the effects can be run forward outside play mode - the shot
+        /// sheet photographs a blood spray in flight, and Time.deltaTime is zero there.
+        /// </summary>
+        public void Update(float dt)
         {
             float now = Time.time;
             for (int i = _active.Count - 1; i >= 0; i--)
@@ -157,9 +216,18 @@ namespace Satisfying.Game
                     item.Transform.gameObject.SetActive(false);
                     if (item.Light != null) item.Light.enabled = false;
                     _active.RemoveAt(i);
-                    if (item.Light == null) _tracerPool.Push(item);
+                    if (item.Falls) { item.Falls = false; _bloodPool.Push(item); }
+                    else if (item.Light == null) _tracerPool.Push(item);
                     else _sparkPool.Push(item);
                     continue;
+                }
+
+                if (item.Falls)
+                {
+                    item.Velocity += Vector3.down * (14f * dt);
+                    item.Transform.position += item.Velocity * dt;
+                    if (item.Velocity.sqrMagnitude > 0.01f)
+                        item.Transform.rotation = Quaternion.LookRotation(item.Velocity.normalized);
                 }
 
                 if (!item.ScaleDown) continue;

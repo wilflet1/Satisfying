@@ -302,6 +302,7 @@ namespace Satisfying.Shared
                 uint shotIndex = ev.FirstShotIndex + (uint)shot;
                 int pellets = weapon.PelletsInt;
                 bool anyImpact = false;
+                bool hitPlayer = false;
                 Vec3 firstImpact = origin + aim * weapon.range;
 
                 for (int pellet = 0; pellet < pellets; pellet++)
@@ -355,16 +356,18 @@ namespace Satisfying.Shared
                         : (hitWorld ? origin + dir * wallDist : origin + dir * maxDist);
 
                     if (pellet == 0) { firstImpact = impact; anyImpact = victim != null || hitWorld; }
+                    if (victim != null) hitPlayer = true;
 
                     if (victim == null) continue;
 
                     float damage = ShotSolver.Damage(weapon, best.Zone, best.Distance);
-                    ApplyDamage(victim, shooter, damage, best.Zone, best.Distance);
+                    ApplyDamage(victim, shooter, damage, best.Zone, best.Distance, best.Point);
                 }
 
                 // One shot event per trigger pull: the other clients need a muzzle flash, a crack and a tracer.
                 BroadcastExcept(shooter.PeerId,
-                    GameEvents.Shot(shooter.PeerId, origin, aim, shooter.Sim.Weapon.Index, anyImpact, firstImpact));
+                    GameEvents.Shot(shooter.PeerId, origin, aim, shooter.Sim.Weapon.Index, anyImpact,
+                                    firstImpact, hitPlayer));
             }
         }
 
@@ -410,7 +413,7 @@ namespace Satisfying.Shared
                 float damage = Tuning.move.meleeDamage;
                 // A stock across the throat counts the same as one across the face.
                 if (best.Zone == HitZone.Head || best.Zone == HitZone.Neck) damage *= Tuning.move.meleeHeadMultiplier;
-                ApplyDamage(victim, attacker, damage, best.Zone, best.Distance);
+                ApplyDamage(victim, attacker, damage, best.Zone, best.Distance, best.Point);
                 return;
             }
 
@@ -478,12 +481,15 @@ namespace Satisfying.Shared
             p.HistoryAlive[slot] = p.Alive;
         }
 
-        void ApplyDamage(ServerPlayer victim, ServerPlayer shooter, float damage, HitZone zone, float distance)
+        void ApplyDamage(ServerPlayer victim, ServerPlayer shooter, float damage, HitZone zone, float distance,
+                         Vec3 point)
         {
             victim.Health -= damage;
             bool killed = victim.Health <= 0f;
 
-            shooter.Reliable.Queue(GameEvents.HitConfirm(victim.PeerId, zone, damage, killed));
+            shooter.Reliable.Queue(GameEvents.HitConfirm(victim.PeerId, zone, damage, killed, point));
+            victim.Reliable.Queue(GameEvents.Damaged(shooter.PeerId, zone, shooter.Sim.Weapon.Index,
+                                                     damage, killed));
 
             if (!killed) return;
 

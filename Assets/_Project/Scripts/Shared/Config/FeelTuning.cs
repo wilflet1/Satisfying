@@ -144,6 +144,18 @@ namespace Satisfying.Shared
         [Tune("Audio", 0f, 1f)]
         public float masterVolume = 0.7f;
 
+        [Tune("Audio", 0f, 1.5f, Tip = "How much sound gets through solid geometry. 0 is a perfect wall; 1 is about right for a breeze block one.")]
+        public float wallTransmission = 0.55f;
+
+        [Tune("Audio", 0.05f, 3f, Tip = "Metres of material that cut a sound to a third. Thin cover barely muffles; a thick wall kills it.")]
+        public float wallHalfDepth = 0.45f;
+
+        [Tune("Audio", 0f, 1f, Tip = "Loss each time a sound has to bend round a corner to reach you.")]
+        public float diffractionLoss = 0.35f;
+
+        [Tune("Audio", 0f, 1f, Tip = "1 makes a blocked sound come from the corner it bends round rather than from straight through the wall.")]
+        public float diffractionSteering = 1f;
+
         public FeelTuning Clone() { return (FeelTuning)MemberwiseClone(); }
     }
 }

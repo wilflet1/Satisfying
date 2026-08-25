@@ -47,11 +47,27 @@ namespace Satisfying.Tests
             LastTargetDistance = distance;
         }
 
-        public void OnHitConfirm(int target, HitZone zone, float damage, bool killed)
+        public Vec3 LastHitPoint;
+
+        public void OnHitConfirm(int target, HitZone zone, float damage, bool killed, Vec3 point)
         {
             HitsConfirmed++;
             if (zone == HitZone.Head) HeadshotsConfirmed++;
             DamageDealt += damage;
+            LastHitPoint = point;
+        }
+
+        public int TimesDamaged;
+        public HitZone LastDamagedZone;
+        public byte LastDamagedByWeapon;
+        public float DamageTaken;
+
+        public void OnDamaged(int attacker, HitZone zone, byte weaponIndex, float damage, bool killed)
+        {
+            TimesDamaged++;
+            LastDamagedZone = zone;
+            LastDamagedByWeapon = weaponIndex;
+            DamageTaken += damage;
         }
 
         public void OnScore(int peerId, int kills, int deaths) { }
@@ -63,9 +79,13 @@ namespace Satisfying.Tests
             if (Client != null) TuningSerializer.FromText(Client.Tuning, tuningText);
         }
 
-        public void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint)
+        public int RemoteShotsOnPlayers;
+
+        public void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit,
+                                 Vec3 hitPoint, bool hitPlayer)
         {
             RemoteShots++;
+            if (hitPlayer) RemoteShotsOnPlayers++;
         }
 
         public int WindowsBroken;

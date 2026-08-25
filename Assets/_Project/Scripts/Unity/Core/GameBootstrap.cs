@@ -345,6 +345,8 @@ namespace Satisfying.Game
             _sound.Listener = _view.Camera.transform;
             _sound.OcclusionMask = 1 << LayerWorld;
             _sound.MasterVolume = _feel.masterVolume;
+            // The same object the panel edits, so the occlusion sliders are live while you listen.
+            _sound.Feel = _feel;
         }
 
         /// <summary>
