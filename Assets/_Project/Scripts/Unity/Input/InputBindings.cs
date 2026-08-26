@@ -14,6 +14,7 @@ namespace Satisfying.Game
         StepLeft, StepRight,
         Weapon1, Weapon2, Weapon3, Weapon4,
         Grenade,
+        ShowHitboxes,
         SpeedUp, SpeedDown,
         Scoreboard, TuningPanel, BindingsPanel, GearPanel, NetGraph, Menu,
         Count
@@ -132,6 +133,7 @@ namespace Satisfying.Game
             Set(GameAction.BindingsPanel, KeyCode.F2);
             Set(GameAction.GearPanel, KeyCode.F4);
             Set(GameAction.NetGraph, KeyCode.F3);
+            Set(GameAction.ShowHitboxes, KeyCode.F5);
             // Menu is set here for completeness and then refused by Rebindable(): a menu key you can
             // rebind is a menu key you can lose, and there is no way back from that without editing
             // a prefs file. Escape opens the menu. That is all it does and all it is.
@@ -278,6 +280,7 @@ namespace Satisfying.Game
                 case GameAction.BindingsPanel: return "Controls panel";
                 case GameAction.GearPanel: return "Gear menu";
                 case GameAction.NetGraph: return "Net graph";
+                case GameAction.ShowHitboxes: return "Show hitboxes";
                 case GameAction.Weapon1: return "Weapon 1";
                 case GameAction.Weapon2: return "Weapon 2";
                 case GameAction.Weapon3: return "Weapon 3";

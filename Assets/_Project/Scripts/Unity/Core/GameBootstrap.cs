@@ -359,6 +359,7 @@ namespace Satisfying.Game
             _sound.Listener = _view.Camera.transform;
             _sound.OcclusionMask = 1 << LayerWorld;
             _sound.MasterVolume = _feel.masterVolume;
+            if (_game != null) _game.ShowHitboxes = _feel.showHitboxes >= 0.5f;
             // The same object the panel edits, so the occlusion sliders are live while you listen.
             _sound.Feel = _feel;
         }
@@ -426,6 +427,7 @@ namespace Satisfying.Game
             _ui.Update(dt);
             _game.Update(dt);
             _sound.MasterVolume = _feel.masterVolume;
+            if (_game != null) _game.ShowHitboxes = _feel.showHitboxes >= 0.5f;
             ReportIfDedicated(dt);
 
             if (_game.Client != null && _tuningPanel.ClientNet != _game.Client.NetTuning)

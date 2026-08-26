@@ -89,9 +89,23 @@ namespace UnityEngine
 
     public struct Matrix4x4
     {
+        public float m00, m01, m02, m03;
+        public float m10, m11, m12, m13;
+        public float m20, m21, m22, m23;
+        public float m30, m31, m32, m33;
+
         public static Matrix4x4 identity { get { return new Matrix4x4(); } }
         public static Matrix4x4 TRS(Vector3 pos, Quaternion q, Vector3 scale) { return identity; }
         public Vector3 MultiplyPoint3x4(Vector3 point) { return point; }
+        public Vector4 GetColumn(int index) { return new Vector4(); }
+        public float this[int row, int column] { get { return 0f; } set { } }
+    }
+
+    public struct Vector4
+    {
+        public float x, y, z, w;
+        public Vector4(float x, float y, float z, float w) { this.x = x; this.y = y; this.z = z; this.w = w; }
+        public static implicit operator Vector3(Vector4 v) { return new Vector3(v.x, v.y, v.z); }
     }
 
     public struct Color
@@ -294,6 +308,7 @@ namespace UnityEngine
     {
         public Texture2D(int width, int height) { }
         public Texture2D(int width, int height, TextureFormat format, bool mipChain) { }
+        public Texture2D(int width, int height, TextureFormat format, bool mipChain, bool linear) { }
         public TextureWrapMode wrapMode { get; set; }
         public FilterMode filterMode { get; set; }
         public void SetPixel(int x, int y, Color color) { }
@@ -306,6 +321,7 @@ namespace UnityEngine
         public int width { get { return 0; } }
         public int height { get { return 0; } }
         public byte[] EncodeToPNG() { return new byte[0]; }
+        public bool LoadImage(byte[] data, bool markNonReadable) { return true; }
     }
 
     /// <summary>
@@ -352,6 +368,8 @@ namespace UnityEngine
     public class Material : Object
     {
         public Material(Shader shader) { }
+        public void SetTexture(string name, Texture value) { }
+        public Texture GetTexture(string name) { return null; }
         public bool HasProperty(string name) { return true; }
         public void SetColor(string name, Color value) { }
         public void SetFloat(string name, float value) { }
@@ -371,6 +389,11 @@ namespace UnityEngine
         public int[] triangles { get; set; }
         public void Clear() { }
         public void RecalculateNormals() { }
+        public Rendering.IndexFormat indexFormat { get; set; }
+        public BoneWeight[] boneWeights { get; set; }
+        public Matrix4x4[] bindposes { get; set; }
+        public int vertexCount { get { return 0; } }
+        public Bounds bounds { get; set; }
         public void RecalculateBounds() { }
     }
     public class MeshFilter : Component { public Mesh mesh { get; set; } public Mesh sharedMesh { get; set; } }
@@ -383,6 +406,21 @@ namespace UnityEngine
         public Rendering.ShadowCastingMode shadowCastingMode { get; set; }
         public bool receiveShadows { get; set; }
         public bool enabled { get; set; }
+    }
+
+    public struct BoneWeight
+    {
+        public int boneIndex0, boneIndex1, boneIndex2, boneIndex3;
+        public float weight0, weight1, weight2, weight3;
+    }
+
+    public class SkinnedMeshRenderer : Renderer
+    {
+        public Mesh sharedMesh { get; set; }
+        public Transform[] bones { get; set; }
+        public Transform rootBone { get; set; }
+        public bool updateWhenOffscreen { get; set; }
+        public Bounds localBounds { get; set; }
     }
 
     public class MeshRenderer : Renderer { }
@@ -739,6 +777,8 @@ namespace UnityEngine
 
 namespace UnityEngine.Rendering
 {
+    public enum IndexFormat { UInt16, UInt32 }
+
     public enum BlendMode { Zero, One, SrcAlpha = 5, OneMinusSrcAlpha = 10 }
     public enum ShadowCastingMode { Off, On, TwoSided, ShadowsOnly }
     public enum AmbientMode { Skybox = 0, Trilight = 1, Flat = 3, Custom = 4 }

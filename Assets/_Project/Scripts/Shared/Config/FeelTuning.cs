@@ -95,7 +95,7 @@ namespace Satisfying.Shared
         public float sprintTilt = 24f;
 
         [Tune("Weapon feel", 0f, 0.3f, Tip = "How far the gun kicks back per shot.")]
-        public float recoilKickBack = 0.055f;
+        public float recoilKickBack = 0.0303f;
 
         [Tune("Weapon feel", 0f, 2f, Tip = "How much of the weapon recoil is applied to the camera.")]
         public float recoilCameraMul = 1f;
@@ -131,14 +131,18 @@ namespace Satisfying.Shared
         [Tune("Weapon feel", -0.35f, 0.25f, Tip = "How far forward the viewmodel shoulders sit. Forward is towards the gun.")]
         public float armForward = 0f;
 
-        [Tune("Weapon feel", 0f, 0.12f, Tip = "How far the gun may travel back towards your eye under recoil, however long you hold the trigger.")]
-        public float recoilKickLimit = 0.045f;
+        [Tune("Weapon feel", 0f, 0.12f, Tip = "How far the gun may travel back towards your eye under recoil, however long you hold the trigger. This is the thing that used to walk the receiver into your face.")]
+        public float recoilKickLimit = 0.030f;
 
-        [Tune("Weapon feel", 0f, 14f, Tip = "Degrees the muzzle climbs on the viewmodel per shot. This is the visible lift; it does not move your aim.")]
-        public float recoilMuzzleRise = 4.5f;
+        // OFF by default, and it stays off. Rotating the viewmodel up per shot lifted the muzzle
+        // across the sight picture and you could not see the reticle while firing, which is a worse
+        // problem than the one it was solving. The knob is left here because it is the right way to
+        // add visible lift IF a weapon ever wants it, but nothing does.
+        [Tune("Weapon feel", 0f, 14f, Tip = "Degrees the muzzle climbs on the viewmodel per shot. Leave at 0: any of this and the sights walk off the target while you fire.")]
+        public float recoilMuzzleRise = 0f;
 
-        [Tune("Weapon feel", 0f, 3f, Tip = "Camera shake per shot, in degrees. Shakes the picture without moving where the round goes.")]
-        public float recoilShake = 0.55f;
+        [Tune("Weapon feel", 0f, 3f, Tip = "Camera shake per shot, in degrees. Small on purpose - it is there to be felt, not to stop you aiming.")]
+        public float recoilShake = 0.12f;
 
         [Tune("Weapon feel", 2f, 40f, Tip = "How fast the shake settles.")]
         public float recoilShakeRecovery = 13f;
@@ -161,6 +165,15 @@ namespace Satisfying.Shared
 
         [Tune("HUD", 0f, 1f, Tip = "Draw the movement state readout.")]
         public float showMovementDebug = 0f;
+
+        [Tune("HUD", 0f, 1f, Tip = "Draw the capsules the server tests over every player, coloured by hit zone. The only way to see whether a character and its hitbox agree.")]
+        public float showHitboxes = 0f;
+
+        [Tune("HUD", 0f, 1f, Tip = "Include your own body in the hitbox overlay. Off by default - your own capsules are inside your camera.")]
+        public float showOwnHitbox = 0f;
+
+        [Tune("Camera", 0f, 1f, Tip = "Vignette and colour grade over the whole picture. 0 is the raw render.")]
+        public float grade = 1f;
 
         // ---------------------------------------------------------------- audio
         [Tune("Audio", 0f, 1f)]

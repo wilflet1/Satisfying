@@ -30,7 +30,10 @@ namespace Satisfying.Game
     public sealed class ScopeView
     {
         /// <summary>Side of the scope render target. The circle drawn on screen is smaller than this.</summary>
-        const int Resolution = 768;
+        // 1024, and point-filtered on the way out. The picture is drawn into a circle about two
+        // thirds of the screen height, so on a 1440p monitor a 768 texture is being magnified and the
+        // result is a soft, smeary lens - which is exactly the "blurry round the edge" complaint.
+        const int Resolution = 1024;
 
         readonly Camera _camera;
         readonly Transform _rig;
@@ -174,7 +177,7 @@ namespace Satisfying.Game
             // 3. the glass itself: a soft sheen across the top left, and a cool cast over the lot.
             //    Two textures and no shader, and it is the difference between a picture in a circle
             //    and something you are looking through.
-            GUI.color = new Color(1f, 1f, 1f, Blend * 0.5f);
+            GUI.color = new Color(1f, 1f, 1f, Blend * 0.35f);
             GUI.DrawTexture(circle, _sheen, ScaleMode.StretchToFill, true);
 
             // 4. the reticle: the etched glass first, then the illuminated centre and its bloom on
@@ -228,8 +231,14 @@ namespace Satisfying.Game
 
         public Rect ReticleRect(float screenWidth, float screenHeight)
         {
-            float focalPlane = Mathf.Clamp(Magnification / 6f, 0.55f, 2.6f);
-            float size = Circle(screenWidth, screenHeight).width * 0.92f * focalPlane;
+            // FIXED SIZE. This is a second focal plane optic and it has to be: first focal plane
+            // multiplied the reticle by the magnification, so at eighteen power it was two and a half
+            // times the width of the lens and the stadia ran out across the housing and off both
+            // sides of the screen.
+            //
+            // 0.84 rather than filling the glass, because the etched marks run most of the way to the
+            // edge of their own texture and the tips would otherwise sit on the rim.
+            float size = Circle(screenWidth, screenHeight).width * 0.84f;
             return new Rect((screenWidth - size) * 0.5f, (screenHeight - size) * 0.5f, size, size);
         }
 
@@ -275,16 +284,15 @@ namespace Satisfying.Game
                     float d = Mathf.Sqrt(nx * nx + ny * ny);
                     if (d > 1f) { _sheen.SetPixel(px, py, new Color(0f, 0f, 0f, 0f)); continue; }
 
-                    // A band running down and right, brightest towards the top left of the lens.
+                    // One narrow streak across the top left corner of the glass and nothing else.
+                    // The old one had a wide band and a wash over the whole lens, which is a fog:
+                    // it took the contrast out of the picture and read as the scope being dirty.
                     float band = nx * 0.7f - ny * 0.7f;
-                    float streak = Mathf.Exp(-(band + 0.55f) * (band + 0.55f) * 9f) * 0.55f;
-                    streak += Mathf.Exp(-(band + 0.05f) * (band + 0.05f) * 40f) * 0.22f;
+                    float streak = Mathf.Exp(-(band + 0.62f) * (band + 0.62f) * 26f) * 0.34f;
 
-                    // Nothing right at the rim, where the tube shades it anyway.
-                    streak *= Mathf.Clamp01((0.98f - d) / 0.25f);
-
-                    float wash = 0.06f * Mathf.Clamp01(1f - d);
-                    float alpha = Mathf.Clamp01(streak + wash);
+                    // Nothing near the rim, where the tube shades it anyway.
+                    streak *= Mathf.Clamp01((0.94f - d) / 0.30f);
+                    float alpha = Mathf.Clamp01(streak);
                     _sheen.SetPixel(px, py, new Color(0.78f, 0.88f, 0.95f, alpha));
                 }
             }
@@ -379,17 +387,17 @@ namespace Satisfying.Game
                     float nx = px / (float)(size - 1) * 2f - 1f;
                     float d = Mathf.Sqrt(nx * nx + ny * ny);
 
-                    // Nothing until well out towards the rim, then it comes on fast. Too much of this
-                    // and the usable picture is a coin in the middle of a black disc.
-                    float vignette = Mathf.Clamp01((d - 0.82f) / 0.18f);
-                    vignette *= vignette;
+                    // Nothing at all until the very edge of the glass, and then it comes on hard.
+                    // A soft gradient over the outer fifth of the lens is what made the picture look
+                    // out of focus - the eye reads a slow darkening as blur.
+                    float vignette = Mathf.Clamp01((d - 0.93f) / 0.07f);
 
                     // Offset a little up and left, so the shadow is not perfectly symmetrical - a
                     // scope you are not perfectly behind is what one actually looks like.
                     float bias = Mathf.Clamp01(0.5f + (nx * 0.35f + ny * 0.25f));
                     float alpha = Mathf.Clamp01(vignette * Mathf.Lerp(1f, 0.72f, bias));
 
-                    _shadow.SetPixel(px, py, new Color(0f, 0f, 0f, alpha * 0.85f));
+                    _shadow.SetPixel(px, py, new Color(0f, 0f, 0f, alpha * 0.9f));
                 }
             }
             _shadow.Apply();
@@ -432,7 +440,7 @@ namespace Satisfying.Game
             float centre = (size - 1) * 0.5f;
             float mil = size * 0.055f;
             float inner = mil * 1.5f;
-            float outer = size * 0.455f;
+            float outer = size * 0.425f;
             float hair = size * 0.0022f;
 
             for (int py = 0; py < size; py++)

@@ -25,6 +25,7 @@ namespace Satisfying.Game
         public bool ShowControls;
         public bool ShowGear;
 
+        readonly ScreenGrade _grade = new ScreenGrade();
         UiSkin _skin;
         GUIStyle _centreSmall;
         GUIStyle _centreHeader;
@@ -83,6 +84,11 @@ namespace Satisfying.Game
             if (Bindings.Triggered(GameAction.TuningPanel)) ShowTuning = !ShowTuning;
             if (Bindings.Triggered(GameAction.BindingsPanel)) ShowControls = !ShowControls;
             if (Bindings.Triggered(GameAction.GearPanel)) ShowGear = !ShowGear;
+            if (Bindings.Triggered(GameAction.ShowHitboxes))
+            {
+                Feel.showHitboxes = Feel.showHitboxes >= 0.5f ? 0f : 1f;
+                Game.ShowHitboxes = Feel.showHitboxes >= 0.5f;
+            }
             if (Bindings.Triggered(GameAction.NetGraph)) Feel.showNetGraph = Feel.showNetGraph > 0.5f ? 0f : 1f;
 
             if (Bindings.Pressed(GameAction.Menu))
@@ -165,6 +171,9 @@ namespace Satisfying.Game
             DrawHitMarker();
             DrawVitals(in state, move, weapon);
             DrawMatchBanner();
+            _grade.Strength = Feel.grade;
+            _grade.Draw(_width, _height);
+
             DrawGrenade(in state);
             DrawHill();
             DrawKillFeed();

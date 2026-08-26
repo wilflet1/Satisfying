@@ -333,6 +333,13 @@ namespace Satisfying.Game
             View.Magnification = Input.Magnification;
             View.GrenadeTuning = Client.Tuning.grenade;
 
+            // Your own capsules, if you asked for them. Rendered from the PREDICTED state, which is
+            // what your own screen is showing - the server's copy of you is a few frames behind and
+            // would draw the overlay lagging your body.
+            PlayerSimState own = state;
+            own.Position = Client.RenderPosition;
+            RenderHitbox(Client.PeerId, in own, ShowHitboxes && Feel != null && Feel.showOwnHitbox >= 0.5f);
+
             View.Render(in state, Client.RenderPosition.ToUnity(), Client.Tuning.move,
                         Client.Tuning.Weapon(state.Weapon.Index), Client.Tuning.Sight(state.Weapon.Sight),
                         state.Yaw, state.Pitch, dt, sprinting);
@@ -472,6 +479,11 @@ namespace Satisfying.Game
                 float footstep;
                 view.Render(in kv.Value.Render, dt, Client.Tuning.Weapon(kv.Value.Render.WeaponIndex), out footstep);
 
+                PlayerSimState remoteShown = kv.Value.Render.ToDisplayState(Client.Tuning.move.staminaMax);
+                remoteShown.Position = kv.Value.Render.Position;
+                remoteShown.Yaw = kv.Value.Render.Yaw;
+                RenderHitbox(kv.Key, in remoteShown, ShowHitboxes && kv.Value.Alive);
+
                 Vector3 where = kv.Value.Render.Position.ToUnity();
                 if (footstep > 0.02f)
                 {
@@ -500,6 +512,9 @@ namespace Satisfying.Game
             {
                 _remoteViews[stale[i]].Destroy();
                 _remoteViews.Remove(stale[i]);
+
+                HitboxView box;
+                if (_hitboxes.TryGetValue(stale[i], out box)) { box.Destroy(); _hitboxes.Remove(stale[i]); }
             }
         }
 
@@ -788,6 +803,38 @@ namespace Satisfying.Game
 
         /// <summary>The marker standing in the live room. Built on demand and moved when the hill does.</summary>
         public ZoneView HillMarker;
+
+        /// <summary>
+        /// The capsule overlay, one per player. Built the first time it is switched on and then kept -
+        /// it is fifteen primitives a body and nobody toggles it every frame.
+        /// </summary>
+        readonly System.Collections.Generic.Dictionary<int, HitboxView> _hitboxes =
+            new System.Collections.Generic.Dictionary<int, HitboxView>();
+
+        public bool ShowHitboxes;
+
+        HitboxView HitboxFor(int peerId)
+        {
+            HitboxView view;
+            if (_hitboxes.TryGetValue(peerId, out view)) return view;
+            view = new HitboxView(Root, FxLayer);
+            _hitboxes[peerId] = view;
+            return view;
+        }
+
+        void RenderHitbox(int peerId, in PlayerSimState state, bool wanted)
+        {
+            if (!wanted)
+            {
+                HitboxView existing;
+                if (_hitboxes.TryGetValue(peerId, out existing)) existing.SetVisible(false);
+                return;
+            }
+
+            HitboxView view = HitboxFor(peerId);
+            view.SetVisible(true);
+            view.Render(in state, Client.Tuning.move, Client.Tuning.Weapon(state.Weapon.Index));
+        }
 
         public void OnZone(int zone, float secondsLeft, int holder)
         {
