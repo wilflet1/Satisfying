@@ -24,6 +24,7 @@ namespace Satisfying.Game
         struct Row { public float Excess; public Vec3 Point; public HitZone Zone; public string Label; }
 
         static Dictionary<string, Row> _worst;
+        static int _variant = -1;
 
         [MenuItem("Satisfying/Shots/Check the silhouette", priority = 62)]
         public static void Run()
@@ -35,6 +36,16 @@ namespace Satisfying.Game
             _worst = new Dictionary<string, Row>();
             StringBuilder report = new StringBuilder();
             int worstCount = 0;
+
+            // Every kit variant, not just the default one: a new piece of clothing that pokes out of
+            // its capsule is exactly as bad as an old one, and there are a lot of combinations now.
+            for (int v = 0; v < 48; v++)
+            {
+                _variant = v;
+                Check(report, palette, move, weapons[0], "variant " + v, State(move, Stance.Stand, 0f));
+                Check(report, palette, move, weapons[0], "variant " + v + " crouch", State(move, Stance.Crouch, 0f));
+            }
+            _variant = -1;
 
             for (int w = 0; w < weapons.Length; w++)
             {
@@ -94,7 +105,8 @@ namespace Satisfying.Game
         {
             GameObject holder = new GameObject("silhouette subject");
             PlayerNetState net = PlayerNetState.FromSim(0, in state, true, 100f);
-            RemotePlayerView view = new RemotePlayerView(holder.transform, 1, palette, move, GameBootstrap.LayerPlayer);
+            RemotePlayerView view = new RemotePlayerView(holder.transform, 1, palette, move,
+                GameBootstrap.LayerPlayer, false, _variant);
             float impulse;
             view.Render(in net, 1f / 64f, weapon, out impulse);
 

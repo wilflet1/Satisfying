@@ -510,8 +510,26 @@ namespace Satisfying.Game
             Write(Render(cam, null), "house-plan-ground");
             Frame(cam, plan, 0f, 78f);
             Write(Render(cam, null), "house-plan-ground-square");
+
+            // A window, close, from outside and then from inside. Glass is either see-through or it
+            // is a wall you can shoot, and at plan distance those look identical.
+            cam.fieldOfView = 45f;
+            cam.transform.position = new Vector3(7f, 1.5f, -12.5f);
+            cam.transform.rotation = Quaternion.LookRotation(new Vector3(0f, -0.02f, 1f).normalized, Vector3.up);
+            Write(Render(cam, null), "house-window-outside");
+
+            cam.transform.position = new Vector3(7f, 1.5f, -4.5f);
+            cam.transform.rotation = Quaternion.LookRotation(new Vector3(0f, -0.02f, -1f).normalized, Vector3.up);
+            Write(Render(cam, null), "house-window-inside");
+            cam.fieldOfView = 32f;
             for (int i = 0; i < decks.Count; i++) decks[i].SetActive(true);
             for (int i = 0; i < upstairs.Count; i++) upstairs[i].SetActive(true);
+
+            // The glass, built the way the game builds it, so the windows in the shot are the windows
+            // in the match rather than empty holes.
+            WorldView scenery = new WorldView();
+            scenery.Build(model, palette, GameBootstrap.LayerWorld, house.Root.transform, null, null, null);
+            Debug.Log("[house] windows built: " + model.Windows.Count);
 
             Debug.Log("[house] renderers " + house.Root.GetComponentsInChildren<Renderer>().Length
                       + "  bounds centre " + bounds.center + " size " + bounds.size);

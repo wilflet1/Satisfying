@@ -64,7 +64,13 @@ namespace Satisfying.Game
                 view.Glass = Blockout.Box(_root, "glass " + i, view.Centre, view.Size, _glassMaterial, true, worldLayer);
                 MeshRenderer glassRenderer = view.Glass.GetComponent<MeshRenderer>();
                 if (glassRenderer != null)
+                {
+                    // A pane throws no shadow and takes none. A transparent surface that receives a
+                    // shadow goes grey exactly where the light is not, which is another way to end up
+                    // with a window that reads as a wall.
                     glassRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    glassRenderer.receiveShadows = false;
+                }
                 view.Barrier = view.Glass.GetComponent<Collider>();
                 _windows.Add(view);
             }
@@ -106,9 +112,13 @@ namespace Satisfying.Game
         {
             // Barely there. A pane you cannot see through is a wall you can shoot, which is the worst
             // of both - the point of glass is that it shows you the room and then stops being there.
-            // The tint is cool and very slightly green, which is what float glass actually looks like
-            // edge on, and the smoothness is what gives it a highlight to catch.
-            Material m = Palette.Make("glass", new Color(0.70f, 0.84f, 0.88f, 0.10f), 0.97f, 0.05f);
+            //
+            // The SMOOTHNESS is the thing to be careful with, and it is why this looked opaque in the
+            // game while looking clear in a flat-lit editor render: at 0.97 a pane catches the sun as
+            // one enormous specular sheet, and a white highlight across the whole window reads as a
+            // solid panel however low the alpha underneath it is. 0.5 still gives it a glint at a
+            // glancing angle without ever filling the frame.
+            Material m = Palette.Make("glass", new Color(0.74f, 0.86f, 0.90f, 0.07f), 0.5f, 0f);
             // The Standard shader needs telling that it is transparent; it is opaque by default.
             if (m.HasProperty("_Mode")) m.SetFloat("_Mode", 3f);
             if (m.HasProperty("_SrcBlend")) m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
@@ -118,6 +128,15 @@ namespace Satisfying.Game
             m.DisableKeyword("_ALPHATEST_ON");
             m.EnableKeyword("_ALPHABLEND_ON");
             m.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+            // Transparent AND unlit-ish: with specular highlights off, what is left is a faint cool
+            // tint over whatever is behind it, which is what a clean pane looks like from a few
+            // metres away.
+            if (m.HasProperty("_SpecularHighlights")) m.SetFloat("_SpecularHighlights", 0f);
+            if (m.HasProperty("_GlossyReflections")) m.SetFloat("_GlossyReflections", 0f);
+            m.DisableKeyword("_SPECULARHIGHLIGHTS_OFF");
+            m.EnableKeyword("_SPECULARHIGHLIGHTS_OFF");
+            m.EnableKeyword("_GLOSSYREFLECTIONS_OFF");
+
             m.renderQueue = 3000;
 
             // A pane that casts a solid black shadow gives itself away from across the map and looks

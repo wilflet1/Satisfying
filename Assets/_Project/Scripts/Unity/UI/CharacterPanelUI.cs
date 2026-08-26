@@ -69,8 +69,10 @@ namespace Satisfying.Game
             _pasted = GUILayout.TextField(_pasted, 200, Skin.TextField);
             if (GUILayout.Button("use this one", Skin.Button, GUILayout.Width(120f)) && !_busy) Use(_pasted);
             GUILayout.EndHorizontal();
-            GUILayout.Label("A .glb link, a readyplayer.me link, or just the avatar id - any of them.",
-                            Skin.SmallDim);
+            GUILayout.Label("A .glb link, a readyplayer.me link, or just the avatar id - any of them. " +
+                            "Paste as many as you like, one after another: each is downloaded and kept. " +
+                            "Do ten, then press the button at the bottom, and every player and bot gets " +
+                            "dealt one of them.", Skin.SmallDim);
 
             if (_status.Length > 0)
             {

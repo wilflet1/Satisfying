@@ -271,19 +271,69 @@ namespace Satisfying.Game
             c.Stomach = Bone.Build(t, "stomach", 0.300f * scale, 0.240f * scale, MeshShapes.Torso(0.92f), kit, layer);
             c.Neck = Bone.Build(t, "neck", 0.120f * scale, 0.125f * scale, MeshShapes.Limb(1.05f), skin, layer);
 
+            // ---- KIT. Everything below is a CHOICE, keyed off the variant, so two duellists without
+            // avatars are wearing different things rather than the same outfit in two colours.
+            //
+            // The one rule every piece obeys: nothing may stick out past the capsule underneath it.
+            // Satisfying/Shots/Check the silhouette measures exactly that, over every variant, so a
+            // new piece of kit that would be visible and unshootable is caught before it ships.
+            int look = variant < 0 ? 0 : Mathf.Abs(variant);
+            Material webbing = palette.Accent;
+
             // Plate carrier and belt ride on the joints, not on the stretched meshes, so they keep
             // their proportions whatever the bone underneath is doing. Across, out of the front, and
             // up the bone - see Bone.Fitting.
-            c.Chest.Fitting("plate carrier", new Vector3(0f, 0.008f, 0.155f) * scale,
-                new Vector3(0.410f, 0.280f, 0.200f) * scale, kit, layer);
-            c.Chest.Fitting("shoulder strap left", new Vector3(-0.130f, 0.100f, 0.190f) * scale,
-                new Vector3(0.080f, 0.090f, 0.200f) * scale, kit, layer);
-            c.Chest.Fitting("shoulder strap right", new Vector3(0.130f, 0.100f, 0.190f) * scale,
-                new Vector3(0.080f, 0.090f, 0.200f) * scale, kit, layer);
-            c.Chest.Fitting("mag pouch", new Vector3(0f, 0.140f, 0.060f) * scale,
-                new Vector3(0.190f, 0.070f, 0.110f) * scale, palette.Accent, layer);
+            int torso = look % 4;
+            if (torso == 0)
+            {
+                // Plate carrier with a mag rack.
+                c.Chest.Fitting("plate carrier", new Vector3(0f, 0.008f, 0.155f) * scale,
+                    new Vector3(0.410f, 0.280f, 0.200f) * scale, kit, layer);
+                c.Chest.Fitting("mag pouch", new Vector3(0f, 0.140f, 0.060f) * scale,
+                    new Vector3(0.190f, 0.070f, 0.110f) * scale, webbing, layer);
+            }
+            else if (torso == 1)
+            {
+                // Chest rig: narrower, higher, with two pouches.
+                c.Chest.Fitting("chest rig", new Vector3(0f, 0.030f, 0.185f) * scale,
+                    new Vector3(0.330f, 0.230f, 0.150f) * scale, kit, layer);
+                c.Chest.Fitting("pouch left", new Vector3(-0.085f, 0.145f, 0.130f) * scale,
+                    new Vector3(0.110f, 0.060f, 0.100f) * scale, webbing, layer);
+                c.Chest.Fitting("pouch right", new Vector3(0.085f, 0.145f, 0.130f) * scale,
+                    new Vector3(0.110f, 0.060f, 0.100f) * scale, webbing, layer);
+            }
+            else if (torso == 2)
+            {
+                // Plates front and back, no rack - a lighter, flatter silhouette.
+                c.Chest.Fitting("front plate", new Vector3(0f, 0.055f, 0.150f) * scale,
+                    new Vector3(0.360f, 0.140f, 0.230f) * scale, kit, layer);
+                c.Chest.Fitting("back plate", new Vector3(0f, -0.060f, 0.150f) * scale,
+                    new Vector3(0.360f, 0.130f, 0.230f) * scale, kit, layer);
+            }
+            else
+            {
+                // A jacket: no armour at all, just a heavier torso and a collar.
+                c.Chest.Fitting("jacket", new Vector3(0f, 0f, 0.150f) * scale,
+                    new Vector3(0.395f, 0.255f, 0.250f) * scale, kit, layer);
+                c.Chest.Fitting("collar", new Vector3(0f, 0f, 0.268f) * scale,
+                    new Vector3(0.240f, 0.200f, 0.055f) * scale, kit, layer);
+            }
+
+            // Straps, on most of them.
+            if ((look / 4) % 3 != 0)
+            {
+                c.Chest.Fitting("shoulder strap left", new Vector3(-0.130f, 0.100f, 0.190f) * scale,
+                    new Vector3(0.080f, 0.090f, 0.200f) * scale, kit, layer);
+                c.Chest.Fitting("shoulder strap right", new Vector3(0.130f, 0.100f, 0.190f) * scale,
+                    new Vector3(0.080f, 0.090f, 0.200f) * scale, kit, layer);
+            }
+
+            // Belt, and sometimes a dump pouch on the hip.
             c.Stomach.Fitting("belt", new Vector3(0f, 0f, 0.038f) * scale,
                 new Vector3(0.318f, 0.258f, 0.070f) * scale, palette.Gun, layer);
+            if ((look / 12) % 2 == 0)
+                c.Stomach.Fitting("dump pouch", new Vector3(0.105f, 0.060f, 0.055f) * scale,
+                    new Vector3(0.100f, 0.110f, 0.100f) * scale, webbing, layer);
 
             // ---- head. Its own group because it pitches with the aim while the neck only leans.
             // The skull is an ovoid laid on its side: the shape's own +Z is front to back, which is the
@@ -296,16 +346,48 @@ namespace Satisfying.Game
             // Helmet and ear cups are kept inside the 0.105 m head sphere. A helmet that overhangs it
             // is a helmet you can put a round through for no damage, which feels exactly as bad as it
             // sounds and is impossible to diagnose from the shooting end.
-            Shape(c.Head, "helmet", new Vector3(0f, 0.058f, -0.008f) * scale,
-                new Vector3(0.200f, 0.126f, 0.208f) * scale, MeshShapes.Head(), kit, layer);
-            Shape(c.Head, "helmet brim", new Vector3(0f, 0.034f, 0.084f) * scale,
-                new Vector3(0.180f, 0.030f, 0.070f) * scale, MeshShapes.Kit(), kit, layer);
-            Shape(c.Head, "visor", new Vector3(0f, 0.010f, 0.094f) * scale,
-                new Vector3(0.150f, 0.058f, 0.034f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
-            Shape(c.Head, "ear left", new Vector3(-0.086f, 0.010f, -0.012f) * scale,
-                new Vector3(0.034f, 0.096f, 0.096f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
-            Shape(c.Head, "ear right", new Vector3(0.086f, 0.010f, -0.012f) * scale,
-                new Vector3(0.034f, 0.096f, 0.096f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
+            int headwear = (look / 24) % 4;
+            if (headwear == 0 || headwear == 1)
+            {
+                // Helmet, with or without the brim.
+                Shape(c.Head, "helmet", new Vector3(0f, 0.058f, -0.008f) * scale,
+                    new Vector3(0.200f, 0.126f, 0.208f) * scale, MeshShapes.Head(), kit, layer);
+                if (headwear == 0)
+                    Shape(c.Head, "helmet brim", new Vector3(0f, 0.034f, 0.084f) * scale,
+                        new Vector3(0.180f, 0.030f, 0.070f) * scale, MeshShapes.Kit(), kit, layer);
+            }
+            else if (headwear == 2)
+            {
+                // A cap: lower, softer, with a peak.
+                Shape(c.Head, "cap", new Vector3(0f, 0.062f, -0.010f) * scale,
+                    new Vector3(0.186f, 0.096f, 0.196f) * scale, MeshShapes.Head(), kit, layer);
+                Shape(c.Head, "peak", new Vector3(0f, 0.044f, 0.080f) * scale,
+                    new Vector3(0.164f, 0.022f, 0.078f) * scale, MeshShapes.Kit(), kit, layer);
+            }
+            else
+            {
+                // Bare headed, with a rolled beanie.
+                Shape(c.Head, "beanie", new Vector3(0f, 0.066f, -0.006f) * scale,
+                    new Vector3(0.184f, 0.088f, 0.192f) * scale, MeshShapes.Head(), kit, layer);
+            }
+
+            // Eyewear: goggles up, glasses on, or nothing.
+            int eyes = (look / 96) % 3;
+            if (eyes == 0)
+                Shape(c.Head, "visor", new Vector3(0f, 0.010f, 0.094f) * scale,
+                    new Vector3(0.150f, 0.058f, 0.034f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
+            else if (eyes == 1)
+                Shape(c.Head, "goggles", new Vector3(0f, 0.052f, 0.078f) * scale,
+                    new Vector3(0.170f, 0.036f, 0.048f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
+
+            // Ear protection, on about half of them.
+            if ((look / 288) % 2 == 0)
+            {
+                Shape(c.Head, "ear left", new Vector3(-0.086f, 0.010f, -0.012f) * scale,
+                    new Vector3(0.034f, 0.096f, 0.096f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
+                Shape(c.Head, "ear right", new Vector3(0.086f, 0.010f, -0.012f) * scale,
+                    new Vector3(0.034f, 0.096f, 0.096f) * scale, MeshShapes.Kit(), palette.GunDark, layer);
+            }
 
             // ---- arms. Every limb tapers towards the joint it ends at, which is what stops a person
             // built out of six tubes from looking like a person built out of six tubes.
@@ -325,10 +407,21 @@ namespace Satisfying.Game
             c.RightFoot = Bone.Build(t, "right boot", 0.112f * scale, 0.105f * scale, MeshShapes.Boot(), palette.Gun, layer);
 
             // Knee pads, so a crouch reads from the front instead of being two boxes at an angle.
-            c.LeftShin.Fitting("left knee pad", new Vector3(0f, 0.020f, 0.030f) * scale,
-                new Vector3(0.150f, 0.160f, 0.090f) * scale, palette.Gun, layer);
-            c.RightShin.Fitting("right knee pad", new Vector3(0f, 0.020f, 0.030f) * scale,
-                new Vector3(0.150f, 0.160f, 0.090f) * scale, palette.Gun, layer);
+            // Not everybody wears them.
+            if ((look / 576) % 3 != 0)
+            {
+                c.LeftShin.Fitting("left knee pad", new Vector3(0f, 0.020f, 0.030f) * scale,
+                    new Vector3(0.150f, 0.160f, 0.090f) * scale, palette.Gun, layer);
+                c.RightShin.Fitting("right knee pad", new Vector3(0f, 0.020f, 0.030f) * scale,
+                    new Vector3(0.150f, 0.160f, 0.090f) * scale, palette.Gun, layer);
+            }
+
+            // Thigh rig, on some.
+            if ((look / 1728) % 2 == 0)
+                // Tucked in against the thigh: at 0.070 out with a 0.040 half-depth it reached 110 mm
+                // from the bone against a 95 mm capsule, which is a pouch you can see and cannot shoot.
+                c.RightThigh.Fitting("thigh rig", new Vector3(0f, 0.042f, 0.180f) * scale,
+                    new Vector3(0.110f, 0.055f, 0.150f) * scale, webbing, layer);
 
             return c;
         }
