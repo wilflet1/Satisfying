@@ -36,11 +36,19 @@ namespace Satisfying.Shared
         public readonly List<PropDef> Props = new List<PropDef>();
         public readonly List<TargetDef> Targets = new List<TargetDef>();
 
+        /// <summary>
+        /// The parts of the map a round can go through. Placed by hand by the map, because a game
+        /// where every wall is penetrable has no cover in it. Not replicated - both machines build
+        /// the same arena from the same code, so both already know where the soft walls are.
+        /// </summary>
+        public readonly List<PanelDef> Panels = new List<PanelDef>();
+
         public void Clear()
         {
             Windows.Clear();
             Props.Clear();
             Targets.Clear();
+            Panels.Clear();
         }
 
         public int AddTarget(Vec3 center, Vec3 size, bool head)
@@ -71,6 +79,25 @@ namespace Satisfying.Shared
                 head = Targets[i].Head;
             }
             return index >= 0;
+        }
+
+        public int AddPanel(Vec3 center, Vec3 size, SurfaceKind kind)
+        {
+            PanelDef def;
+            def.Bounds = new Box(center, size);
+            def.Kind = kind;
+            Panels.Add(def);
+            return Panels.Count - 1;
+        }
+
+        /// <summary>What is underfoot at a point, for footsteps and for anything bouncing on it.
+        /// Panels are the only thing in the map that knows what it is made of, so a point that is not
+        /// on one is concrete - which is what the ground is.</summary>
+        public SurfaceKind SurfaceAt(Vec3 point)
+        {
+            for (int i = 0; i < Panels.Count; i++)
+                if (Panels[i].Bounds.Contains(point)) return Panels[i].Kind;
+            return SurfaceKind.Concrete;
         }
 
         public int AddWindow(Vec3 center, Vec3 size)

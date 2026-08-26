@@ -257,6 +257,7 @@ namespace UnityEngine
         public Transform parent { get; set; }
         public int childCount { get { return 0; } }
         public Transform GetChild(int index) { return null; }
+        public Transform Find(string name) { return null; }
         public void SetParent(Transform parent) { }
         public void SetParent(Transform parent, bool worldPositionStays) { }
         public bool IsChildOf(Transform parent) { return false; }

@@ -122,6 +122,7 @@ namespace Satisfying.Shared
         public string ServerName = "";
         /// <summary>The arena the server told us to build. The view layer rebuilds when this changes.</summary>
         public MapId Map = MapId.DuelArena;
+        public GameMode Mode = GameMode.Duel;
 
         public uint ClientTick;
         public uint ServerTick;
@@ -340,6 +341,7 @@ namespace Satisfying.Shared
             uint serverTick = _read.ReadUInt();
             byte tickRate = _read.ReadByte();
             Map = (MapId)_read.ReadByte();
+            Mode = (GameMode)_read.ReadByte();
             ServerName = _read.ReadString();
 
             if (State == Status.Connected && PeerId == id) return;   // duplicate accept

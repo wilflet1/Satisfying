@@ -28,11 +28,14 @@ namespace Satisfying.Game
             public List<Station> Stations;
         }
 
-        public static Result Build(MapId map, SpawnSet spawns, Palette palette, int worldLayer, WorldModel model)
+        public static Result Build(MapId map, SpawnSet spawns, Palette palette, int worldLayer, WorldModel model,
+                                   List<ZoneDef> zones)
         {
             // Fill the caller's SpawnSet and WorldModel in place: the server holds references to them.
             spawns.Points.Clear();
             model.Clear();
+            zones.Clear();
+            if (map == MapId.House) return HouseBuilder.Build(spawns, palette, worldLayer, model, zones);
             return map == MapId.TestRange
                 ? BuildTestRange(spawns, palette, worldLayer, model)
                 : BuildDuelArena(spawns, palette, worldLayer, model);
@@ -409,6 +412,14 @@ namespace Satisfying.Game
                 Wall(h, palette, layer, new Vector3(0f, height + 0.75f, (d + 0.15f) * s), new Vector3(w * 2f + 0.6f, 0.9f, 0.3f));
                 Wall(h, palette, layer, new Vector3((w + 0.15f) * s, height + 0.75f, 0f), new Vector3(0.3f, 0.9f, d * 2f + 0.6f));
             }
+        }
+
+        /// <summary>The glazed wall, for map builders in other files. Same call, same rules.</summary>
+        public static void PublicGlazedWall(Transform parent, Palette palette, int layer, WorldModel model,
+                                            Vector3 center, Vector3 size, float holeWidth, float holeHeight,
+                                            float holeCentreY)
+        {
+            GlazedWall(parent, palette, layer, model, center, size, holeWidth, holeHeight, holeCentreY);
         }
 
         /// <summary>

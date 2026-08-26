@@ -223,6 +223,14 @@ namespace Satisfying.Tests
         public void OnTargetHit(HitZone zone, float distance) { }
         public void OnScore(int peerId, int kills, int deaths) { }
         public void OnMatchPhase(MatchPhase phase, float timer, int winner) { }
+
+        public int ZoneIndex = -1;
+        public float ZoneLeft;
+        public int ZoneHolder;
+        public void OnZone(int zone, float secondsLeft, int holder)
+        {
+            ZoneIndex = zone; ZoneLeft = secondsLeft; ZoneHolder = holder;
+        }
         public void OnTuning(string tuningText) { }
         public void OnWindowBroken(int windowIndex, Vec3 centre) { }
 

@@ -83,6 +83,7 @@ namespace Satisfying.Tests
             ViewmodelTests.Register();
             ShapeTests.Register();
             SniperTests.Register();
+            PenetrationTests.Register();
             ReachabilityTests.Register();
 
             int passed = 0;

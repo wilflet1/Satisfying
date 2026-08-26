@@ -21,6 +21,10 @@ namespace Satisfying.Game
         public Material Hands;
         public Material RemoteArms;
         public Material Blood;
+        // The house is made of rooms, and a room you cannot tell from the next one is not a room.
+        public Material Timber;
+        public Material Tile;
+        public Material Plaster;
 
         static Shader FindShader()
         {
@@ -67,6 +71,9 @@ namespace Satisfying.Game
             p.RemoteArms = Make("remote arms", new Color(0.36f, 0.30f, 0.27f), 0.12f, 0f);
             // Dark and matte. Bright red reads as paint, and a glossy one reads as jam.
             p.Blood = Make("blood", new Color(0.38f, 0.03f, 0.04f), 0.08f, 0f);
+            p.Timber = Make("timber", new Color(0.34f, 0.24f, 0.16f), 0.22f, 0f);
+            p.Tile = Make("tile", new Color(0.60f, 0.61f, 0.60f), 0.55f, 0f);
+            p.Plaster = Make("plaster", new Color(0.72f, 0.70f, 0.66f), 0.08f, 0f);
             return p;
         }
     }

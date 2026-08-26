@@ -43,6 +43,9 @@ namespace Satisfying.Shared
         [Tune("Weapon", 10f, 500f)]
         public float range = 320f;
 
+        [Tune("Weapon", 0f, 1f, Tip = "Penetration budget, in metres of plasterboard. 0 stops at the first thing it touches.")]
+        public float penetration = 0.14f;
+
         [Tune("Weapon", 0f, 8f, Tip = "Base cone of fire in degrees while standing still, hip fired.")]
         public float spreadBase = 1.15f;
 
@@ -132,6 +135,7 @@ namespace Satisfying.Shared
             m4.stomachMultiplier = 1.25f;
             m4.limbMultiplier = 0.8f;
             m4.armMultiplier = 0.8f;
+            m4.penetration = 0.18f;
             m4.falloffStart = 32f;
             m4.falloffEnd = 100f;
             m4.falloffMinMul = 0.62f;
@@ -161,6 +165,7 @@ namespace Satisfying.Shared
             mp5.stomachMultiplier = 1.2f;
             mp5.limbMultiplier = 0.85f;
             mp5.armMultiplier = 0.85f;
+            mp5.penetration = 0.10f;
             mp5.falloffStart = 16f;
             mp5.falloffEnd = 48f;
             mp5.falloffMinMul = 0.42f;
@@ -190,6 +195,7 @@ namespace Satisfying.Shared
             usp.stomachMultiplier = 1.3f;
             usp.limbMultiplier = 0.75f;
             usp.armMultiplier = 0.75f;
+            usp.penetration = 0.07f;
             usp.falloffStart = 18f;
             usp.falloffEnd = 55f;
             usp.falloffMinMul = 0.55f;
@@ -227,6 +233,8 @@ namespace Satisfying.Shared
             sniper.stomachMultiplier = 1.15f;
             sniper.limbMultiplier = 1.0f;
             sniper.armMultiplier = 0.9f;
+            // Through a stud wall and out the other side still lethal, which is what it is for.
+            sniper.penetration = 0.55f;
 
             // Nothing drops off inside 55 m, so "one tap within 50" is a property of the numbers
             // rather than a hope. SniperTests asserts it.
@@ -291,6 +299,8 @@ namespace Satisfying.Shared
     {
         public MovementTuning move = new MovementTuning();
         public MatchTuning match = new MatchTuning();
+        public PenetrationTuning penetration = new PenetrationTuning();
+        public KothTuning koth = new KothTuning();
         public WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
         public SightTuning[] sights = SightTuning.Defaults();
 
@@ -311,6 +321,8 @@ namespace Satisfying.Shared
             GameTuning c = new GameTuning();
             c.move = move.Clone();
             c.match = match.Clone();
+            c.penetration = penetration.Clone();
+            c.koth = koth.Clone();
             c.weapons = new WeaponTuning[weapons.Length];
             for (int i = 0; i < weapons.Length; i++) c.weapons[i] = weapons[i].Clone();
             c.sights = new SightTuning[sights.Length];

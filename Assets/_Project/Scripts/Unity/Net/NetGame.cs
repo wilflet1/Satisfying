@@ -59,6 +59,7 @@ namespace Satisfying.Game
 
         /// <summary>Map the host will run. The server sends it to clients, who rebuild to match.</summary>
         public MapId HostMap = MapId.DuelArena;
+        public GameMode HostMode = GameMode.Duel;
         public MapId CurrentMap = MapId.DuelArena;
         public System.Action<MapId> OnMapRequested;
         public List<ArenaBuilder.Station> Stations;
@@ -92,6 +93,23 @@ namespace Satisfying.Game
         /// footstep - the transmission model reads it, it is not two separate rules.
         /// </summary>
         const float FootstepCarry = 25f;
+
+        /// <summary>
+        /// The hill, as last heard from the server. The countdown is run down locally between
+        /// messages so it ticks smoothly, and corrected every time one arrives.
+        /// </summary>
+        public int ActiveZone = -1;
+        public float ZoneTimer;
+        public int ZoneHolder = KothState.Nobody;
+        public readonly System.Collections.Generic.List<ZoneDef> Zones = new System.Collections.Generic.List<ZoneDef>();
+
+        public bool PlayingHill { get { return Client != null && Client.Mode == GameMode.KingOfTheHill && Zones.Count > 0; } }
+
+        public string ZoneName(int index)
+        {
+            if (index < 0 || index >= Zones.Count) return "";
+            return Zones[index].Name;
+        }
 
         public float HitMarkerTimer;
         public bool HitMarkerHeadshot;
@@ -133,6 +151,7 @@ namespace Satisfying.Game
             Server = new NetServer(_serverTransport, World, Spawns, Tuning, Model);
             Server.ServerName = playerName + "'s duel";
             Server.Map = HostMap;
+            Server.Mode = HostMode;
 
             Discovery = new LanDiscovery(false);
             CurrentMode = Mode.Hosting;
@@ -269,6 +288,7 @@ namespace Satisfying.Game
             if (Fx != null) Fx.Update();
 
             HitMarkerTimer = Mathf.Max(0f, HitMarkerTimer - dt);
+            ZoneTimer = Mathf.Max(0f, ZoneTimer - dt);
             LastTargetTimer = Mathf.Max(0f, LastTargetTimer - dt);
             DamageFlashTimer = Mathf.Max(0f, DamageFlashTimer - dt);
             RespawnCountdown = Mathf.Max(0f, RespawnCountdown - dt);
@@ -647,6 +667,15 @@ namespace Satisfying.Game
             PlayerInfo info = Info(peerId);
             info.Kills = kills;
             info.Deaths = deaths;
+        }
+
+        public void OnZone(int zone, float secondsLeft, int holder)
+        {
+            if (zone != ActiveZone && ActiveZone >= 0)
+                Sound.Play2D(Audio.RoundStart, 0.35f, 1.35f);      // the hill moved; you need to know
+            ActiveZone = zone;
+            ZoneTimer = secondsLeft;
+            ZoneHolder = holder;
         }
 
         public void OnMatchPhase(MatchPhase phase, float timer, int winner)

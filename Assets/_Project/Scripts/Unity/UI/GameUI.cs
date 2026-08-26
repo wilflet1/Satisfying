@@ -165,6 +165,7 @@ namespace Satisfying.Game
             DrawHitMarker();
             DrawVitals(in state, move, weapon);
             DrawMatchBanner();
+            DrawHill();
             DrawKillFeed();
             DrawStationCaption();
             DrawInteractPrompt(in state, move);
@@ -378,7 +379,11 @@ namespace Satisfying.Game
                 case MatchPhase.Warmup: phase = "waiting for an opponent"; break;
                 case MatchPhase.Countdown: phase = "starting..."; break;
                 case MatchPhase.Ended: phase = ""; break;
-                default: phase = "first to " + Mathf.RoundToInt(Game.Client.Tuning.match.killsToWin); break;
+                default:
+                    phase = Game.PlayingHill
+                        ? "hold the room - first to " + Game.Client.Tuning.koth.PointsToWinInt
+                        : "first to " + Mathf.RoundToInt(Game.Client.Tuning.match.killsToWin);
+                    break;
             }
 
             _skin.Text(new Rect(_width * 0.5f - 150f, 14f, 140f, 36f), mine.ToString(), _score, mineColour);
@@ -415,8 +420,60 @@ namespace Satisfying.Game
 
             _skin.Text(new Rect(0f, bandY + 20f, _width, 60f), won ? "VICTORY" : "DEFEAT", _centreHeader, colour);
             _skin.Text(new Rect(0f, bandY + 84f, _width, 28f),
-                       mine + " - " + theirs + "     " + (won ? "the duel is yours" : "better luck next round"),
+                       mine + " - " + theirs + "     " +
+                       (won ? (Game.PlayingHill ? "the house is yours" : "the duel is yours")
+                            : "better luck next round"),
                        _centreSmall, UiSkin.InkDim);
+        }
+
+        /// <summary>
+        /// The hill: which room, how long it has, and whether you are in it.
+        ///
+        /// It sits under the score rather than in a corner, because it is the thing the mode is
+        /// about - if you have to go looking for it you will play the map instead of the mode. The
+        /// bar runs down as the room's time does, and goes amber over the last few seconds so the
+        /// move is something you can prepare for rather than something that happens to you.
+        /// </summary>
+        void DrawHill()
+        {
+            if (!Game.PlayingHill || Game.ActiveZone < 0) return;
+
+            KothTuning koth = Game.Client.Tuning.koth;
+            bool mine = Game.ZoneHolder == Game.Client.PeerId;
+            bool contested = Game.ZoneHolder == KothState.Contested;
+            bool warning = Game.ZoneTimer <= koth.warnSeconds;
+
+            Color colour = contested ? UiSkin.Accent : (mine ? UiSkin.Good : (Game.ZoneHolder >= 0 ? UiSkin.Bad : UiSkin.InkDim));
+
+            float width = 300f;
+            float x = _width * 0.5f - width * 0.5f;
+            float y = 76f;
+
+            GUI.color = new Color(0.05f, 0.055f, 0.07f, 0.78f);
+            GUI.DrawTexture(new Rect(x, y, width, 46f), _skin.White);
+            GUI.color = new Color(colour.r, colour.g, colour.b, 0.95f);
+            GUI.DrawTexture(new Rect(x, y, 3f, 46f), _skin.White);
+            GUI.color = Color.white;
+
+            string holder = contested ? "CONTESTED" : mine ? "YOU HOLD IT"
+                          : Game.ZoneHolder >= 0 ? "THEY HOLD IT" : "OPEN";
+            _skin.Text(new Rect(x + 12f, y + 4f, width - 24f, 20f), Game.ZoneName(Game.ActiveZone).ToUpperInvariant(),
+                       _centreSmall, UiSkin.Ink);
+            _skin.Text(new Rect(x + 12f, y + 22f, width - 24f, 16f), holder, _centreSmall, colour);
+
+            // The clock, as a bar that empties.
+            float span = Mathf.Max(1f, koth.rotateSeconds);
+            float k = Mathf.Clamp01(Game.ZoneTimer / span);
+            GUI.color = new Color(1f, 1f, 1f, 0.14f);
+            GUI.DrawTexture(new Rect(x + 12f, y + 40f, width - 24f, 3f), _skin.White);
+            GUI.color = warning ? new Color(UiSkin.Accent.r, UiSkin.Accent.g, UiSkin.Accent.b, 0.95f)
+                                : new Color(1f, 1f, 1f, 0.55f);
+            GUI.DrawTexture(new Rect(x + 12f, y + 40f, (width - 24f) * k, 3f), _skin.White);
+            GUI.color = Color.white;
+
+            if (warning)
+                _skin.Text(new Rect(x, y + 48f, width, 16f),
+                           "moving in " + Mathf.CeilToInt(Game.ZoneTimer) + "s", _centreSmall, UiSkin.Accent);
         }
 
         /// <summary>
@@ -795,13 +852,35 @@ namespace Satisfying.Game
                 if (GUILayout.Button(Game.HostMap == MapId.DuelArena ? "> duel arena" : "duel arena",
                         Game.HostMap == MapId.DuelArena ? _skin.ButtonPrimary : _skin.Button))
                     Game.HostMap = MapId.DuelArena;
+                if (GUILayout.Button(Game.HostMap == MapId.House ? "> the house" : "the house",
+                        Game.HostMap == MapId.House ? _skin.ButtonPrimary : _skin.Button))
+                    Game.HostMap = MapId.House;
                 if (GUILayout.Button(Game.HostMap == MapId.TestRange ? "> test range" : "test range",
                         Game.HostMap == MapId.TestRange ? _skin.ButtonPrimary : _skin.Button))
                     Game.HostMap = MapId.TestRange;
                 GUILayout.EndHorizontal();
                 GUILayout.Label(Game.HostMap == MapId.TestRange
                     ? "A drill course: vault row, slide lane, mantle stack, lean gallery, shooting range."
-                    : "The duel map: corners, window sills, a roof and one long sightline.", _skin.SmallDim);
+                    : Game.HostMap == MapId.House
+                        ? "Two floors and a yard. Stairs, a landing window off the porch roof and a hole "
+                          + "in the bedroom floor, so nobody owns the building by holding one of them. The "
+                          + "wall between the kitchen and the living room is plasterboard."
+                        : "The duel map: corners, window sills, a roof and one long sightline.", _skin.SmallDim);
+
+                GUILayout.Space(4f);
+                GUILayout.BeginHorizontal();
+                GUILayout.Label("mode", _skin.Label, GUILayout.Width(90f));
+                if (GUILayout.Button(Game.HostMode == GameMode.Duel ? "> duel" : "duel",
+                        Game.HostMode == GameMode.Duel ? _skin.ButtonPrimary : _skin.Button))
+                    Game.HostMode = GameMode.Duel;
+                if (GUILayout.Button(Game.HostMode == GameMode.KingOfTheHill ? "> king of the hill" : "king of the hill",
+                        Game.HostMode == GameMode.KingOfTheHill ? _skin.ButtonPrimary : _skin.Button))
+                    Game.HostMode = GameMode.KingOfTheHill;
+                GUILayout.EndHorizontal();
+                GUILayout.Label(Game.HostMode == GameMode.KingOfTheHill
+                    ? "One room is the hill. Hold it alone to score; both of you in it stops the clock. "
+                      + "It moves to another room every minute, and only the house has rooms to move between."
+                    : "First to the kill count wins.", _skin.SmallDim);
 
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("port", _skin.Label, GUILayout.Width(90f));

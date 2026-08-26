@@ -65,6 +65,20 @@ namespace Satisfying.Shared
         public string ServerName = "duel";
         public MapId Map = MapId.DuelArena;
 
+        /// <summary>What is being played. Set before Host and sent in the accept, like the map.</summary>
+        public GameMode Mode = GameMode.Duel;
+
+        /// <summary>
+        /// The rooms worth standing in, filled by whoever built the map. Empty means there is no hill
+        /// to fight over, and the server falls back to a duel however it was configured - a mode that
+        /// cannot be played is worse than one that was not asked for.
+        /// </summary>
+        public readonly System.Collections.Generic.List<ZoneDef> Zones = new System.Collections.Generic.List<ZoneDef>();
+
+        public KothState Hill;
+        float _zoneAnnounce;
+        readonly float[] _zonePoints = new float[Protocol.MaxPeerId + 1];
+
         int[] _propDirty;
         double _accumulator;
         double _now;
@@ -309,59 +323,111 @@ namespace Satisfying.Shared
                 {
                     Vec3 dir = ShotSolver.PelletDirection(aim, spread, shooter.PeerId, shotIndex, pellet);
 
-                    float wallDist;
-                    Vec3 wallNormal;
-                    float maxDist = weapon.range;
-                    bool hitWorld = _world.Raycast(origin, dir, maxDist, out wallDist, out wallNormal);
-                    float limit = hitWorld ? wallDist : maxDist;
+                    // A round is traced in segments rather than in one go, because it does not
+                    // necessarily stop at the first thing it touches. Each time it comes to a wall
+                    // that the map has marked penetrable and its budget can pay for, it comes out the
+                    // far side with less damage and carries on from there.
+                    Vec3 segment = origin;
+                    float remaining = weapon.range;
+                    float travelled = 0f;
+                    float damageScale = 1f;
+                    float budget = MathK.Max(0f, weapon.penetration);
+                    int layers = 0;
+                    int maxLayers = Tuning.penetration.MaxLayersInt;
+                    bool reported = false;
 
-                    // A round through a pane takes it out, and keeps going.
-                    int glassIndex;
-                    float glassDistance;
-                    if (World.RaycastWindows(Model, origin, dir, limit, out glassIndex, out glassDistance))
-                        BreakWindow(glassIndex);
-
-                    // Practice targets are ordinary geometry, so a hit on one comes back at exactly the
-                    // distance the wall cast already found. Only the first pellet reports, or a shotgun
-                    // would ring the marker once per pellet.
-                    int targetIndex;
-                    bool targetHead;
-                    float targetDistance;
-                    if (pellet == 0 && Model.RaycastTargets(origin, dir, limit + 0.05f, out targetIndex, out targetHead, out targetDistance))
-                        shooter.Reliable.Queue(GameEvents.TargetHit(targetHead ? HitZone.Head : HitZone.Chest, targetDistance));
-
-                    ServerPlayer victim = null;
-                    HitTestResult best = new HitTestResult();
-                    best.Distance = limit;
-
-                    for (int i = 0; i < _players.Count && Phase == MatchPhase.Live; i++)
+                    while (remaining > 0.05f)
                     {
-                        ServerPlayer target = _players[i];
-                        if (target == shooter || !target.Active || !target.Alive) continue;
-                        if (target.SpawnProtection > 0f) continue;
+                        float wallDist;
+                        Vec3 wallNormal;
+                        bool hitWorld = _world.Raycast(segment, dir, remaining, out wallDist, out wallNormal);
+                        float limit = hitWorld ? wallDist : remaining;
 
-                        PlayerSimState rewound = target.Sim;
-                        if (LagCompensation && !RewindPlayer(target, cmd.RenderTick, out rewound)) continue;
+                        // A round through a pane takes it out, and keeps going.
+                        int glassIndex;
+                        float glassDistance;
+                        if (World.RaycastWindows(Model, segment, dir, limit, out glassIndex, out glassDistance))
+                            BreakWindow(glassIndex);
 
-                        PlayerHitbox box = PlayerHitbox.FromState(in rewound, Tuning.move, Tuning.Weapon(rewound.Weapon.Index));
-                        HitTestResult hit;
-                        if (!RayGeometry.TestPlayer(origin, dir, in box, best.Distance, out hit)) continue;
+                        // Practice targets are ordinary geometry, so a hit on one comes back at exactly
+                        // the distance the wall cast already found. Only the first pellet reports, or a
+                        // shotgun would ring the marker once per pellet.
+                        int targetIndex;
+                        bool targetHead;
+                        float targetDistance;
+                        if (pellet == 0 && !reported &&
+                            Model.RaycastTargets(segment, dir, limit + 0.05f, out targetIndex, out targetHead, out targetDistance))
+                        {
+                            shooter.Reliable.Queue(GameEvents.TargetHit(targetHead ? HitZone.Head : HitZone.Chest,
+                                                                       travelled + targetDistance));
+                            reported = true;
+                        }
 
-                        best = hit;
-                        victim = target;
+                        ServerPlayer victim = null;
+                        HitTestResult best = new HitTestResult();
+                        best.Distance = limit;
+
+                        for (int i = 0; i < _players.Count && Phase == MatchPhase.Live; i++)
+                        {
+                            ServerPlayer target = _players[i];
+                            if (target == shooter || !target.Active || !target.Alive) continue;
+                            if (target.SpawnProtection > 0f) continue;
+
+                            PlayerSimState rewound = target.Sim;
+                            if (LagCompensation && !RewindPlayer(target, cmd.RenderTick, out rewound)) continue;
+
+                            PlayerHitbox box = PlayerHitbox.FromState(in rewound, Tuning.move, Tuning.Weapon(rewound.Weapon.Index));
+                            HitTestResult hit;
+                            if (!RayGeometry.TestPlayer(segment, dir, in box, best.Distance, out hit)) continue;
+
+                            best = hit;
+                            victim = target;
+                        }
+
+                        Vec3 impact = victim != null
+                            ? best.Point
+                            : (hitWorld ? segment + dir * wallDist : segment + dir * remaining);
+
+                        if (pellet == 0 && layers == 0)
+                        {
+                            firstImpact = impact;
+                            anyImpact = victim != null || hitWorld;
+                        }
+                        if (victim != null) hitPlayer = true;
+
+                        if (victim != null)
+                        {
+                            // Range for the falloff is how far the round has actually flown, not how
+                            // far it is from the last wall it came through.
+                            float flown = travelled + best.Distance;
+                            float damage = ShotSolver.Damage(weapon, best.Zone, flown) * damageScale;
+                            ApplyDamage(victim, shooter, damage, best.Zone, flown, best.Point);
+                            break;
+                        }
+
+                        if (!hitWorld || layers >= maxLayers) break;
+
+                        PanelDef panel;
+                        float thickness;
+                        float exit;
+                        if (!Penetration.PanelAt(Model, segment, dir, wallDist, 0.08f, out panel, out thickness, out exit))
+                            break;
+
+                        float scale;
+                        if (!Penetration.Through(Tuning.penetration, budget, panel.Kind, thickness, out scale))
+                            break;
+
+                        damageScale *= scale;
+                        budget -= thickness * Tuning.penetration.CostPerMetre(panel.Kind);
+
+                        // Step out of the far face and carry on. The nudge is what stops the next cast
+                        // starting inside the surface it just left and immediately hitting it again.
+                        float step = exit + 0.02f;
+                        segment += dir * step;
+                        travelled += step;
+                        remaining -= step;
+                        layers++;
                     }
-
-                    Vec3 impact = victim != null
-                        ? best.Point
-                        : (hitWorld ? origin + dir * wallDist : origin + dir * maxDist);
-
-                    if (pellet == 0) { firstImpact = impact; anyImpact = victim != null || hitWorld; }
-                    if (victim != null) hitPlayer = true;
-
-                    if (victim == null) continue;
-
-                    float damage = ShotSolver.Damage(weapon, best.Zone, best.Distance);
-                    ApplyDamage(victim, shooter, damage, best.Zone, best.Distance, best.Point);
                 }
 
                 // One shot event per trigger pull: the other clients need a muzzle flash, a crack and a tracer.
@@ -498,13 +564,16 @@ namespace Satisfying.Shared
             PropSim.ReleaseAll(victim.PeerId, World);
             victim.RespawnTimer = Tuning.match.respawnDelay;
             victim.Deaths++;
-            shooter.Kills++;
+            if (!PlayingHill) shooter.Kills++;
 
             Broadcast(GameEvents.Death(victim.PeerId, shooter.PeerId, zone, distance));
             Broadcast(GameEvents.Score(shooter.PeerId, shooter.Kills, shooter.Deaths));
             Broadcast(GameEvents.Score(victim.PeerId, victim.Kills, victim.Deaths));
 
-            if (Phase == MatchPhase.Live && shooter.Kills >= MathK.RoundToInt(Tuning.match.killsToWin))
+            // On the hill, Kills is the points column and kills do not add to it - the shooting is
+            // how you take the room, not how you win.
+            if (Phase == MatchPhase.Live && !PlayingHill &&
+                shooter.Kills >= MathK.RoundToInt(Tuning.match.killsToWin))
             {
                 Winner = shooter.PeerId;
                 SetPhase(MatchPhase.Ended, 8f);
@@ -512,9 +581,78 @@ namespace Satisfying.Shared
         }
 
         // ================================================================== match
+        bool PlayingHill { get { return Mode == GameMode.KingOfTheHill && Zones.Count > 0; } }
+
+        /// <summary>
+        /// The hill: who is standing in it, who is scoring for it, and when it moves.
+        ///
+        /// Contested stops the clock rather than letting the pair of you both bank points, because a
+        /// mode where the answer to "he is in my room" is to stand in it too and wait is not a mode
+        /// about the room. You have to make him leave.
+        /// </summary>
+        void StepHill()
+        {
+            if (!PlayingHill) return;
+
+            if (Hill.ActiveZone < 0 || Hill.ActiveZone >= Zones.Count) Hill.ActiveZone = 0;
+
+            int holder = KothState.Nobody;
+            int inside = 0;
+            for (int i = 0; i < _players.Count; i++)
+            {
+                ServerPlayer p = _players[i];
+                if (!p.Active || !p.Alive) continue;
+                if (!Koth.Inside(Zones[Hill.ActiveZone], p.Sim.Position)) continue;
+                inside++;
+                holder = inside == 1 ? p.PeerId : KothState.Contested;
+            }
+            Hill.Holder = inside == 0 ? KothState.Nobody : holder;
+
+            if (Phase == MatchPhase.Live)
+            {
+                bool scoring = Hill.Holder >= 0 || (!Tuning.koth.ContestedStops && inside > 0);
+                if (scoring && Hill.Holder >= 0)
+                {
+                    _zonePoints[Hill.Holder] += Tuning.koth.pointsPerSecond * Protocol.TickDt;
+                    ServerPlayer p = Find(Hill.Holder);
+                    if (p != null)
+                    {
+                        int whole = MathK.RoundToInt(_zonePoints[Hill.Holder]);
+                        if (whole != p.Kills)
+                        {
+                            p.Kills = whole;
+                            Broadcast(GameEvents.Score(p.PeerId, p.Kills, p.Deaths));
+                        }
+                        if (p.Kills >= Tuning.koth.PointsToWinInt)
+                        {
+                            Winner = p.PeerId;
+                            SetPhase(MatchPhase.Ended, 8f);
+                        }
+                    }
+                }
+
+                Hill.RotateTimer -= Protocol.TickDt;
+                if (Hill.RotateTimer <= 0f) MoveHill();
+            }
+
+            // Told often enough that the countdown on the HUD is the server's and not a guess.
+            _zoneAnnounce -= Protocol.TickDt;
+            if (_zoneAnnounce > 0f) return;
+            _zoneAnnounce = 0.4f;
+            Broadcast(GameEvents.Zone(Hill.ActiveZone, MathK.Max(0f, Hill.RotateTimer), Hill.Holder));
+        }
+
+        void MoveHill()
+        {
+            Hill.ActiveZone = Koth.NextZone(Hill.ActiveZone, Zones.Count, Tick);
+            Hill.RotateTimer = MathK.Max(5f, Tuning.koth.rotateSeconds);
+            Broadcast(GameEvents.Zone(Hill.ActiveZone, Hill.RotateTimer, KothState.Nobody));
+        }
+
         void StepMatch()
         {
             PhaseTimer = MathK.Max(0f, PhaseTimer - Protocol.TickDt);
+            StepHill();
 
             switch (Phase)
             {
@@ -523,7 +661,13 @@ namespace Satisfying.Shared
                     break;
                 case MatchPhase.Countdown:
                     if (ActiveCount < 2) SetPhase(MatchPhase.Warmup, 0f);
-                    else if (PhaseTimer <= 0f) { ResetScores(); SetPhase(MatchPhase.Live, 0f); }
+                    else if (PhaseTimer <= 0f)
+                    {
+                        ResetScores();
+                        for (int i = 0; i < _zonePoints.Length; i++) _zonePoints[i] = 0f;
+                        if (PlayingHill) { Hill.ActiveZone = 0; Hill.RotateTimer = MathK.Max(5f, Tuning.koth.rotateSeconds); }
+                        SetPhase(MatchPhase.Live, 0f);
+                    }
                     break;
                 case MatchPhase.Live:
                     if (ActiveCount < 2) SetPhase(MatchPhase.Warmup, 0f);
@@ -683,6 +827,7 @@ namespace Satisfying.Shared
             _write.WriteUInt(Tick);
             _write.WriteByte(Protocol.TickRate);
             _write.WriteByte((byte)Map);
+            _write.WriteByte((byte)Mode);
             _write.WriteString(ServerName);
             Send(p.PeerId);
         }

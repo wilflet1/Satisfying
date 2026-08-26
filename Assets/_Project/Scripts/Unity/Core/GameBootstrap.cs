@@ -25,6 +25,7 @@ namespace Satisfying.Game
         GearPanelUI _gearPanel;
         InputBindings _bindings;
         FeelTuning _feel;
+        readonly System.Collections.Generic.List<ZoneDef> _zones = new System.Collections.Generic.List<ZoneDef>();
         IPlayerInput _input;
         TouchInputSource _touch;
         TouchControlsUI _touchControls;
@@ -296,7 +297,19 @@ namespace Satisfying.Game
                 Destroy(_arenaRoot);
             }
 
-            ArenaBuilder.Result arena = ArenaBuilder.Build(map, _spawns, _palette, LayerWorld, _worldModel);
+            ArenaBuilder.Result arena = ArenaBuilder.Build(map, _spawns, _palette, LayerWorld, _worldModel, _zones);
+            // The server owns the hill; a client builds the same rooms from the same code so its HUD
+            // can name them without any of it going over the wire.
+            if (_game != null)
+            {
+                _game.Zones.Clear();
+                _game.Zones.AddRange(_zones);
+                if (_game.Server != null)
+                {
+                    _game.Server.Zones.Clear();
+                    _game.Server.Zones.AddRange(_zones);
+                }
+            }
             arena.Root.transform.SetParent(transform, false);
             _arenaRoot = arena.Root;
 

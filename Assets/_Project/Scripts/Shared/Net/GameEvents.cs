@@ -15,6 +15,9 @@ namespace Satisfying.Shared
         void OnTargetHit(HitZone zone, float distance);
         void OnScore(int peerId, int kills, int deaths);
         void OnMatchPhase(MatchPhase phase, float timer, int winner);
+
+        /// <summary>Which room is the hill, how long it has left, and who is standing in it.</summary>
+        void OnZone(int zone, float secondsLeft, int holder);
         void OnTuning(string tuningText);
         void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint,
                           bool hitPlayer);
@@ -125,6 +128,21 @@ namespace Satisfying.Shared
             return b.ToArray();
         }
 
+        /// <summary>
+        /// The hill. Sent on every change and a few times a second besides - it is four bytes and the
+        /// clock has to be right, because a hill you did not know was about to move is a hill you lose.
+        /// </summary>
+        public static byte[] Zone(int zone, float secondsLeft, int holder)
+        {
+            NetBuffer b = Writer(NetEventType.Zone);
+            b.WriteBits((uint)MathK.Clamp(zone, 0, 7), 3);
+            b.WriteQ(MathK.Clamp(secondsLeft, 0f, 300f), 0f, 300f, 12);
+            // -2 contested and -1 nobody ride as 6 and 7; the ids themselves are 0..5.
+            int wire = holder == KothState.Contested ? 6 : (holder < 0 ? 7 : MathK.Clamp(holder, 0, 5));
+            b.WriteBits((uint)wire, 3);
+            return b.ToArray();
+        }
+
         public static byte[] TuningSync(string text)
         {
             NetBuffer b = new NetBuffer(64 * 1024);
@@ -213,6 +231,15 @@ namespace Satisfying.Shared
                     float timer = b.ReadQ(0f, 600f, 14);
                     int winner = (int)b.ReadBits(3);
                     sink.OnMatchPhase(phase, timer, winner == 7 ? -1 : winner);
+                    break;
+                }
+                case NetEventType.Zone:
+                {
+                    int zone = (int)b.ReadBits(3);
+                    float left = b.ReadQ(0f, 300f, 12);
+                    int wire = (int)b.ReadBits(3);
+                    int holder = wire == 6 ? KothState.Contested : (wire == 7 ? KothState.Nobody : wire);
+                    sink.OnZone(zone, left, holder);
                     break;
                 }
                 case NetEventType.TuningSync:

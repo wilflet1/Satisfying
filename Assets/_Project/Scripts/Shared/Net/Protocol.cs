@@ -28,7 +28,8 @@ namespace Satisfying.Shared
         TuningSync = 8,
         Shot = 9,
         TargetHit = 10,
-        Damaged = 11
+        Damaged = 11,
+        Zone = 12
     }
 
     /// <summary>
@@ -38,7 +39,9 @@ namespace Satisfying.Shared
     public enum MapId : byte
     {
         DuelArena = 0,
-        TestRange = 1
+        TestRange = 1,
+        /// <summary>A two storey house with a yard. Built for the hill; plays as a duel map too.</summary>
+        House = 2
     }
 
     public enum MatchPhase : byte
@@ -62,7 +65,7 @@ namespace Satisfying.Shared
     public static class Protocol
     {
         /// <summary>Bumped whenever the packet layout or the simulation changes shape.</summary>
-        public const ushort Version = 13;
+        public const ushort Version = 14;
 
         public const int DefaultPort = 7777;
         // Peer ids travel in 3 bits. 0 is the server and 7 is the "nobody" sentinel that a suicide or

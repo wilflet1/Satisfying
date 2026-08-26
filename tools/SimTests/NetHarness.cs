@@ -71,6 +71,19 @@ namespace Satisfying.Tests
         }
 
         public void OnScore(int peerId, int kills, int deaths) { }
+
+        public int ActiveZone = -1;
+        public float ZoneSecondsLeft;
+        public int ZoneHolder = KothState.Nobody;
+        public int ZoneChanges;
+
+        public void OnZone(int zone, float secondsLeft, int holder)
+        {
+            if (zone != ActiveZone) ZoneChanges++;
+            ActiveZone = zone;
+            ZoneSecondsLeft = secondsLeft;
+            ZoneHolder = holder;
+        }
         public void OnMatchPhase(MatchPhase phase, float timer, int winner) { Log.Add("phase " + phase); }
 
         public void OnTuning(string tuningText)

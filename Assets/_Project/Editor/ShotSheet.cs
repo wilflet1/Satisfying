@@ -249,11 +249,20 @@ namespace Satisfying.Game
             Debug.Log("[shots] hit effects written to " + Path.GetFullPath(_outDir));
         }
 
+        /// <summary>
+        /// Puts the camera `around` degrees round the subject and `elevation` degrees above it, far
+        /// enough back to fit it.
+        ///
+        /// Note the minus: a positive X euler pitches DOWN in Unity, so building the direction from
+        /// +elevation puts the camera below the subject looking up. At two metres that reads as a
+        /// slightly low angle and nobody notices; at fifty-five it puts the camera thirteen metres
+        /// underground and every shot of the house came back black.
+        /// </summary>
         static void Frame(Camera cam, Bounds bounds, float around, float elevation)
         {
             float radius = Mathf.Max(0.12f, bounds.extents.magnitude);
             float distance = radius / Mathf.Sin(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * 1.08f;
-            Vector3 direction = Quaternion.Euler(elevation, around, 0f) * new Vector3(0f, 0.10f, 1f).normalized;
+            Vector3 direction = Quaternion.Euler(-elevation, around, 0f) * Vector3.forward;
             cam.transform.position = bounds.center + direction * distance;
             cam.transform.rotation = Quaternion.LookRotation((bounds.center - cam.transform.position).normalized,
                                                              Vector3.up);
@@ -436,6 +445,57 @@ namespace Satisfying.Game
                              Mathf.Lerp(under.b, over.b, a), 1f);
         }
 
+        /// <summary>The house, from the four corners and from above, so the layout can be judged as a
+        /// layout rather than walked around one room at a time.</summary>
+        [MenuItem("Satisfying/Shots/The house", priority = 65)]
+        public static void House()
+        {
+            Prepare();
+            Palette palette = Palette.Build();
+            SpawnSet spawns = new SpawnSet();
+            WorldModel model = new WorldModel();
+            System.Collections.Generic.List<ZoneDef> zones = new System.Collections.Generic.List<ZoneDef>();
+
+            GameObject stage = Stage(palette, false);
+            Camera cam = ShotCamera();
+            cam.farClipPlane = 400f;
+
+            ArenaBuilder.Result house = ArenaBuilder.Build(MapId.House, spawns, palette, GameBootstrap.LayerWorld,
+                                                           model, zones);
+
+            Debug.Log("[house] " + zones.Count + " zones, " + model.Panels.Count + " penetrable panels, "
+                      + model.Windows.Count + " windows, " + spawns.Points.Count + " spawns");
+            for (int i = 0; i < zones.Count; i++)
+                Debug.Log("[house] zone " + i + " " + zones[i].Name + " at " + zones[i].Bounds.Center.x.ToString("0.0")
+                          + ", " + zones[i].Bounds.Center.y.ToString("0.0") + ", " + zones[i].Bounds.Center.z.ToString("0.0"));
+
+            Bounds bounds = Framing(house.Root);
+
+            // The roof comes off for the shots. A map you can only photograph from outside its own
+            // roof is a map nobody can look at.
+            Transform roof = house.Root.transform.Find("roof");
+            if (roof != null) roof.gameObject.SetActive(false);
+
+            Debug.Log("[house] renderers " + house.Root.GetComponentsInChildren<Renderer>().Length
+                      + "  bounds centre " + bounds.center + " size " + bounds.size);
+
+            float[] angles = { 0f, 90f, 180f, 270f };
+            string[] names = { "south", "west", "north", "east" };
+            for (int i = 0; i < angles.Length; i++)
+            {
+                Frame(cam, bounds, angles[i], 22f);
+                Debug.Log("[house] " + names[i] + " camera at " + cam.transform.position);
+                Write(Render(cam, null), "house-" + names[i]);
+            }
+
+            Frame(cam, bounds, 30f, 68f);
+            Write(Render(cam, null), "house-above");
+
+            Object.DestroyImmediate(house.Root);
+            Object.DestroyImmediate(stage);
+            Debug.Log("[shots] house written to " + Path.GetFullPath(_outDir));
+        }
+
         public static void All()
         {
             Character();
@@ -498,6 +558,9 @@ namespace Satisfying.Game
                 tip.layer = GameBootstrap.LayerWorld;
             }
 
+            // The game turns fog on from 45 m out. A shot stage is not the game and the subjects are
+            // often further away than that, so it goes off here or every wide shot is a grey rectangle.
+            RenderSettings.fog = false;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Trilight;
             RenderSettings.ambientSkyColor = new Color(0.42f, 0.45f, 0.52f);
             RenderSettings.ambientEquatorColor = new Color(0.32f, 0.33f, 0.36f);
@@ -603,14 +666,7 @@ namespace Satisfying.Game
                     ? Framing(view.Character.Root)
                     : new Bounds(Joint(in pose, shots[i].Focus), Vector3.one * (shots[i].Radius * 2f));
 
-                float radius = Mathf.Max(0.12f, bounds.extents.magnitude);
-                float distance = radius / Mathf.Sin(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * 1.08f;
-                Quaternion around = Quaternion.Euler(shots[i].Elevation, shots[i].Around, 0f);
-                Vector3 direction = around * new Vector3(0f, 0.10f, 1f).normalized;
-
-                cam.transform.position = bounds.center + direction * distance;
-                cam.transform.rotation = Quaternion.LookRotation((bounds.center - cam.transform.position).normalized, Vector3.up);
-
+                Frame(cam, bounds, shots[i].Around, shots[i].Elevation);
                 Write(Render(cam, null), prefix + "-" + shots[i].Name);
             }
 
