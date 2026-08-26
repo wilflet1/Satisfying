@@ -177,13 +177,22 @@ namespace Satisfying.Game
             GUI.color = new Color(1f, 1f, 1f, Blend * 0.5f);
             GUI.DrawTexture(circle, _sheen, ScaleMode.StretchToFill, true);
 
-            // 4. the reticle
-            GUI.color = new Color(0.05f, 0.05f, 0.06f, Blend);
-            GUI.DrawTexture(ReticleRect(screenWidth, screenHeight), _reticle, ScaleMode.StretchToFill, true);
-
-            // 5. the body of the scope, over everything, hiding the square corners of the picture
+            // 4. the reticle: the etched glass first, then the illuminated centre and its bloom on
+            //    top of it. The lit part is drawn twice - once wide and dim for the glow, once tight
+            //    and bright - which is what an illuminated reticle looks like through glass.
+            Rect reticle = ReticleRect(screenWidth, screenHeight);
             GUI.color = new Color(1f, 1f, 1f, Blend);
-            GUI.DrawTexture(new Rect(0f, 0f, screenWidth, screenHeight), _surround, ScaleMode.StretchToFill, true);
+            GUI.DrawTexture(reticle, _reticle, ScaleMode.StretchToFill, true);
+
+            GUI.color = new Color(1f, 1f, 1f, Blend * 0.55f);
+            GUI.DrawTexture(reticle, _glow, ScaleMode.StretchToFill, true);
+            GUI.color = new Color(1f, 1f, 1f, Blend);
+            GUI.DrawTexture(reticle, _glow, ScaleMode.StretchToFill, true);
+
+            // 5. the housing, as a ring round the lens. Everything outside it is the world, drawn by
+            //    the main camera, at the field of view it always had.
+            GUI.color = new Color(1f, 1f, 1f, Blend);
+            GUI.DrawTexture(Rim(circle), _surround, ScaleMode.StretchToFill, true);
 
             GUI.color = previous;
         }
@@ -207,6 +216,16 @@ namespace Satisfying.Game
         /// First focal plane: the marks grow with the picture, so a hold is the same hold at any power,
         /// which is the entire reason anyone buys one.
         /// </summary>
+        /// <summary>How far past the lens the housing reaches, as a multiple of the lens radius.</summary>
+        public const float RimSpan = 1.85f;
+
+        /// <summary>The square the housing ring is drawn into, centred on the lens.</summary>
+        public static Rect Rim(Rect circle)
+        {
+            float grow = circle.width * (RimSpan - 1f) * 0.5f;
+            return new Rect(circle.x - grow, circle.y - grow, circle.width + grow * 2f, circle.height + grow * 2f);
+        }
+
         public Rect ReticleRect(float screenWidth, float screenHeight)
         {
             float focalPlane = Mathf.Clamp(Magnification / 6f, 0.55f, 2.6f);
@@ -273,44 +292,69 @@ namespace Satisfying.Game
         }
 
         /// <summary>
-        /// The scope body: opaque everywhere except a circle the size of the picture. Regenerated when
-        /// the window changes shape, which is the only thing that moves the hole.
+        /// The scope body: a ring of housing round the lens, and NOTHING beyond it.
+        ///
+        /// The first version of this was opaque everywhere outside the lens, which blacked out the
+        /// entire screen and made the picture-in-picture pointless - the whole reason for a second
+        /// camera is that the world around the tube carries on being the world. It is a rim now: hard
+        /// black for the thickness of the ocular housing, then gone.
         /// </summary>
-        int _surroundWidth, _surroundHeight;
+        int _surroundSize;
 
         void EnsureSurround()
         {
-            int width = 256;
-            int height = 256;
-            if (_surround != null && _surroundWidth == width && _surroundHeight == height) return;
-
-            _surroundWidth = width;
-            _surroundHeight = height;
+            const int size = 512;
+            if (_surround != null && _surroundSize == size) return;
+            _surroundSize = size;
             if (_surround != null) Object.Destroy(_surround);
 
-            _surround = new Texture2D(width, height, TextureFormat.RGBA32, false);
+            _surround = new Texture2D(size, size, TextureFormat.RGBA32, false);
             _surround.wrapMode = TextureWrapMode.Clamp;
             _surround.filterMode = FilterMode.Bilinear;
 
-            // The hole has to line up with the circle the picture is drawn in, and that circle is
-            // 0.66 of the SMALLER screen dimension - so in a texture stretched over the whole screen
-            // the hole is an ellipse. Working in normalised screen space and letting the stretch do
-            // the rest keeps this correct at any aspect ratio without regenerating anything.
-            float aspect = Mathf.Max(0.2f, (float)Screen.width / Mathf.Max(1, Screen.height));
-            float radiusY = 0.33f;
-            float radiusX = aspect >= 1f ? radiusY / aspect : radiusY;
-            if (aspect < 1f) radiusY = radiusX * aspect;
-
-            for (int py = 0; py < height; py++)
+            // Drawn into a square the size of the lens times RimSpan, so the ring has room to live
+            // outside the glass without the texture having to know the shape of the window.
+            for (int py = 0; py < size; py++)
             {
-                float ny = py / (float)(height - 1) - 0.5f;
-                for (int px = 0; px < width; px++)
+                float ny = py / (float)(size - 1) * 2f - 1f;
+                for (int px = 0; px < size; px++)
                 {
-                    float nx = px / (float)(width - 1) - 0.5f;
-                    float d = Mathf.Sqrt((nx / radiusX) * (nx / radiusX) + (ny / radiusY) * (ny / radiusY));
-                    // Hard inside, hard outside, one texel of softness on the rim so it is not jagged.
-                    float alpha = Mathf.Clamp01((d - 0.985f) / 0.03f);
-                    _surround.SetPixel(px, py, new Color(0.02f, 0.02f, 0.025f, alpha));
+                    float nx = px / (float)(size - 1) * 2f - 1f;
+                    float d = Mathf.Sqrt(nx * nx + ny * ny) * RimSpan;
+
+                    float alpha;
+                    Color colour;
+                    if (d < 0.995f)
+                    {
+                        // Inside the glass: nothing at all.
+                        alpha = 0f;
+                        colour = new Color(0f, 0f, 0f, 0f);
+                    }
+                    else if (d < 1.055f)
+                    {
+                        // The very edge of the lens, where the coating catches. A thin bright line is
+                        // what makes it read as glass sitting in metal rather than a hole in a wall.
+                        float k = Mathf.InverseLerp(0.995f, 1.055f, d);
+                        alpha = 1f;
+                        colour = Color.Lerp(new Color(0.55f, 0.72f, 0.85f), new Color(0.10f, 0.11f, 0.13f), k);
+                    }
+                    else if (d < 1.46f)
+                    {
+                        // The housing. It has to reach past root two - the corner of the square render
+                        // texture - or the corners of the picture show outside the ring.
+                        float k = Mathf.InverseLerp(1.055f, 1.46f, d);
+                        alpha = 1f;
+                        colour = Color.Lerp(new Color(0.10f, 0.11f, 0.13f), new Color(0.045f, 0.05f, 0.06f), k);
+                    }
+                    else
+                    {
+                        // Beyond the housing the world shows through, with a short soft edge so the
+                        // ring does not have a hard sawn-off outline.
+                        alpha = Mathf.Clamp01(1f - (d - 1.46f) / 0.22f);
+                        colour = new Color(0.045f, 0.05f, 0.06f);
+                    }
+
+                    _surround.SetPixel(px, py, new Color(colour.r, colour.g, colour.b, alpha));
                 }
             }
             _surround.Apply();
@@ -359,29 +403,37 @@ namespace Satisfying.Game
         /// Everything is measured in fractions of the texture so it scales cleanly, and the lines are
         /// deliberately thin - a reticle you can hide a man behind is not one you can shoot with.
         /// </summary>
+        /// <summary>
+        /// A clean illuminated reticle: a thin dark cross for the etched glass, and a red holographic
+        /// centre sitting on top of it - a small chevron under a floating dot, with a soft bloom round
+        /// both. Two textures rather than one, because the etched part and the lit part are drawn in
+        /// different colours and the lit part has to glow.
+        ///
+        /// Everything is measured in fractions of the texture so it scales cleanly, and the etched
+        /// lines are hairline on purpose. A reticle you can hide a man behind is not one you can
+        /// shoot with, which is what the last one did.
+        /// </summary>
         void EnsureReticle()
         {
             if (_reticle != null) return;
 
             const int size = 512;
-            _reticle = new Texture2D(size, size, TextureFormat.RGBA32, false);
-            _reticle.wrapMode = TextureWrapMode.Clamp;
-            _reticle.filterMode = FilterMode.Bilinear;
+            _reticle = Blank(size);
+            _glow = Blank(size);
 
-            Color[] pixels = new Color[size * size];
-            for (int i = 0; i < pixels.Length; i++) pixels[i] = new Color(0f, 0f, 0f, 0f);
+            Color[] etched = new Color[size * size];
+            Color[] lit = new Color[size * size];
+            for (int i = 0; i < etched.Length; i++)
+            {
+                etched[i] = new Color(0f, 0f, 0f, 0f);
+                lit[i] = new Color(0f, 0f, 0f, 0f);
+            }
 
             float centre = (size - 1) * 0.5f;
             float mil = size * 0.055f;
-
-            // Four plain stadia in from the edge, stopping well short of the middle. The previous one
-            // had a horseshoe, a floating dot, wind dots and a holdover tree all fighting each other
-            // in the same two centimetres of glass; you could not see a man behind it. What is left is
-            // what a precision reticle is actually made of: a cross you can find, a gap you can see
-            // through, and marks you can count.
-            float inner = mil * 1.15f;
+            float inner = mil * 1.5f;
             float outer = size * 0.455f;
-            float thin = size * 0.0026f;
+            float hair = size * 0.0022f;
 
             for (int py = 0; py < size; py++)
             {
@@ -391,38 +443,123 @@ namespace Satisfying.Game
                     float dy = py - centre;
                     float ax = Mathf.Abs(dx);
                     float ay = Mathf.Abs(dy);
-                    float alpha = 0f;
 
-                    // The stadia thicken towards the rim so the eye is led inwards.
-                    if (ax > inner && ax < outer && ay <= Taper(ax, size, thin)) alpha = 1f;
-                    if (ay > inner && ay < outer && ax <= Taper(ay, size, thin)) alpha = 1f;
-
-                    // One small dot in the middle, and nothing else anywhere near it.
-                    if (Mathf.Sqrt(dx * dx + dy * dy) <= size * 0.0042f) alpha = 1f;
-
-                    if (alpha > 0f) pixels[py * size + px] = new Color(0f, 0f, 0f, alpha);
+                    // Four stadia, hairline near the middle and heavier out at the rim.
+                    float thickness = Mathf.Lerp(hair, hair * 2.4f,
+                        Mathf.Clamp01((Mathf.Max(ax, ay) - size * 0.20f) / (size * 0.24f)));
+                    bool on = (ax > inner && ax < outer && ay <= thickness)
+                           || (ay > inner && ay < outer && ax <= thickness);
+                    if (on) etched[py * size + px] = new Color(0f, 0f, 0f, 0.85f);
                 }
             }
 
-            // Mil marks: below the centre for holdover and either side for wind, every mil, with a
-            // longer one every fifth. Ticks only - no dots, no tree.
+            // Mil ticks: holdover below, wind either side. Ticks only.
             for (int m = 1; m <= 8; m++)
             {
                 float offset = mil * m;
                 if (offset > outer - size * 0.01f) break;
-                float length = (m % 5 == 0) ? size * 0.022f : size * 0.011f;
-
-                Tick(pixels, size, centre, centre - offset, length, true);
+                float length = (m % 5 == 0) ? size * 0.020f : size * 0.010f;
+                Tick(etched, size, centre, centre - offset, length, true);
                 if (m <= 5)
                 {
-                    Tick(pixels, size, centre - offset, centre, length * 0.85f, false);
-                    Tick(pixels, size, centre + offset, centre, length * 0.85f, false);
+                    Tick(etched, size, centre - offset, centre, length * 0.85f, false);
+                    Tick(etched, size, centre + offset, centre, length * 0.85f, false);
                 }
             }
 
-            _reticle.SetPixels(pixels);
+            // ---- the lit part. A chevron pointing up at the aim point, with a dot floating in it.
+            float dotRadius = size * 0.0060f;
+            float chevronSpan = size * 0.028f;
+            float chevronDrop = size * 0.030f;
+            float chevronWidth = size * 0.0038f;
+
+            for (int py = 0; py < size; py++)
+            {
+                for (int px = 0; px < size; px++)
+                {
+                    float dx = px - centre;
+                    float dy = py - centre;
+
+                    float value = 0f;
+
+                    // The dot, dead on the aim point.
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    if (d <= dotRadius) value = 1f;
+
+                    // The chevron, hanging under it: two strokes meeting at the point.
+                    if (dy < -dotRadius * 1.6f && dy > -chevronDrop - chevronWidth)
+                    {
+                        float t = (-dy - dotRadius * 1.6f) / Mathf.Max(1f, chevronDrop - dotRadius * 1.6f);
+                        float armX = t * chevronSpan;
+                        if (Mathf.Abs(Mathf.Abs(dx) - armX) <= chevronWidth) value = Mathf.Max(value, 1f);
+                    }
+
+                    if (value > 0f) lit[py * size + px] = new Color(1f, 0.18f, 0.12f, value);
+                }
+            }
+
+            _reticle.SetPixels(etched);
             _reticle.Apply();
+
+            // The glow is the lit part blurred - a couple of box passes, which is all a bloom is.
+            Color[] bloom = Blur(lit, size, 3);
+            bloom = Blur(bloom, size, 6);
+            for (int i = 0; i < bloom.Length; i++)
+            {
+                float a = Mathf.Clamp01(bloom[i].a * 1.5f + lit[i].a);
+                bloom[i] = new Color(1f, 0.24f, 0.16f, a);
+            }
+            _glow.SetPixels(bloom);
+            _glow.Apply();
         }
+
+        static Texture2D Blank(int size)
+        {
+            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+            texture.wrapMode = TextureWrapMode.Clamp;
+            texture.filterMode = FilterMode.Bilinear;
+            return texture;
+        }
+
+        /// <summary>A separable box blur, run on the alpha. Two passes of this is a perfectly good bloom.</summary>
+        static Color[] Blur(Color[] source, int size, int radius)
+        {
+            Color[] pass = new Color[source.Length];
+            Color[] result = new Color[source.Length];
+            float weight = 1f / (radius * 2f + 1f);
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float sum = 0f;
+                    for (int k = -radius; k <= radius; k++)
+                    {
+                        int sx = Mathf.Clamp(x + k, 0, size - 1);
+                        sum += source[y * size + sx].a;
+                    }
+                    pass[y * size + x] = new Color(1f, 1f, 1f, sum * weight);
+                }
+            }
+
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float sum = 0f;
+                    for (int k = -radius; k <= radius; k++)
+                    {
+                        int sy = Mathf.Clamp(y + k, 0, size - 1);
+                        sum += pass[sy * size + x].a;
+                    }
+                    result[y * size + x] = new Color(1f, 1f, 1f, sum * weight);
+                }
+            }
+            return result;
+        }
+
+        Texture2D _glow;
+        public Texture2D Glow { get { EnsureTextures(); return _glow; } }
 
         /// <summary>Hairline in the middle of the glass, a little heavier out at the rim.</summary>
         static float Taper(float distance, int size, float thin)
