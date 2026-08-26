@@ -8,24 +8,36 @@ using UnityEngine.Networking;
 namespace Satisfying.Game
 {
     /// <summary>
-    /// Where avatars come from, and where they are kept once they have been got.
+    /// Where characters come from, and where they are kept once they have been got.
     ///
-    /// Ready Player Me serves an avatar as a GLB at a URL you get from its creator. There is no way to
-    /// embed that creator in a standalone build - it is a web application - so the flow is the one
-    /// every game using RPM outside a browser uses: the creator opens in your browser, you make a
-    /// character, RPM hands you a .glb link, and you paste it in. GlbLoader does the rest.
+    /// This used to be pointed at Ready Player Me. Ready Player Me shut down, which is the argument
+    /// against ever building a feature around one company's endpoint - so it is built around a FILE
+    /// FORMAT now, and any of them will do:
     ///
-    /// Everything is cached to disk on first fetch, keyed by URL, so a character is downloaded once
-    /// and then loads instantly and works offline afterwards. Local .glb files in the same folder are
-    /// picked up too, which is how you use an avatar you already have without going near the network.
+    ///   VRM     the successor of choice. It is glTF 2.0 with a humanoid bone map bolted on, made by
+    ///           the VRM Consortium as an open format rather than a product. VRoid Studio makes them
+    ///           for free, VRoid Hub and Booth are full of free ones, and nobody can turn it off.
+    ///   GLB     any rigged humanoid: Mixamo, Blender, an old Ready Player Me file you still have.
+    ///
+    /// The difference that matters is that a VRM SAYS which bone is its left upper arm, in a table
+    /// the author filled in, while a plain GLB leaves it to be guessed from node names. Both work;
+    /// the first is right by construction.
+    ///
+    /// Everything is cached to disk on first fetch, keyed by name, so a character is downloaded once
+    /// and then loads instantly and works offline afterwards. Files dropped into the same folder by
+    /// hand are picked up as well, which is how you use a character you already have without going
+    /// near the network at all.
     /// </summary>
     public sealed class AvatarLibrary
     {
-        /// <summary>The RPM creator. Opened in the player's browser by the character panel.</summary>
-        public const string CreatorUrl = "https://readyplayer.me/avatar?frameApi";
+        /// <summary>
+        /// A free character creator, opened in the player's browser by the character panel. VRoid
+        /// Studio is a desktop application, free, and exports VRM - which is what the loader wants.
+        /// </summary>
+        public const string CreatorUrl = "https://vroid.com/en/studio";
 
-        /// <summary>What a finished avatar URL looks like, for the panel to check against.</summary>
-        public const string ModelHost = "models.readyplayer.me";
+        /// <summary>A library of free ready-made characters, for anyone who does not want to make one.</summary>
+        public const string LibraryUrl = "https://hub.vroid.com/en/characters";
 
         public sealed class Entry
         {
@@ -57,8 +69,11 @@ namespace Satisfying.Game
             List<string> found = new List<string>();
             try
             {
-                string[] files = Directory.GetFiles(CacheDirectory, "*.glb");
-                for (int i = 0; i < files.Length; i++) found.Add(files[i]);
+                // Both extensions: a VRM is a GLB with a bone table in it, and the loader reads either.
+                string[] glb = Directory.GetFiles(CacheDirectory, "*.glb");
+                for (int i = 0; i < glb.Length; i++) found.Add(glb[i]);
+                string[] vrm = Directory.GetFiles(CacheDirectory, "*.vrm");
+                for (int i = 0; i < vrm.Length; i++) found.Add(vrm[i]);
             }
             catch (Exception) { }
             return found;
@@ -114,12 +129,7 @@ namespace Satisfying.Game
 
                 if (bytes == null)
                 {
-                    // RPM lets the quality be asked for in the URL. A duellist is never closer than a
-                    // couple of metres and there can be six of them, so the low LOD with a single
-                    // atlas is the right trade - it is about a fifth of the download and looks the
-                    // same at the range anyone sees it.
-                    string url = WithQuality(source);
-                    using (UnityWebRequest request = UnityWebRequest.Get(url))
+                    using (UnityWebRequest request = UnityWebRequest.Get(source))
                     {
                         request.timeout = 30;
                         yield return request.SendWebRequest();
@@ -168,7 +178,19 @@ namespace Satisfying.Game
             // be driving the same skeleton.
             GlbModel model = new GlbModel();
             model.Root = copy;
+            model.Flavour = entry.Template.Flavour;
             Collect(copy.transform, model);
+
+            // And carry the DECLARED humanoid map across, by node name. Without this every copy fell
+            // back to guessing bones from names - which happens to work for VRoid and would quietly
+            // stop working for the first file whose author named things differently, which is the
+            // entire problem the map exists to solve.
+            foreach (KeyValuePair<string, Transform> kv in entry.Template.Humanoid)
+            {
+                if (kv.Value == null) continue;
+                Transform mine = model.Find(kv.Value.name);
+                if (mine != null) model.Humanoid[kv.Key] = mine;
+            }
             copy.GetComponentsInChildren(true, model.Skins);
 
             return new AvatarRig(model);
@@ -199,47 +221,34 @@ namespace Satisfying.Game
             int slash = name.LastIndexOfAny(new[] { '/', '\\' });
             if (slash >= 0 && slash + 1 < name.Length) name = name.Substring(slash + 1);
 
-            if (name.EndsWith(".glb", StringComparison.OrdinalIgnoreCase))
+            if (name.EndsWith(".glb", StringComparison.OrdinalIgnoreCase) ||
+                name.EndsWith(".vrm", StringComparison.OrdinalIgnoreCase))
                 name = name.Substring(0, name.Length - 4);
             return name.Length == 0 ? "avatar" : name;
         }
 
         static string CachePathFor(string url)
         {
-            return Path.Combine(CacheDirectory, NameOf(url) + ".glb");
-        }
-
-        static string WithQuality(string url)
-        {
-            if (url.IndexOf("meshLod", StringComparison.OrdinalIgnoreCase) >= 0) return url;
-            string join = url.IndexOf('?') >= 0 ? "&" : "?";
-            return url + join + "meshLod=1&textureAtlas=1024&textureSizeLimit=1024&morphTargets=none";
+            bool vrm = url.IndexOf(".vrm", StringComparison.OrdinalIgnoreCase) >= 0;
+            return Path.Combine(CacheDirectory, NameOf(url) + (vrm ? ".vrm" : ".glb"));
         }
 
         /// <summary>
-        /// Turns whatever someone pasted into a .glb URL. RPM hands out several shapes of link - the
-        /// model URL, the viewer URL, and a bare id - and asking a player to know the difference is
-        /// asking them to fail.
+        /// Turns whatever someone pasted into something loadable: a direct link to a .vrm or .glb, or
+        /// a path to one on disk. Anything else is refused with a straight answer rather than being
+        /// downloaded and found to be a web page.
         /// </summary>
         public static string Normalise(string pasted)
         {
             if (string.IsNullOrEmpty(pasted)) return null;
-            string text = pasted.Trim();
+            string text = pasted.Trim().Trim('"');
 
             if (File.Exists(text)) return text;
 
-            if (text.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            {
-                if (text.IndexOf(".glb", StringComparison.OrdinalIgnoreCase) >= 0) return text;
-                // A viewer link: the id is the last path segment.
-                string id = NameOf(text);
-                return "https://" + ModelHost + "/" + id + ".glb";
-            }
+            bool model = text.IndexOf(".vrm", StringComparison.OrdinalIgnoreCase) >= 0
+                      || text.IndexOf(".glb", StringComparison.OrdinalIgnoreCase) >= 0;
 
-            // A bare avatar id.
-            if (text.Length >= 20 && text.IndexOf(' ') < 0)
-                return "https://" + ModelHost + "/" + text + ".glb";
-
+            if (text.StartsWith("http", StringComparison.OrdinalIgnoreCase) && model) return text;
             return null;
         }
     }

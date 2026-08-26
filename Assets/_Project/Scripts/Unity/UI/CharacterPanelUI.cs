@@ -4,22 +4,20 @@ using UnityEngine;
 namespace Satisfying.Game
 {
     /// <summary>
-    /// The character creator.
+    /// The character panel.
     ///
-    /// Ready Player Me's creator is a web application, and there is no browser inside a standalone
-    /// Unity build to put it in - so this does the only thing that actually works outside one, and
-    /// does it in as few steps as it can be done in:
+    /// It used to be built around Ready Player Me, which has since shut down - so it is built around
+    /// a file format instead. VRM is glTF with a humanoid bone table in it, made by a consortium
+    /// rather than a company; VRoid Studio makes them for free, VRoid Hub is full of free ones, and
+    /// no API key is involved at any point. Plain rigged .glb works too, from Mixamo or Blender or
+    /// anywhere else.
     ///
-    ///   1. OPEN CREATOR   launches readyplayer.me in the player's own browser
-    ///   2. paste the link it gives you back into the field here
-    ///   3. USE THIS ONE   downloads it, loads it, and remembers it
+    ///   MAKE ONE        opens VRoid Studio's page in the browser
+    ///   BROWSE FREE     opens VRoid Hub, for anyone who would rather download than model
+    ///   paste a link    to a .vrm or .glb, or a path to one on this machine
     ///
-    /// Anything already downloaded is listed underneath and is one click to switch back to, and any
-    /// .glb dropped into the avatars folder by hand shows up in the same list - so an avatar you
-    /// already have never needs the network at all.
-    ///
-    /// The paste box takes whatever RPM hands over: a .glb link, a viewer link, or a bare avatar id.
-    /// Asking a player to know the difference between those is asking them to fail.
+    /// Anything loaded is kept on disk and listed underneath, and files dropped into the folder by
+    /// hand appear in the same list - so a character you already have never touches the network.
     /// </summary>
     public sealed class CharacterPanelUI
     {
@@ -43,36 +41,42 @@ namespace Satisfying.Game
         {
             GUILayout.BeginArea(rect, Skin.Panel);
             GUILayout.Label("CHARACTER", Skin.Header);
-            GUILayout.Label("Your avatar is a Ready Player Me character. Pick one and everyone wears it; " +
-                            "pick none and every player and bot is dealt one of the characters you have. " +
-                            "Everyone is the same size to shoot at either way - the hitbox comes from the " +
-                            "game, not the model, and F5 draws it over anyone so you can see that.",
-                            Skin.SmallDim);
+            GUILayout.Label("Characters are VRM or glTF files - the open formats, not a service. Pick one " +
+                            "and everyone wears it; pick none and every player and bot is dealt one of the " +
+                            "characters you have. Everyone is the same size to shoot at either way: the " +
+                            "hitbox comes from the game, not the model, and F5 draws it over anyone so you " +
+                            "can see that for yourself.", Skin.SmallDim);
 
             GUILayout.Space(10f);
 
             // ---- step one
-            GUILayout.Label("1.  MAKE ONE", Skin.Label);
-            if (GUILayout.Button("open the Ready Player Me creator", Skin.ButtonPrimary))
+            GUILayout.Label("1.  GET A CHARACTER", Skin.Label);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("make one (VRoid Studio)", Skin.ButtonPrimary))
             {
                 Application.OpenURL(AvatarLibrary.CreatorUrl);
-                _status = "the creator has opened in your browser - copy the link it gives you at the end";
+                _status = "VRoid Studio is free. Make a character, export it as .vrm, then load the file below.";
             }
-            GUILayout.Label("It opens in your browser. Build a character, and at the end it hands you a link.",
-                            Skin.SmallDim);
+            if (GUILayout.Button("browse free ones (VRoid Hub)", Skin.Button))
+            {
+                Application.OpenURL(AvatarLibrary.LibraryUrl);
+                _status = "download any .vrm you like, then load the file below.";
+            }
+            GUILayout.EndHorizontal();
+            GUILayout.Label("Both open in your browser. A .vrm is best - it tells the game which bone is " +
+                            "which - but any rigged .glb works.", Skin.SmallDim);
 
             GUILayout.Space(10f);
 
             // ---- step two
-            GUILayout.Label("2.  PASTE THE LINK", Skin.Label);
+            GUILayout.Label("2.  LOAD IT", Skin.Label);
             GUILayout.BeginHorizontal();
             _pasted = GUILayout.TextField(_pasted, 200, Skin.TextField);
             if (GUILayout.Button("use this one", Skin.Button, GUILayout.Width(120f)) && !_busy) Use(_pasted);
             GUILayout.EndHorizontal();
-            GUILayout.Label("A .glb link, a readyplayer.me link, or just the avatar id - any of them. " +
-                            "Paste as many as you like, one after another: each is downloaded and kept. " +
-                            "Do ten, then press the button at the bottom, and every player and bot gets " +
-                            "dealt one of them.", Skin.SmallDim);
+            GUILayout.Label("A link to a .vrm or .glb, or the path to one on this machine. Load as many " +
+                            "as you like, one after another - each is kept. Do ten, press the button at " +
+                            "the bottom, and every player and bot is dealt one of them.", Skin.SmallDim);
 
             if (_status.Length > 0)
             {
@@ -88,8 +92,8 @@ namespace Satisfying.Game
 
             if (_cached.Count == 0)
             {
-                GUILayout.Label("Nothing downloaded yet. Anything you use is kept, and works offline " +
-                                "afterwards. You can also drop .glb files straight into:", Skin.SmallDim);
+                GUILayout.Label("Nothing here yet. Anything you load is kept and works offline afterwards. " +
+                                "You can also drop .vrm or .glb files straight into:", Skin.SmallDim);
                 GUILayout.Label(AvatarLibrary.CacheDirectory, Skin.SmallDim);
             }
             else
@@ -133,7 +137,7 @@ namespace Satisfying.Game
             string source = AvatarLibrary.Normalise(pasted);
             if (source == null)
             {
-                _status = "that does not look like an avatar link or an id";
+                _status = "that is not a .vrm or .glb link, and there is no file there either";
                 return;
             }
 

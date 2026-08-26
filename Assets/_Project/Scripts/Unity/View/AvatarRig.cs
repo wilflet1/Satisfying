@@ -4,7 +4,7 @@ using Satisfying.Shared;
 namespace Satisfying.Game
 {
     /// <summary>
-    /// A Ready Player Me avatar, posed from BodyPose.
+    /// An imported character - VRM or glTF - posed from BodyPose.
     ///
     /// THE RULE THIS EXISTS TO ENFORCE: the hitbox does not come from the avatar. Everybody in the
     /// match is the same fifteen capsules, laid over the same skeleton, whatever character they chose
@@ -22,7 +22,9 @@ namespace Satisfying.Game
     /// ones has hands inside its chest, and in both cases the model disagrees with the hitbox - which
     /// is the exact failure this project has a README rule about.
     ///
-    /// RPM avatars use Mixamo bone names, which is why the table below reads like one.
+    /// Bones are found from the file's DECLARED humanoid map where there is one (VRM has it), and
+    /// from node names where there is not. The declared map is right by construction; names are a
+    /// guess about what an exporter happened to call things, and exporters disagree.
     /// </summary>
     public sealed class AvatarRig
     {
@@ -52,33 +54,46 @@ namespace Satisfying.Game
             _model = model;
             if (model == null) return;
 
-            _hips = First(model, "Hips", "mixamorig:Hips", "Armature_Hips");
-            _spine = First(model, "Spine", "mixamorig:Spine");
-            _chest = First(model, "Spine2", "Spine1", "mixamorig:Spine2");
-            _neck = First(model, "Neck", "mixamorig:Neck");
-            _head = First(model, "Head", "mixamorig:Head");
+            // The DECLARED map first, then names. A file that says which bone is its left upper arm
+            // is telling the truth; a file where we matched "LeftArm" is telling us what its exporter
+            // happened to call things, and exporters disagree.
+            _hips = Bone(model, "hips", "Hips", "mixamorig:Hips", "Armature_Hips", "J_Bip_C_Hips");
+            _spine = Bone(model, "spine", "Spine", "mixamorig:Spine", "J_Bip_C_Spine");
+            _chest = Bone(model, "upperChest", "Spine2", "Spine1", "mixamorig:Spine2", "J_Bip_C_UpperChest");
+            if (_chest == null) _chest = Bone(model, "chest", "Spine1", "J_Bip_C_Chest");
+            _neck = Bone(model, "neck", "Neck", "mixamorig:Neck", "J_Bip_C_Neck");
+            _head = Bone(model, "head", "Head", "mixamorig:Head", "J_Bip_C_Head");
 
-            _leftShoulder = First(model, "LeftShoulder", "mixamorig:LeftShoulder");
-            _leftArm = First(model, "LeftArm", "mixamorig:LeftArm");
-            _leftForearm = First(model, "LeftForeArm", "mixamorig:LeftForeArm");
-            _leftHand = First(model, "LeftHand", "mixamorig:LeftHand");
+            _leftShoulder = Bone(model, "leftShoulder", "LeftShoulder", "mixamorig:LeftShoulder", "J_Bip_L_Shoulder");
+            _leftArm = Bone(model, "leftUpperArm", "LeftArm", "mixamorig:LeftArm", "J_Bip_L_UpperArm");
+            _leftForearm = Bone(model, "leftLowerArm", "LeftForeArm", "mixamorig:LeftForeArm", "J_Bip_L_LowerArm");
+            _leftHand = Bone(model, "leftHand", "LeftHand", "mixamorig:LeftHand", "J_Bip_L_Hand");
 
-            _rightShoulder = First(model, "RightShoulder", "mixamorig:RightShoulder");
-            _rightArm = First(model, "RightArm", "mixamorig:RightArm");
-            _rightForearm = First(model, "RightForeArm", "mixamorig:RightForeArm");
-            _rightHand = First(model, "RightHand", "mixamorig:RightHand");
+            _rightShoulder = Bone(model, "rightShoulder", "RightShoulder", "mixamorig:RightShoulder", "J_Bip_R_Shoulder");
+            _rightArm = Bone(model, "rightUpperArm", "RightArm", "mixamorig:RightArm", "J_Bip_R_UpperArm");
+            _rightForearm = Bone(model, "rightLowerArm", "RightForeArm", "mixamorig:RightForeArm", "J_Bip_R_LowerArm");
+            _rightHand = Bone(model, "rightHand", "RightHand", "mixamorig:RightHand", "J_Bip_R_Hand");
 
-            _leftThigh = First(model, "LeftUpLeg", "mixamorig:LeftUpLeg");
-            _leftShin = First(model, "LeftLeg", "mixamorig:LeftLeg");
-            _leftFoot = First(model, "LeftFoot", "mixamorig:LeftFoot");
+            _leftThigh = Bone(model, "leftUpperLeg", "LeftUpLeg", "mixamorig:LeftUpLeg", "J_Bip_L_UpperLeg");
+            _leftShin = Bone(model, "leftLowerLeg", "LeftLeg", "mixamorig:LeftLeg", "J_Bip_L_LowerLeg");
+            _leftFoot = Bone(model, "leftFoot", "LeftFoot", "mixamorig:LeftFoot", "J_Bip_L_Foot");
 
-            _rightThigh = First(model, "RightUpLeg", "mixamorig:RightUpLeg");
-            _rightShin = First(model, "RightLeg", "mixamorig:RightLeg");
-            _rightFoot = First(model, "RightFoot", "mixamorig:RightFoot");
+            _rightThigh = Bone(model, "rightUpperLeg", "RightUpLeg", "mixamorig:RightUpLeg", "J_Bip_R_UpperLeg");
+            _rightShin = Bone(model, "rightLowerLeg", "RightLeg", "mixamorig:RightLeg", "J_Bip_R_LowerLeg");
+            _rightFoot = Bone(model, "rightFoot", "RightFoot", "mixamorig:RightFoot", "J_Bip_R_Foot");
         }
 
-        static Transform First(GlbModel model, params string[] names)
+        /// <summary>
+        /// One bone. The first argument is its STANDARD humanoid name, looked up in whatever map the
+        /// file declared; the rest are node names to fall back on when there is no map - Mixamo and
+        /// Mixamo style first, then VRoid's J_Bip naming.
+        /// </summary>
+        static Transform Bone(GlbModel model, string standard, params string[] names)
         {
+            Transform declared;
+            if (standard != null && model.Humanoid.TryGetValue(standard, out declared) && declared != null)
+                return declared;
+
             for (int i = 0; i < names.Length; i++)
             {
                 Transform found = model.Find(names[i]);

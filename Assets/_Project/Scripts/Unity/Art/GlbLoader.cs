@@ -13,6 +13,19 @@ namespace Satisfying.Game
         public readonly List<SkinnedMeshRenderer> Skins = new List<SkinnedMeshRenderer>();
         public readonly Dictionary<string, Transform> Bones = new Dictionary<string, Transform>();
 
+        /// <summary>
+        /// The standard humanoid bones, when the file says which is which.
+        ///
+        /// VRM carries an explicit map from standard names - hips, chest, head, leftUpperArm - to node
+        /// indices, which is enormously better than guessing from names: it is authored by whoever
+        /// made the avatar and it is right by definition. Empty for a plain glTF, where guessing is
+        /// all there is.
+        /// </summary>
+        public readonly Dictionary<string, Transform> Humanoid = new Dictionary<string, Transform>();
+
+        /// <summary>Where the humanoid map came from, for the panel to say so.</summary>
+        public string Flavour = "glTF";
+
         /// <summary>Bone lookup that ignores case and any prefix an exporter has bolted on.</summary>
         public Transform Find(string name)
         {
@@ -31,8 +44,9 @@ namespace Satisfying.Game
     }
 
     /// <summary>
-    /// A runtime loader for binary glTF, written for one job: getting a Ready Player Me avatar into
-    /// the game without adding an asset pipeline to a project that deliberately has none.
+    /// A runtime loader for binary glTF - and therefore for VRM, which is glTF with a humanoid bone
+    /// table in it. It exists to get a character into the game without adding an asset pipeline to a
+    /// project that deliberately has none.
     ///
     /// Unity has no glTF support of its own and the usual answer is a third-party package. That was
     /// not an option here - the whole premise of the repository is clone it and press play, with no
@@ -47,7 +61,8 @@ namespace Satisfying.Game
     ///   - PNG and JPEG images embedded in the BIN chunk
     ///
     /// It does not do animations, morph targets, sparse accessors, draco compression or external
-    /// buffers, and it says so rather than failing quietly - none of those appear in an RPM avatar.
+    /// buffers. It says so rather than failing quietly, and it only REFUSES the three that change how
+    /// the geometry is decoded - the rest describe things it is entitled to ignore.
     ///
     /// COORDINATE SYSTEMS. glTF is right handed with +Y up and +Z towards the viewer; Unity is left
     /// handed with +Z forward. The conversion is to negate Z on positions and normals and to negate
@@ -99,12 +114,20 @@ namespace Satisfying.Game
             try { root = Json.Parse(json); }
             catch (Exception e) { error = "malformed glTF JSON: " + e.Message; return null; }
 
+            // Only refuse the extensions that change how the GEOMETRY is decoded. Everything else -
+            // VRM's humanoid map, lighting extensions, material variants - describes things this
+            // loader is entitled to ignore, and refusing them all would have rejected every VRM file
+            // on the grounds that it also happens to contain a bone table.
             object extensions = Json.Member(root, "extensionsRequired");
             for (int i = 0; i < Json.Count(extensions); i++)
             {
                 string required = Json.String(Json.At(extensions, i));
                 if (required == null) continue;
-                error = "needs the " + required + " extension, which this loader does not implement";
+                if (required != "KHR_draco_mesh_compression" &&
+                    required != "KHR_mesh_quantization" &&
+                    required != "EXT_meshopt_compression") continue;
+
+                error = "the mesh is compressed with " + required + ", which this loader cannot decode";
                 return null;
             }
 
@@ -140,8 +163,52 @@ namespace Satisfying.Game
             BuildNodes(c);
             BuildScene(c);
             BuildMeshes(c);
+            LoadHumanoid(c);
 
             return c.Model;
+        }
+
+        /// <summary>
+        /// VRM's humanoid bone table, in either of the two shapes it has shipped in.
+        ///
+        /// VRM 0.x puts it under extensions.VRM.humanoid.humanBones as a LIST of {bone, node}. VRM 1.0
+        /// moved it to extensions.VRMC_vrm.humanoid.humanBones as an OBJECT keyed by bone name whose
+        /// values are {node}. Both are read, because both are in the wild and a file that loads its
+        /// mesh and then cannot be posed is not much use.
+        /// </summary>
+        static void LoadHumanoid(Context c)
+        {
+            object extensions = Json.Member(c.Root, "extensions");
+            if (extensions == null) return;
+
+            // ---- VRM 1.0
+            object modern = Json.Member(Json.Member(Json.Member(extensions, "VRMC_vrm"), "humanoid"), "humanBones");
+            Dictionary<string, object> modernMap = Json.Object(modern);
+            if (modernMap != null)
+            {
+                c.Model.Flavour = "VRM 1.0";
+                foreach (KeyValuePair<string, object> kv in modernMap)
+                {
+                    int node = Json.MemberInt(kv.Value, "node", -1);
+                    if (node >= 0 && node < c.Nodes.Length) c.Model.Humanoid[kv.Key] = c.Nodes[node];
+                }
+                return;
+            }
+
+            // ---- VRM 0.x
+            object legacy = Json.Member(Json.Member(Json.Member(extensions, "VRM"), "humanoid"), "humanBones");
+            int count = Json.Count(legacy);
+            if (count == 0) return;
+
+            c.Model.Flavour = "VRM 0.x";
+            for (int i = 0; i < count; i++)
+            {
+                object entry = Json.At(legacy, i);
+                string bone = Json.MemberString(entry, "bone", null);
+                int node = Json.MemberInt(entry, "node", -1);
+                if (bone == null || node < 0 || node >= c.Nodes.Length) continue;
+                c.Model.Humanoid[bone] = c.Nodes[node];
+            }
         }
 
         static void LoadTextures(Context c)

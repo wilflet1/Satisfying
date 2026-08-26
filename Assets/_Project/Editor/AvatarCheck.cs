@@ -109,6 +109,10 @@ namespace Satisfying.Game
             report.AppendLine("  vertices    " + vertices);
             report.AppendLine("  triangles   " + triangles);
             report.AppendLine("  bones       " + model.Bones.Count);
+            report.AppendLine("  format      " + model.Flavour
+                              + (model.Humanoid.Count > 0
+                                 ? "  (declared humanoid map, " + model.Humanoid.Count + " bones)"
+                                 : "  (no humanoid map - bones matched by name)"));
 
             AvatarRig rig = new AvatarRig(model);
             string missing = rig.Missing();

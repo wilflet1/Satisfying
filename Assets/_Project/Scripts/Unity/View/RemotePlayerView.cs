@@ -33,7 +33,7 @@ namespace Satisfying.Game
         readonly bool _firstPerson;
 
         /// <summary>
-        /// The Ready Player Me character, when there is one. The blockout duellist stays built either
+        /// The imported character, when there is one. The blockout duellist stays built either
         /// way and is simply hidden - it is the fallback for an avatar that fails to load, and the
         /// weapon still hangs off its skeleton because the gun is not part of the avatar.
         /// </summary>
