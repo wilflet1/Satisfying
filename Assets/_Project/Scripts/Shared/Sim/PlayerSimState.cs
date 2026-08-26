@@ -183,7 +183,7 @@ namespace Satisfying.Shared
         public bool HoldingGrenade { get { return Carry != GrenadeCarry.Stowed; } }
 
         /// <summary>Pin is out. Dying like this drops a live one at your feet.</summary>
-        public bool PinPulled { get { return Carry == GrenadeCarry.Ready || Carry == GrenadeCarry.Throwing; } }
+        public bool PinPulled { get { return Carry == GrenadeCarry.Primed; } }
     }
 
     /// <summary>One-frame outputs from a simulation step, used for effects and for server-side shot handling.</summary>
@@ -208,6 +208,7 @@ namespace Satisfying.Shared
         public uint FirstShotIndex;
 
         public bool GrenadeDrawStarted;
+        public bool GrenadeInHand;
         public bool GrenadePinPulled;
         public bool GrenadeReleased;
         public bool GrenadeHard;

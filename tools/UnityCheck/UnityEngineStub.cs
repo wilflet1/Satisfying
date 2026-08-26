@@ -66,6 +66,7 @@ namespace UnityEngine
         public static Vector3 Normalize(Vector3 v) { return v.normalized; }
         public void Normalize() { }
         public static Vector3 Slerp(Vector3 a, Vector3 b, float t) { return b; }
+        public static Vector3 ClampMagnitude(Vector3 v, float max) { return v; }
         public static float Angle(Vector3 a, Vector3 b) { return 0f; }
         public override string ToString() { return "(" + x + ", " + y + ", " + z + ")"; }
     }
@@ -258,6 +259,9 @@ namespace UnityEngine
         public int childCount { get { return 0; } }
         public Transform GetChild(int index) { return null; }
         public Transform Find(string name) { return null; }
+        // Transform's enumerator walks its children. It is an old non-generic IEnumerator in the real
+        // engine, which is why foreach over one needs a cast; the stub matches so the same code compiles.
+        public System.Collections.IEnumerator GetEnumerator() { return new Transform[0].GetEnumerator(); }
         public void SetParent(Transform parent) { }
         public void SetParent(Transform parent, bool worldPositionStays) { }
         public bool IsChildOf(Transform parent) { return false; }

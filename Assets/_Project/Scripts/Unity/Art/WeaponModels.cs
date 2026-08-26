@@ -111,7 +111,7 @@ namespace Satisfying.Game
             {
                 case 1: return "MP5";
                 case 2: return "USP45";
-                case 3: return "M700";
+                case 3: return "M20 AMR";
                 default: return "M4A1";
             }
         }
@@ -510,60 +510,101 @@ namespace Satisfying.Game
         /// The bolt handle sticks out to the right and cycles on every shot, which is the read that
         /// tells you at a glance this is not something you can hold a trigger down on.
         /// </summary>
+        /// <summary>
+        /// A 20 mm anti-materiel rifle. Not a hunting rifle with a scope on it - a metre and a half of
+        /// machined slab with a muzzle brake the size of a fist, a bipod, a monopod under the butt, and
+        /// a bolt handle you could hang a coat on.
+        ///
+        /// It is deliberately enormous. The whole read of the weapon is "this is not a thing you take
+        /// a snap shot with", and the silhouette has to say that before the spread numbers get a
+        /// chance to. Held low and out to the side at the hip because there is nowhere else for it.
+        /// </summary>
         static WeaponModel BuildSniper(Transform parent, Palette palette, int layer)
         {
             WeaponModel m = new WeaponModel();
-            m.Root = Blockout.Group(parent, "M700", Vector3.zero, layer);
+            m.Root = Blockout.Group(parent, "M20 AMR", Vector3.zero, layer);
             Transform t = m.Root.transform;
 
-            Piece(t, "receiver", new Vector3(0f, 0.014f, 0.03f), new Vector3(0.048f, 0.060f, 0.30f), palette.Gun, layer);
-            Piece(t, "top rail", new Vector3(0f, 0.050f, 0.03f), new Vector3(0.038f, 0.014f, 0.28f), palette.GunDark, layer);
-            Tube(t, "barrel", new Vector3(0f, 0.010f, 0.44f), new Vector3(0.030f, 0.030f, 0.52f), palette.Metal, layer);
-            Tube(t, "muzzle brake", new Vector3(0f, 0.010f, 0.725f), new Vector3(0.042f, 0.042f, 0.075f), palette.GunDark, layer);
+            // ---- the spine: a long flat chassis the whole thing hangs off.
+            Piece(t, "chassis", new Vector3(0f, -0.010f, 0.14f), new Vector3(0.062f, 0.052f, 1.02f), palette.Gun, layer);
+            Piece(t, "receiver", new Vector3(0f, 0.034f, -0.02f), new Vector3(0.070f, 0.098f, 0.46f), palette.Gun, layer);
+            Piece(t, "top rail", new Vector3(0f, 0.088f, 0.02f), new Vector3(0.048f, 0.020f, 0.60f), palette.GunDark, layer);
+            RailSlots(t, palette, layer, 0.100f, -0.22f, 0.28f, 0.052f, 9);
 
-            // A laminated stock: a wide fore-end you can rest on anything, and a cheek piece.
-            Piece(t, "fore end", new Vector3(0f, -0.030f, 0.26f), new Vector3(0.062f, 0.058f, 0.34f), palette.WallDark, layer);
-            Piece(t, "belly", new Vector3(0f, -0.052f, 0.05f), new Vector3(0.056f, 0.048f, 0.20f), palette.WallDark, layer);
-            Piece(t, "grip", new Vector3(0f, -0.108f, -0.075f), new Vector3(0.042f, 0.130f, 0.062f), palette.WallDark, layer, new Vector3(-14f, 0f, 0f));
-            Piece(t, "comb", new Vector3(0f, 0.012f, -0.215f), new Vector3(0.050f, 0.062f, 0.20f), palette.WallDark, layer);
-            Piece(t, "cheek piece", new Vector3(0f, 0.050f, -0.225f), new Vector3(0.044f, 0.026f, 0.150f), palette.WallDark, layer);
-            Piece(t, "butt pad", new Vector3(0f, -0.012f, -0.322f), new Vector3(0.054f, 0.115f, 0.030f), palette.GunDark, layer);
-            Piece(t, "bipod stud", new Vector3(0f, -0.058f, 0.40f), new Vector3(0.018f, 0.020f, 0.014f), palette.Metal, layer);
-            Piece(t, "sling loop", new Vector3(0f, -0.058f, 0.14f), new Vector3(0.024f, 0.024f, 0.010f), palette.Metal, layer);
+            // ---- the barrel. Heavy, fluted, and long enough that you notice it.
+            Tube(t, "barrel", new Vector3(0f, 0.002f, 0.72f), new Vector3(0.046f, 0.046f, 0.78f), palette.Metal, layer);
+            for (int i = 0; i < 5; i++)
+            {
+                float z = 0.50f + i * 0.10f;
+                Piece(t, "flute " + i, new Vector3(0.026f, 0.002f, z), new Vector3(0.008f, 0.030f, 0.062f), palette.GunDark, layer);
+                Piece(t, "flute b " + i, new Vector3(-0.026f, 0.002f, z), new Vector3(0.008f, 0.030f, 0.062f), palette.GunDark, layer);
+            }
 
-            Serrations(t, palette, layer, new Vector3(0f, -0.060f, 0.26f), new Vector3(0.058f, 0.006f, 0.014f), 0.052f, 5, true);
-            TriggerGroup(t, palette, layer, -0.044f, -0.020f);
+            // The brake: a slab with three ports a side. This is the bit people will recognise.
+            Piece(t, "brake body", new Vector3(0f, 0.002f, 1.16f), new Vector3(0.105f, 0.088f, 0.22f), palette.GunDark, layer);
+            for (int i = 0; i < 3; i++)
+            {
+                float z = 1.10f + i * 0.055f;
+                Piece(t, "port " + i, new Vector3(0.052f, 0.002f, z), new Vector3(0.020f, 0.052f, 0.026f), palette.Gun, layer);
+                Piece(t, "port b " + i, new Vector3(-0.052f, 0.002f, z), new Vector3(0.020f, 0.052f, 0.026f), palette.Gun, layer);
+            }
+            Tube(t, "muzzle ring", new Vector3(0f, 0.002f, 1.28f), new Vector3(0.078f, 0.078f, 0.05f), palette.Metal, layer);
 
-            // The bolt. Body along the receiver, handle out to the right and turned down.
-            GameObject bolt = Blockout.Group(t, "bolt", new Vector3(0f, 0.030f, -0.055f), layer);
-            Piece(bolt.transform, "body", Vector3.zero, new Vector3(0.024f, 0.024f, 0.090f), palette.Metal, layer);
-            Piece(bolt.transform, "handle", new Vector3(0.034f, -0.012f, -0.030f), new Vector3(0.052f, 0.016f, 0.016f), palette.Metal, layer);
-            Piece(bolt.transform, "knob", new Vector3(0.060f, -0.020f, -0.030f), new Vector3(0.022f, 0.022f, 0.022f), palette.GunDark, layer);
-            m.Bolt = bolt.transform;
-            m.BoltTravel = new Vector3(0f, 0f, -0.095f);
+            // ---- the back end: a skeleton stock, a cheek rest and a monopod.
+            Piece(t, "stock spine", new Vector3(0f, -0.006f, -0.38f), new Vector3(0.052f, 0.062f, 0.34f), palette.Gun, layer);
+            Piece(t, "cheek rest", new Vector3(0f, 0.062f, -0.40f), new Vector3(0.050f, 0.038f, 0.24f), palette.WallDark, layer);
+            Piece(t, "butt plate", new Vector3(0f, -0.020f, -0.565f), new Vector3(0.070f, 0.150f, 0.038f), palette.GunDark, layer);
+            Piece(t, "recoil pad", new Vector3(0f, -0.020f, -0.588f), new Vector3(0.074f, 0.156f, 0.020f), palette.WallDark, layer);
+            Piece(t, "monopod", new Vector3(0f, -0.116f, -0.50f), new Vector3(0.024f, 0.150f, 0.024f), palette.Metal, layer);
+            Piece(t, "monopod foot", new Vector3(0f, -0.190f, -0.50f), new Vector3(0.052f, 0.016f, 0.052f), palette.GunDark, layer);
 
-            // Internal box magazine: a floor plate rather than a stick.
-            GameObject magazine = Blockout.Group(t, "magazine", new Vector3(0f, -0.072f, 0.06f), layer);
-            Piece(magazine.transform, "floor plate", Vector3.zero, new Vector3(0.044f, 0.016f, 0.110f), palette.Metal, layer);
-            Piece(magazine.transform, "box", new Vector3(0f, -0.030f, 0f), new Vector3(0.038f, 0.048f, 0.096f), palette.GunDark, layer);
+            // ---- grip, trigger and the magazine, which on a 20 mm is a brick.
+            Piece(t, "grip", new Vector3(0f, -0.132f, -0.150f), new Vector3(0.048f, 0.165f, 0.070f), palette.WallDark, layer, new Vector3(-12f, 0f, 0f));
+            TriggerGroup(t, palette, layer, -0.058f, -0.095f, 1.15f);
+            Piece(t, "trigger guard", new Vector3(0f, -0.070f, -0.100f), new Vector3(0.040f, 0.052f, 0.024f), palette.GunDark, layer);
+
+            GameObject magazine = Blockout.Group(t, "magazine", new Vector3(0f, -0.150f, 0.03f), layer);
+            Piece(magazine.transform, "body", Vector3.zero, new Vector3(0.058f, 0.190f, 0.150f), palette.GunDark, layer);
+            Piece(magazine.transform, "floor plate", new Vector3(0f, -0.104f, 0f), new Vector3(0.064f, 0.020f, 0.158f), palette.Metal, layer);
             m.Magazine = magazine.transform;
-            m.MagazineEject = new Vector3(0f, -0.24f, 0.02f);
+            m.MagazineEject = new Vector3(0f, -0.34f, 0.02f);
 
-            // Irons exist as a backup and because a gun with no sight at all looks unfinished, but the
-            // scope is what it is for and what it starts on.
-            BuildIronSights(m, t, palette, layer, 0.070f, -0.070f, 0.560f, 0.026f);
-            BuildRedDot(m, t, palette, layer, 0.058f, 0.02f);
-            BuildHolo(m, t, palette, layer, 0.058f, 0.02f);
-            BuildScope(m, t, palette, layer, 0.058f, 0.045f, 0.34f);
+            // ---- the bipod, folded down under the fore end.
+            Piece(t, "bipod mount", new Vector3(0f, -0.048f, 0.56f), new Vector3(0.070f, 0.040f, 0.090f), palette.GunDark, layer);
+            Piece(t, "bipod leg left", new Vector3(-0.090f, -0.150f, 0.56f), new Vector3(0.020f, 0.230f, 0.020f), palette.Metal, layer, new Vector3(0f, 0f, 26f));
+            Piece(t, "bipod leg right", new Vector3(0.090f, -0.150f, 0.56f), new Vector3(0.020f, 0.230f, 0.020f), palette.Metal, layer, new Vector3(0f, 0f, -26f));
+            Piece(t, "bipod foot left", new Vector3(-0.128f, -0.262f, 0.56f), new Vector3(0.044f, 0.018f, 0.044f), palette.GunDark, layer);
+            Piece(t, "bipod foot right", new Vector3(0.128f, -0.262f, 0.56f), new Vector3(0.044f, 0.018f, 0.044f), palette.GunDark, layer);
+
+            // ---- the bolt: a fat handle out to the right that cycles a long way.
+            GameObject bolt = Blockout.Group(t, "bolt", new Vector3(0f, 0.040f, -0.10f), layer);
+            Piece(bolt.transform, "body", Vector3.zero, new Vector3(0.036f, 0.036f, 0.150f), palette.Metal, layer);
+            Piece(bolt.transform, "arm", new Vector3(0.052f, -0.014f, -0.052f), new Vector3(0.080f, 0.022f, 0.022f), palette.Metal, layer);
+            Piece(bolt.transform, "knob", new Vector3(0.100f, -0.028f, -0.052f), new Vector3(0.034f, 0.034f, 0.034f), palette.GunDark, layer);
+            m.Bolt = bolt.transform;
+            m.BoltTravel = new Vector3(0f, 0f, -0.150f);
+
+            Serrations(t, palette, layer, new Vector3(0.036f, -0.010f, 0.30f), new Vector3(0.008f, 0.036f, 0.018f), 0.070f, 5, true);
+            Serrations(t, palette, layer, new Vector3(-0.036f, -0.010f, 0.30f), new Vector3(0.008f, 0.036f, 0.018f), 0.070f, 5, true);
+            Piece(t, "carry handle", new Vector3(0f, 0.062f, 0.42f), new Vector3(0.030f, 0.030f, 0.130f), palette.GunDark, layer);
+
+            // Irons exist as a backup; the glass is what it is for and what it starts on.
+            BuildIronSights(m, t, palette, layer, 0.118f, -0.170f, 0.900f, 0.030f);
+            BuildRedDot(m, t, palette, layer, 0.100f, 0.02f);
+            BuildHolo(m, t, palette, layer, 0.100f, 0.02f);
+            BuildScope(m, t, palette, layer, 0.100f, 0.030f, 0.40f);
             m.SetSight((int)SightKind.Scope);
 
-            m.Muzzle = Anchor(t, "muzzle", new Vector3(0f, 0.010f, 0.775f), layer);
-            m.GripAnchor = Anchor(t, "grip anchor", new Vector3(0f, -0.088f, -0.066f), layer);
-            m.ForegripAnchor = Anchor(t, "foregrip anchor", new Vector3(0f, -0.038f, 0.37f), layer);
-            m.MagAnchor = Anchor(t, "mag anchor", new Vector3(0f, -0.17f, 0.06f), layer);
-            m.StockAnchor = Anchor(t, "stock", new Vector3(0f, -0.012f, -0.322f), layer);
-            m.HipOffset = new Vector3(0.175f, -0.165f, 0.24f);
-            m.SwayScale = 1.35f;
+            m.Muzzle = Anchor(t, "muzzle", new Vector3(0f, 0.002f, 1.32f), layer);
+            m.GripAnchor = Anchor(t, "grip anchor", new Vector3(0f, -0.108f, -0.140f), layer);
+            m.ForegripAnchor = Anchor(t, "foregrip anchor", new Vector3(0f, -0.050f, 0.34f), layer);
+            m.MagAnchor = Anchor(t, "mag anchor", new Vector3(0f, -0.24f, 0.03f), layer);
+            m.StockAnchor = Anchor(t, "stock", new Vector3(0f, -0.020f, -0.588f), layer);
+
+            // It does not tuck in anywhere. Held low, out to the side, and further forward than
+            // anything else in the game, because it is a metre and a half long.
+            m.HipOffset = new Vector3(0.215f, -0.235f, 0.20f);
+            m.SwayScale = 1.7f;
             m.HoldsOpenWhenEmpty = true;
             return m;
         }

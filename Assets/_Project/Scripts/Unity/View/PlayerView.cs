@@ -14,6 +14,10 @@ namespace Satisfying.Game
         public Camera WeaponCamera;
         public ConcussionBlur Blur;
 
+        /// <summary>The grenade in your own hands, drawn on the viewmodel layer like the gun.</summary>
+        GameObject _grenade;
+        float _grenadeBlend;
+
         /// <summary>The picture through a magnified optic. Null until one is fitted.</summary>
         public ScopeView Scope;
         public Transform Rig;
@@ -116,7 +120,44 @@ namespace Satisfying.Game
             _leftArm = ArmRig.Build(cameraGo.transform, "left arm", new Vector3(-0.17f, -0.24f, shoulderZ), -1f,
                 palette, palette.Hands, viewmodelLayer, 0.070f, 0.325f * armScale, 0.315f * armScale);
 
+            _grenade = WeaponModels.BuildGrenade(ViewmodelRoot, palette, viewmodelLayer);
+            _grenade.SetActive(false);
+
             SetWeapon(0);
+        }
+
+        /// <summary>
+        /// Putting the rifle away and bringing a grenade up.
+        ///
+        /// The weapon does not vanish, it drops out of frame - a gun that blinks out is the single
+        /// most obvious way to make a first person game look unfinished. The grenade comes up into
+        /// the same hand on the way, and once the pin is out it is drawn back and cocked ready to go,
+        /// which is the read that tells you the throw is armed.
+        /// </summary>
+        void RenderGrenade(in PlayerSimState state, GrenadeTuning tuning, float dt)
+        {
+            if (_grenade == null) return;
+
+            bool holding = state.HoldingGrenade;
+            float target = holding ? 1f : 0f;
+            _grenadeBlend = Mathf.MoveTowards(_grenadeBlend, target,
+                dt / Mathf.Max(0.05f, tuning != null ? tuning.drawTime * 0.75f : 0.6f));
+
+            if (_grenade.activeSelf != _grenadeBlend > 0.01f) _grenade.SetActive(_grenadeBlend > 0.01f);
+            if (_grenadeBlend <= 0.01f) return;
+
+            // Held low and forward while the pin is in; drawn back over the shoulder once it is out.
+            bool primed = state.Carry == GrenadeCarry.Primed;
+            Vector3 low = new Vector3(0.16f, -0.34f, 0.30f);
+            Vector3 up = new Vector3(0.19f, -0.16f, 0.34f);
+            Vector3 cocked = new Vector3(0.30f, 0.06f, 0.10f);
+
+            Vector3 where = Vector3.Lerp(low, up, Mathf.Clamp01(_grenadeBlend));
+            if (primed) where = Vector3.Lerp(where, cocked, 0.85f);
+
+            _grenade.transform.localPosition = where;
+            _grenade.transform.localRotation = Quaternion.Euler(primed ? -35f : 12f, primed ? 25f : -18f, 0f);
+            _grenade.transform.localScale = Vector3.one * Mathf.Lerp(0.6f, 1f, _grenadeBlend);
         }
 
         public void SetWeapon(int index)
@@ -141,14 +182,35 @@ namespace Satisfying.Game
         public void OnShot(WeaponTuning weapon)
         {
             _punch += weapon.recoilVertical * 0.35f;
-            _viewmodelKick += new Vector3(0f, weapon.recoilVertical * 0.004f, -_feel.recoilKickBack);
+
+            // Recoil used to be one accumulating shove back along Z, which on a held trigger walked
+            // the gun into the camera until the receiver filled the screen. It is capped now, and what
+            // was doing the work is done instead by the muzzle CLIMBING - a rotation, which reads as
+            // recoil without ever getting between you and what you are shooting at - and by a shake
+            // on the camera that settles fast and moves nothing but the picture.
+            _viewmodelKick += new Vector3(0f, weapon.recoilVertical * 0.002f, -_feel.recoilKickBack);
+            _viewmodelKick = Vector3.ClampMagnitude(_viewmodelKick, Mathf.Max(0.001f, _feel.recoilKickLimit));
+
+            _muzzleRise = Mathf.Min(_muzzleRise + _feel.recoilMuzzleRise, _feel.recoilMuzzleRise * 2.6f);
+
+            float shake = _feel.recoilShake;
+            _shake += new Vector3(Random.Range(-shake, shake), Random.Range(-shake, shake),
+                                  Random.Range(-shake, shake) * 0.6f);
             _animator.OnShot();
         }
+
+        float _muzzleRise;
+        float _muzzleRiseVelocity;
+        Vector3 _shake;
 
         /// <summary>
         /// Called every rendered frame with the interpolated local state. The aim angles come from the
         /// input layer, not from the network - your own view never waits for a packet.
         /// </summary>
+        /// <summary>Set by the game each frame; the grenade in hand needs its draw time to blend on.</summary>
+        public GrenadeTuning GrenadeTuning { get { return _grenadeTuning; } set { _grenadeTuning = value; } }
+        GrenadeTuning _grenadeTuning;
+
         public void Render(in PlayerSimState state, Vector3 renderPosition, MovementTuning move, WeaponTuning weapon,
                            SightTuning sight, float yaw, float pitch, float dt, bool sprinting)
         {
@@ -180,7 +242,13 @@ namespace Satisfying.Game
             float targetRoll = state.ViewRoll(move) * _feel.leanRollExtra + strafeRoll + bobRoll;
             _viewRoll = Mathf.Lerp(_viewRoll, targetRoll, 1f - Mathf.Exp(-_feel.leanSmooth * dt));
 
-            Rig.rotation = Quaternion.Euler(pitch - _punch, yaw, _viewRoll);
+            // The shake is on the RIG, not on the aim: it moves the picture and not the round. Aim
+            // recoil is _punch, and that is the only thing here that changes where you are shooting.
+            float settle = 1f - Mathf.Exp(-_feel.recoilShakeRecovery * dt);
+            _shake = Vector3.Lerp(_shake, Vector3.zero, settle);
+            MathK.Spring(ref _muzzleRise, ref _muzzleRiseVelocity, 0f, _feel.recoilStiffness, _feel.recoilDamping, dt);
+
+            Rig.rotation = Quaternion.Euler(pitch - _punch + _shake.x, yaw + _shake.y, _viewRoll + _shake.z);
 
             Vector3 eye = renderPosition + Vector3.up * state.EyeHeight(move);
             eye += right * (lean * move.leanOffset);
@@ -214,6 +282,7 @@ namespace Satisfying.Game
 
             RenderViewmodel(in state, move, weapon, yaw, pitch, dt, sprinting, bobX, bobY);
             RenderScope(in state, sight, dt);
+            RenderGrenade(in state, _grenadeTuning, dt);
         }
 
         /// <summary>
@@ -291,10 +360,31 @@ namespace Satisfying.Game
             float bobMul = 1f - state.Ads * 0.85f;
             Vector3 bobOffset = new Vector3(bobX, bobY, 0f) * 1.6f * bobMul;
 
-            ViewmodelRoot.localPosition = basePosition + _animator.PoseOffset + _swayOffset * (1f - state.Ads * 0.6f) + _viewmodelKick + bobOffset;
-            ViewmodelRoot.localRotation = Quaternion.Euler(baseEuler + _animator.PoseEuler + _swayRotation * (1f - state.Ads * 0.6f));
+            // Lowered out of frame while a grenade is in your hand, rather than switched off.
+            Vector3 stow = new Vector3(0.05f, -0.42f, -0.18f) * _grenadeBlend;
+
+            ViewmodelRoot.localPosition = basePosition + _animator.PoseOffset
+                + _swayOffset * (1f - state.Ads * 0.6f) + _viewmodelKick + bobOffset + stow;
+            ViewmodelRoot.localRotation = Quaternion.Euler(baseEuler + _animator.PoseEuler
+                + _swayRotation * (1f - state.Ads * 0.6f)
+                + new Vector3(-_muzzleRise, 0f, 0f));
 
             SolveArms(state.Ads);
+            if (_grenade != null && _grenadeBlend > 0.01f) SolveGrenadeHand();
+        }
+
+        /// <summary>The throwing hand goes onto the grenade; the other one comes down out of the way.</summary>
+        void SolveGrenadeHand()
+        {
+            Transform camera = Camera.transform;
+            Vector3 pole = camera.rotation * new Vector3(0.55f, -1f, -0.2f);
+            _rightArm.Solve(_grenade.transform.position, pole,
+                            _grenade.transform.rotation * Quaternion.Euler(-20f, 0f, 0f));
+
+            Vector3 tucked = camera.TransformPoint(new Vector3(-0.22f, -0.34f, 0.18f));
+            _leftArm.Solve(tucked, camera.rotation * new Vector3(-0.55f, -1f, -0.2f),
+                           camera.rotation * Quaternion.Euler(10f, 0f, 0f));
+            _leftArm.SetVisible(true);
         }
 
         void SolveArms(float adsBlend)

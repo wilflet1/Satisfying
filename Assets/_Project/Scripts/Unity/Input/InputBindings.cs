@@ -132,11 +132,36 @@ namespace Satisfying.Game
             Set(GameAction.BindingsPanel, KeyCode.F2);
             Set(GameAction.GearPanel, KeyCode.F4);
             Set(GameAction.NetGraph, KeyCode.F3);
+            // Menu is set here for completeness and then refused by Rebindable(): a menu key you can
+            // rebind is a menu key you can lose, and there is no way back from that without editing
+            // a prefs file. Escape opens the menu. That is all it does and all it is.
             Set(GameAction.Menu, KeyCode.Escape);
 
             CrouchIsToggle = true;
             ProneIsToggle = true;
             LeanIsToggle = false;
+        }
+
+        /// <summary>
+        /// Whether the bindings panel is allowed to touch this one. Escape is not: it is the only key
+        /// that always gets you out, and every crash report that starts "I can't open the menu" ends
+        /// with someone having bound it to something else.
+        /// </summary>
+        public static bool Rebindable(GameAction action)
+        {
+            return action != GameAction.Menu;
+        }
+
+        /// <summary>
+        /// When a binding fires. Most actions want the press; some people want a key to act on the way
+        /// up, and a few want it to mean "while held". It is per binding rather than per action so the
+        /// answer travels with the key in the saved prefs.
+        /// </summary>
+        public enum Activation : byte
+        {
+            Press = 0,
+            Hold = 1,
+            Release = 2
         }
 
         void Set(GameAction action, KeyCode key, KeyCode modifier = KeyCode.None)
@@ -146,6 +171,33 @@ namespace Satisfying.Game
 
         // ------------------------------------------------------------------ queries
         /// <summary>True while the action's key is held (and its modifier, if it has one).</summary>
+        /// <summary>
+        /// Did this action just fire, according to how it is set up? Press is the moment it goes
+        /// down, Release the moment it comes up, and Hold fires every frame it is down - which for a
+        /// discrete action means it repeats, and is exactly what some people want for leaning.
+        /// </summary>
+        public bool Triggered(GameAction action)
+        {
+            switch (ModeOf(action))
+            {
+                case Activation.Release: return Released(action);
+                case Activation.Hold: return Held(action);
+                default: return Pressed(action);
+            }
+        }
+
+        public Activation ModeOf(GameAction action)
+        {
+            return Modes[(int)action];
+        }
+
+        public void SetMode(GameAction action, Activation mode)
+        {
+            Modes[(int)action] = mode;
+        }
+
+        public readonly Activation[] Modes = new Activation[(int)GameAction.Count];
+
         public bool Held(GameAction action)
         {
             Binding b = this[action];

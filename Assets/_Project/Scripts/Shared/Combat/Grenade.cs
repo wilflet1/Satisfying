@@ -6,14 +6,20 @@ namespace Satisfying.Shared
         /// <summary>On your belt. The weapon is up and nothing is happening.</summary>
         Stowed = 0,
 
-        /// <summary>Coming out of the pouch. Slow on purpose - this is the commitment.</summary>
+        /// <summary>
+        /// Weapon going away, grenade coming out. Slow on purpose - this is the commitment, and it is
+        /// the part you can still change your mind about.
+        /// </summary>
         Drawing = 1,
 
-        /// <summary>In your hand, pin out, waiting to be thrown.</summary>
-        Ready = 2,
+        /// <summary>
+        /// In your hand, pin still IN. You can put it away again from here. Pressing a mouse button
+        /// pulls the pin; letting go of it throws.
+        /// </summary>
+        Held = 2,
 
-        /// <summary>Mid throw. The arm is going and the grenade has not left yet.</summary>
-        Throwing = 3
+        /// <summary>Pin out, button down, winding up. Letting go is what throws it.</summary>
+        Primed = 3
     }
 
     [System.Serializable]
@@ -22,8 +28,11 @@ namespace Satisfying.Shared
         [Tune("Grenade", 0f, 8f, Tip = "Grenades you spawn with.")]
         public float count = 2f;
 
-        [Tune("Grenade", 0.2f, 3f, Tip = "Seconds to get one out of the pouch and the pin out of it. It is meant to be a decision.")]
-        public float drawTime = 1.05f;
+        [Tune("Grenade", 0.2f, 3f, Tip = "Seconds to put the weapon away and get a grenade into your hand.")]
+        public float drawTime = 0.85f;
+
+        [Tune("Grenade", 0.05f, 2f, Tip = "Seconds from pulling the pin to being able to throw. You cannot release before this.")]
+        public float primeTime = 0.35f;
 
         [Tune("Grenade", 0.05f, 1.5f, Tip = "Seconds from letting go to it leaving your hand.")]
         public float throwTime = 0.28f;

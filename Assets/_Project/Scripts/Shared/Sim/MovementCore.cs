@@ -266,6 +266,11 @@ namespace Satisfying.Shared
             bool throwPressed = InputCommand.Advanced(cmd.ThrowSeq, s.ThrowSeqSeen);
             if (throwPressed) s.ThrowSeqSeen = cmd.ThrowSeq;
 
+            // Whether the throw button is still down. This is the one place in the game that cares
+            // about a button being HELD rather than about the edge, because the whole gesture is
+            // press-to-pull-the-pin, release-to-throw.
+            bool throwHeld = (cmd.Buttons & Buttons.Throw) != 0;
+
             switch (s.Carry)
             {
                 case GrenadeCarry.Stowed:
@@ -278,24 +283,38 @@ namespace Satisfying.Shared
 
                 case GrenadeCarry.Drawing:
                     s.CarryTimer -= dt;
-                    // Pressing it again puts it away, as long as the pin is still in.
+                    // Pressing it again puts it away. Nothing has happened yet, so nothing is spent.
                     if (drawPressed) { s.Carry = GrenadeCarry.Stowed; s.CarryTimer = 0f; break; }
                     if (s.CarryTimer > 0f) break;
-                    s.Carry = GrenadeCarry.Ready;
+                    s.Carry = GrenadeCarry.Held;
                     s.CarryTimer = 0f;
+                    ev.GrenadeInHand = true;
+                    break;
+
+                case GrenadeCarry.Held:
+                    // In your hand with the pin in. Still reversible.
+                    if (drawPressed) { s.Carry = GrenadeCarry.Stowed; s.CarryTimer = 0f; break; }
+                    if (!throwPressed) break;
+
+                    // A mouse button pulls the pin. From here the only ways out are throwing it or
+                    // dying with it.
+                    s.Carry = GrenadeCarry.Primed;
+                    s.CarryTimer = MathK.Max(0.02f, g.primeTime);
+                    s.ThrowHard = cmd.ThrowHard;
                     ev.GrenadePinPulled = true;
                     break;
 
-                case GrenadeCarry.Ready:
-                    if (!throwPressed) break;
-                    s.Carry = GrenadeCarry.Throwing;
-                    s.CarryTimer = MathK.Max(0.02f, g.throwTime);
-                    s.ThrowHard = cmd.ThrowHard;
-                    break;
+                case GrenadeCarry.Primed:
+                    s.CarryTimer = MathK.Max(0f, s.CarryTimer - dt);
+                    // Whichever button is down decides the throw, right up until it is let go.
+                    if (throwHeld) s.ThrowHard = cmd.ThrowHard;
 
-                case GrenadeCarry.Throwing:
-                    s.CarryTimer -= dt;
-                    if (s.CarryTimer > 0f) break;
+                    // It leaves when the button comes up - or on its own if the button is somehow
+                    // never released, because a live grenade welded to your hand is not a state the
+                    // simulation should be able to reach.
+                    bool released = !throwHeld && s.CarryTimer <= 0f;
+                    if (!released) break;
+
                     s.Carry = GrenadeCarry.Stowed;
                     s.CarryTimer = 0f;
                     if (s.GrenadesLeft > 0) s.GrenadesLeft--;

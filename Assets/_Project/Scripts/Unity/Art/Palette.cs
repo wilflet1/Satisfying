@@ -25,6 +25,7 @@ namespace Satisfying.Game
         public Material Timber;
         public Material Tile;
         public Material Plaster;
+        public Material Smoke;
 
         static Shader FindShader()
         {
@@ -74,6 +75,7 @@ namespace Satisfying.Game
             p.Timber = Make("timber", new Color(0.34f, 0.24f, 0.16f), 0.22f, 0f);
             p.Tile = Make("tile", new Color(0.60f, 0.61f, 0.60f), 0.55f, 0f);
             p.Plaster = Make("plaster", new Color(0.72f, 0.70f, 0.66f), 0.08f, 0f);
+            p.Smoke = Make("smoke", new Color(0.16f, 0.16f, 0.17f), 0.02f, 0f);
             return p;
         }
     }

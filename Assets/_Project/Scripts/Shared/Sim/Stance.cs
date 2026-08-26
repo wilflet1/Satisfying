@@ -28,6 +28,9 @@ namespace Satisfying.Shared
         WalkToggle = 1 << 11,   // forces the analog speed dial to its minimum
         BlindFire = 1 << 12,    // gun over/around cover, head stays hidden
         Melee = 1 << 13,        // bash with the stock
-        Grab = 1 << 14          // take hold of a movable object
+        Grab = 1 << 14,         // take hold of a movable object
+        // The throw button, still down. The only held button the grenade cares about: press pulls the
+        // pin, release throws, and the bit is what tells the simulation which of those just happened.
+        Throw = 1 << 15
     }
 }

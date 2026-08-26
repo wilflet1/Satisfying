@@ -19,6 +19,7 @@ namespace Satisfying.Game
             public float LightIntensity;
             public Vector3 Velocity;        // set for anything that has to fall
             public bool Falls;
+            public bool Rises;              // smoke: drifts up and swells instead of dropping
         }
 
         readonly Transform _root;
@@ -136,6 +137,104 @@ namespace Satisfying.Game
             }
         }
 
+        /// <summary>
+        /// A grenade going off. Four things at once, because one of them on its own always reads as a
+        /// puff: a white flash that is gone in two frames, a fireball that expands and dies, a slower
+        /// cloud of smoke that keeps rising, and hot debris thrown out under gravity.
+        ///
+        /// The flash is a point light as well as geometry - a blast that does not light the room it is
+        /// in looks painted on, and it is the single cheapest thing that sells it.
+        /// </summary>
+        public void Explosion(Vector3 centre, float radius)
+        {
+            // The flash.
+            Item flash = _sparkPool.Count > 0 ? _sparkPool.Pop() : CreateSpark();
+            flash.Transform.gameObject.SetActive(true);
+            flash.Transform.position = centre;
+            flash.Transform.rotation = Random.rotation;
+            flash.Transform.localScale = Vector3.one * radius * 1.5f;
+            flash.BaseScale = flash.Transform.localScale;
+            flash.Expiry = Time.time + 0.09f;
+            flash.ScaleDown = true;
+            flash.Falls = false;
+            if (flash.Light != null)
+            {
+                flash.Light.enabled = true;
+                flash.Light.range = radius * 9f;
+                flash.Light.intensity = 22f;
+                flash.LightIntensity = 22f;
+            }
+            _active.Add(flash);
+
+            // The fireball: a handful of overlapping lumps so it is not one sphere.
+            for (int i = 0; i < 9; i++)
+            {
+                Item ball = _sparkPool.Count > 0 ? _sparkPool.Pop() : CreateSpark();
+                ball.Transform.gameObject.SetActive(true);
+                ball.Transform.position = centre + Random.insideUnitSphere * radius * 0.45f;
+                ball.Transform.rotation = Random.rotation;
+                float size = radius * Random.Range(0.55f, 1.15f);
+                ball.Transform.localScale = Vector3.one * size;
+                ball.BaseScale = ball.Transform.localScale;
+                ball.Expiry = Time.time + Random.Range(0.18f, 0.34f);
+                ball.ScaleDown = true;
+                ball.Falls = false;
+                if (ball.Light != null) ball.Light.enabled = false;
+                _active.Add(ball);
+            }
+
+            // Smoke, rising and slow.
+            for (int i = 0; i < 12; i++)
+            {
+                Item smoke = _smokePool.Count > 0 ? _smokePool.Pop() : CreateSmoke();
+                smoke.Transform.gameObject.SetActive(true);
+                smoke.Transform.position = centre + Random.insideUnitSphere * radius * 0.6f;
+                smoke.Transform.rotation = Random.rotation;
+                float size = radius * Random.Range(0.5f, 1.1f);
+                smoke.Transform.localScale = Vector3.one * size;
+                smoke.BaseScale = smoke.Transform.localScale;
+                smoke.Velocity = Vector3.up * Random.Range(0.8f, 2.2f) + Random.insideUnitSphere * 1.2f;
+                smoke.Rises = true;
+                smoke.Falls = false;
+                smoke.Expiry = Time.time + Random.Range(0.9f, 1.7f);
+                smoke.ScaleDown = false;
+                _active.Add(smoke);
+            }
+
+            // And what it throws.
+            for (int i = 0; i < 22; i++)
+            {
+                Item bit = _bloodPool.Count > 0 ? _bloodPool.Pop() : CreateBlood();
+                bit.Transform.gameObject.SetActive(true);
+                bit.Transform.position = centre + Random.insideUnitSphere * 0.2f;
+                bit.Transform.rotation = Random.rotation;
+                float scale = Random.Range(0.03f, 0.09f);
+                bit.Transform.localScale = new Vector3(scale, scale, scale * 2.4f);
+                bit.BaseScale = bit.Transform.localScale;
+                bit.Velocity = Random.onUnitSphere * Random.Range(6f, 17f) + Vector3.up * 3f;
+                bit.Falls = true;
+                bit.Rises = false;
+                bit.Expiry = Time.time + Random.Range(0.5f, 1.1f);
+                bit.ScaleDown = true;
+                _active.Add(bit);
+            }
+        }
+
+        readonly Stack<Item> _smokePool = new Stack<Item>();
+
+        Item CreateSmoke()
+        {
+            GameObject go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            go.name = "smoke";
+            go.layer = _layer;
+            Object.Destroy(go.GetComponent<Collider>());
+            go.GetComponent<MeshRenderer>().sharedMaterial = _palette.Smoke;
+            go.transform.SetParent(_root, false);
+            Item item = new Item();
+            item.Transform = go.transform;
+            return item;
+        }
+
         public void Impact(Vector3 position, Vector3 normal, float life = 0.16f)
         {
             Item item = _sparkPool.Count > 0 ? _sparkPool.Pop() : CreateSpark();
@@ -216,9 +315,19 @@ namespace Satisfying.Game
                     item.Transform.gameObject.SetActive(false);
                     if (item.Light != null) item.Light.enabled = false;
                     _active.RemoveAt(i);
-                    if (item.Falls) { item.Falls = false; _bloodPool.Push(item); }
+                    if (item.Rises) { item.Rises = false; _smokePool.Push(item); }
+                    else if (item.Falls) { item.Falls = false; _bloodPool.Push(item); }
                     else if (item.Light == null) _tracerPool.Push(item);
                     else _sparkPool.Push(item);
+                    continue;
+                }
+
+                if (item.Rises)
+                {
+                    // Smoke slows, swells and thins rather than falling.
+                    item.Velocity = Vector3.Lerp(item.Velocity, Vector3.up * 0.35f, dt * 1.6f);
+                    item.Transform.position += item.Velocity * dt;
+                    item.Transform.localScale = item.BaseScale * (1f + (Time.time - (item.Expiry - 1.3f)) * 0.5f);
                     continue;
                 }
 

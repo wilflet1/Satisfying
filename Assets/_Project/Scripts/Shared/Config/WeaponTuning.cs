@@ -217,10 +217,11 @@ namespace Satisfying.Shared
             usp.adsTime = 0.13f;
             usp.automatic = 0f;
 
-            // ---- a bolt gun. Hopeless from the hip and exact through the glass, which is the whole
-            // trade: you cannot take a snap shot with it and you do not need a second one.
+            // ---- a 20 mm anti-materiel rifle. Hopeless from the hip and exact through the glass,
+            // which is the whole trade: you cannot take a snap shot with it and you do not need a
+            // second one. Two rounds in the magazine, and getting on the glass takes half a second.
             WeaponTuning sniper = new WeaponTuning();
-            sniper.name = "M700";
+            sniper.name = "M20 AMR";
             sniper.rpm = 40f;
             sniper.automatic = 0f;
 
@@ -253,14 +254,14 @@ namespace Satisfying.Shared
             sniper.spreadPerShot = 2.4f;
             sniper.spreadRecovery = 3f;
 
-            sniper.recoilVertical = 4.6f;
+            sniper.recoilVertical = 7.5f;
             sniper.recoilHorizontal = 0.7f;
             sniper.recoilRecoverFraction = 0.55f;
             sniper.recoilRecoverSpeed = 4f;
 
-            sniper.magSize = 5f;
-            sniper.reloadTime = 3.4f;
-            sniper.adsTime = 0.42f;
+            sniper.magSize = 3f;
+            sniper.reloadTime = 4.2f;
+            sniper.adsTime = 0.55f;
             sniper.concussionTime = 2.8f;
             sniper.concussionStrength = 1f;
             sniper.soundCarry = 300f;

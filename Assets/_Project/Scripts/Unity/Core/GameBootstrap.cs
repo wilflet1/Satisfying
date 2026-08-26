@@ -281,6 +281,7 @@ namespace Satisfying.Game
             _game.Fx = _fx;
             _game.Root = transform;
             _game.PlayerLayer = LayerPlayer;
+            _game.FxLayer = LayerFx;
 
             BuildArena(MapId.DuelArena);
         }

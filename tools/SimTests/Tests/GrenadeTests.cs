@@ -61,13 +61,13 @@ namespace Satisfying.Tests
                     ev = new SimEvents();
                     Step(ref s, hold, t, g, world, ref ev);
                     elapsed += Sim.Dt;
-                    if (ev.GrenadePinPulled) pinned = true;
+                    if (ev.GrenadeInHand) pinned = true;
                 }
 
-                Assert.True(pinned, "the pin comes out");
+                Assert.True(pinned, "it reaches your hand");
                 Assert.Near(elapsed, g.drawTime, Sim.Dt * 2f, "after the draw time and not before");
-                Assert.True(s.Carry == GrenadeCarry.Ready, "and then it is ready");
-                Assert.True(s.PinPulled, "with the pin out");
+                Assert.True(s.Carry == GrenadeCarry.Held, "and then it is in your hand");
+                Assert.False(s.PinPulled, "the pin is still in - that takes a mouse button");
                 Assert.Equal(s.GrenadesLeft, 2, "and nothing spent until it is thrown");
             });
 
@@ -78,7 +78,7 @@ namespace Satisfying.Tests
                 BoxWorld world = BoxWorld.FlatGround();
                 PlayerSimState s = PlayerSimState.Spawn(Vec3.Zero, 0f, t, WeaponTuning.DefaultLoadout()[0]);
                 s.GrenadesLeft = 2;
-                s.Carry = GrenadeCarry.Ready;
+                s.Carry = GrenadeCarry.Held;
 
                 InputCommand idle = Command(1);
                 SimEvents ev = new SimEvents();
@@ -90,7 +90,7 @@ namespace Satisfying.Tests
                     Step(ref s, idle, t, g, world, ref ev);
                     Assert.False(ev.GrenadeReleased, "it does not leave your hand on its own");
                 }
-                Assert.True(s.Carry == GrenadeCarry.Ready, "still holding it after ten seconds");
+                Assert.True(s.Carry == GrenadeCarry.Held, "still holding it after ten seconds");
 
                 // And the fuse it gets is the whole fuse, not what is left of one.
                 Assert.Near(g.fuse, 2.5f, 0.001f, "two and a half seconds, from leaving the hand");
@@ -103,23 +103,40 @@ namespace Satisfying.Tests
                 BoxWorld world = BoxWorld.FlatGround();
                 PlayerSimState s = PlayerSimState.Spawn(Vec3.Zero, 0f, t, WeaponTuning.DefaultLoadout()[0]);
                 s.GrenadesLeft = 2;
-                s.Carry = GrenadeCarry.Ready;
+                s.Carry = GrenadeCarry.Held;
 
-                InputCommand release = Command(1);
-                release.PressThrow(true);
+                // Press: the pin comes out and the arm loads. The button stays down.
+                InputCommand press = Command(1);
+                press.PressThrow(true);
+                press.Buttons |= Buttons.Throw;
 
                 SimEvents ev = new SimEvents();
-                Step(ref s, release, t, g, world, ref ev);
-                Assert.True(s.Carry == GrenadeCarry.Throwing, "the arm is going");
+                Step(ref s, press, t, g, world, ref ev);
+                Assert.True(s.Carry == GrenadeCarry.Primed, "the pin is out and the arm is loaded");
+                Assert.True(ev.GrenadePinPulled, "and it says so, for the noise");
                 Assert.Equal(s.GrenadesLeft, 2, "and it has not left yet");
 
-                InputCommand hold = Command(2);
-                hold.ThrowSeq = release.ThrowSeq;
+                // Still holding it: nothing happens, however long you wait. Not cookable.
+                InputCommand stillDown = Command(2);
+                stillDown.ThrowSeq = press.ThrowSeq;
+                stillDown.ThrowHard = true;
+                stillDown.Buttons |= Buttons.Throw;
+                for (int i = 0; i < 300; i++)
+                {
+                    ev = new SimEvents();
+                    Step(ref s, stillDown, t, g, world, ref ev);
+                    Assert.False(ev.GrenadeReleased, "holding the button does not throw it");
+                }
+
+                // Let go: that is the throw.
+                InputCommand up = Command(3);
+                up.ThrowSeq = press.ThrowSeq;
+                up.ThrowHard = true;
                 bool released = false;
                 for (int i = 0; i < 200 && !released; i++)
                 {
                     ev = new SimEvents();
-                    Step(ref s, hold, t, g, world, ref ev);
+                    Step(ref s, up, t, g, world, ref ev);
                     if (ev.GrenadeReleased) released = true;
                 }
 
@@ -183,22 +200,29 @@ namespace Satisfying.Tests
                 // counters only advance once each, which is exactly how a real press behaves.
                 byte grenadeSeq = 1;
                 byte throwSeq = 0;
-                float clock = 0f;
+                bool throwHeld = false;
                 h.Bots[0].Behaviour = delegate(uint tick)
                 {
                     InputCommand c = InputCommand.Default(tick);
                     c.GrenadeSeq = grenadeSeq;
                     c.ThrowSeq = throwSeq;
                     c.ThrowHard = true;
+                    if (throwHeld) c.Buttons |= Buttons.Throw;
                     return c;
                 };
 
                 // Long enough for the pin to come out, then let it go.
                 h.Advance(h.Server.Tuning.grenade.drawTime + 0.4f);
-                Assert.True(h.Clients[0].Predicted.PinPulled,
-                    "the pin is out after the draw, carry is " + h.Clients[0].Predicted.Carry);
+                Assert.True(h.Clients[0].Predicted.Carry == GrenadeCarry.Held,
+                    "it is in the hand after the draw, carry is " + h.Clients[0].Predicted.Carry);
 
+                // Press and hold: pin out. Then let go, which is the throw.
                 throwSeq = 1;
+                throwHeld = true;
+                h.Advance(0.4f);
+                Assert.True(h.Clients[0].Predicted.PinPulled, "the pin is out while the button is down");
+
+                throwHeld = false;
                 h.Advance(0.6f);
 
                 Assert.True(h.Sinks[1].GrenadeUpdates > 0,
@@ -221,14 +245,19 @@ namespace Satisfying.Tests
                 h.AddClient("watcher");
                 h.Advance(1.5f);
 
+                byte throwSeq = 0;
                 h.Bots[0].Behaviour = delegate(uint tick)
                 {
                     InputCommand c = InputCommand.Default(tick);
                     c.GrenadeSeq = 1;                           // out, and left out
+                    c.ThrowSeq = throwSeq;
+                    if (throwSeq > 0) c.Buttons |= Buttons.Throw;    // and the button held down
                     return c;
                 };
 
                 h.Advance(h.Server.Tuning.grenade.drawTime + 0.4f);
+                throwSeq = 1;
+                h.Advance(0.4f);
                 Assert.True(h.Clients[0].Predicted.PinPulled, "the pin is out");
 
                 int before = h.Sinks[1].Blasts;

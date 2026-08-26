@@ -50,6 +50,7 @@ namespace Satisfying.Game
         public WorldView Scenery;
         public Transform Root;
         public int PlayerLayer;
+        public int FxLayer;
 
         /// <summary>
         /// One set of conditions per machine, applied to everything it sends - server and client alike.
@@ -290,6 +291,9 @@ namespace Satisfying.Game
             HitMarkerTimer = Mathf.Max(0f, HitMarkerTimer - dt);
             ZoneTimer = Mathf.Max(0f, ZoneTimer - dt);
             SweepGrenades();
+
+            if (HillMarker != null && PlayingHill)
+                HillMarker.Render(ZoneHolder, Client.PeerId, ZoneTimer, Client.Tuning.koth.warnSeconds);
             LastTargetTimer = Mathf.Max(0f, LastTargetTimer - dt);
             DamageFlashTimer = Mathf.Max(0f, DamageFlashTimer - dt);
             RespawnCountdown = Mathf.Max(0f, RespawnCountdown - dt);
@@ -327,6 +331,7 @@ namespace Satisfying.Game
                 Input.Magnification = optic.ClampMagnification(Input.Magnification);
             }
             View.Magnification = Input.Magnification;
+            View.GrenadeTuning = Client.Tuning.grenade;
 
             View.Render(in state, Client.RenderPosition.ToUnity(), Client.Tuning.move,
                         Client.Tuning.Weapon(state.Weapon.Index), Client.Tuning.Sight(state.Weapon.Sight),
@@ -357,13 +362,14 @@ namespace Satisfying.Game
             GrenadeCarry from = _lastCarry;
             _lastCarry = state.Carry;
 
-            Vector3 at = View.Camera.transform.position;
             if (from == GrenadeCarry.Stowed && state.Carry == GrenadeCarry.Drawing)
-                Sound.Play2D(Audio.GrenadeDraw, 0.6f);
-            else if (from == GrenadeCarry.Drawing && state.Carry == GrenadeCarry.Ready)
-                Sound.Play2D(Audio.GrenadePin, 0.7f);
-            else if (state.Carry == GrenadeCarry.Stowed && from == GrenadeCarry.Throwing)
-                Sound.Play2D(Audio.GrenadeThrow, 0.5f);
+                Sound.Play2D(Audio.GrenadeDraw, 0.75f);
+            else if (from == GrenadeCarry.Drawing && state.Carry == GrenadeCarry.Held)
+                Sound.Play2D(Audio.GrenadeSettle, 0.6f);
+            else if (from == GrenadeCarry.Held && state.Carry == GrenadeCarry.Primed)
+                Sound.Play2D(Audio.GrenadePin, 0.95f);
+            else if (state.Carry == GrenadeCarry.Stowed && from == GrenadeCarry.Primed)
+                Sound.Play2D(Audio.GrenadeThrow, 0.6f);
         }
 
         void PlayWeaponCue(WeaponAnimator.SoundCue cue, Vector3 position, float volume)
@@ -379,16 +385,27 @@ namespace Satisfying.Game
         int _stepVariant;
 
         /// <summary>
-        /// What is underfoot, decided by whether there is a roof over it. The arena has no material
-        /// data and does not need any: outside is poured concrete and anything you can stand under is
-        /// boards, which is true of both maps and stays true of any map anyone builds later.
+        /// What is underfoot, from the map itself.
+        ///
+        /// This used to be "is there a roof over your head", which was a guess and sounded like one -
+        /// boards under a porch, boards on a landing you were standing beside rather than on, boards
+        /// anywhere the ray happened to find a ceiling. The map now says what its floors are made of
+        /// (WorldModel.Panels), both machines build the same map from the same code, so the answer is
+        /// exact and the same at both ends.
         /// </summary>
         StepSurface SurfaceUnder(Vector3 position)
         {
-            return Physics.Raycast(position + Vector3.up * 0.2f, Vector3.up, 7f,
-                                   1 << GameBootstrap.LayerWorld, QueryTriggerInteraction.Ignore)
-                ? StepSurface.Wood
-                : StepSurface.Concrete;
+            if (Model == null) return StepSurface.Concrete;
+
+            // A little way INTO the floor, not at the feet: standing on a board puts your feet at its
+            // top face, and a point exactly on a boundary belongs to neither box.
+            Vec3 probe = (position + Vector3.down * 0.04f).ToSim();
+            switch (Model.SurfaceAt(probe))
+            {
+                case SurfaceKind.Wood: return StepSurface.Wood;
+                case SurfaceKind.Metal: return StepSurface.Metal;
+                default: return StepSurface.Concrete;
+            }
         }
 
         /// <summary>
@@ -739,9 +756,8 @@ namespace Satisfying.Game
             Vector3 at = position.ToUnity();
             float distance = Vector3.Distance(at, View.Camera.transform.position);
 
-            Fx.MuzzleFlash(at, Vector3.up, 0.22f);
-            Fx.Shatter(at, Vector3.one * 1.6f, 20);
-            Sound.Play(distance > 40f ? Audio.ExplosionDistant : Audio.Explosion, at, 1f,
+            Fx.Explosion(at, Client.Tuning.grenade.lethalRadius);
+            Sound.Play(distance > 40f ? Audio.ExplosionDistant : Audio.Explosion, at, 1.6f,
                        Random.Range(0.95f, 1.05f), 320f);
 
             // Anything close enough to hurt is close enough to ring your ears.
@@ -770,13 +786,29 @@ namespace Satisfying.Game
 
         readonly System.Collections.Generic.List<int> _staleGrenades = new System.Collections.Generic.List<int>();
 
+        /// <summary>The marker standing in the live room. Built on demand and moved when the hill does.</summary>
+        public ZoneView HillMarker;
+
         public void OnZone(int zone, float secondsLeft, int holder)
         {
-            if (zone != ActiveZone && ActiveZone >= 0)
-                Sound.Play2D(Audio.RoundStart, 0.35f, 1.35f);      // the hill moved; you need to know
+            bool moved = zone != ActiveZone;
+            if (moved && ActiveZone >= 0)
+                Sound.Play2D(Audio.RoundStart, 0.5f, 1.35f);       // the hill moved; you need to know
+
             ActiveZone = zone;
             ZoneTimer = secondsLeft;
             ZoneHolder = holder;
+
+            if (HillMarker == null && Zones.Count > 0)
+                HillMarker = new ZoneView(Root, Palette, FxLayer);
+            if (HillMarker == null) return;
+
+            if (moved && zone >= 0 && zone < Zones.Count)
+            {
+                ZoneDef def = Zones[zone];
+                HillMarker.SetZone(in def);
+            }
+            HillMarker.SetVisible(zone >= 0 && zone < Zones.Count);
         }
 
         public void OnMatchPhase(MatchPhase phase, float timer, int winner)

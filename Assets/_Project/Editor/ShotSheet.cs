@@ -479,10 +479,40 @@ namespace Satisfying.Game
 
             Bounds bounds = Framing(house.Root);
 
-            // The roof comes off for the shots. A map you can only photograph from outside its own
-            // roof is a map nobody can look at.
+            // The roof comes off for the shots, and then the first floor as well: a map you can only
+            // photograph from outside its own roof is a map nobody can look at, and a plan of the
+            // upstairs is not a plan of the downstairs.
             Transform roof = house.Root.transform.Find("roof");
             if (roof != null) roof.gameObject.SetActive(false);
+
+            System.Collections.Generic.List<GameObject> decks = new System.Collections.Generic.List<GameObject>();
+            System.Collections.Generic.List<GameObject> upstairs = new System.Collections.Generic.List<GameObject>();
+            for (int i = 0; i < house.Root.transform.childCount; i++)
+            {
+                Transform child = house.Root.transform.GetChild(i);
+                if (child.name.StartsWith("deck")) decks.Add(child.gameObject);
+                else if (child.name.StartsWith("upper") || child.name.StartsWith("bedroom wall")
+                         || child.name.StartsWith("bathroom wall") || child.name == "bed"
+                         || child.name == "wardrobe" || child.name == "chest" || child.name == "bath"
+                         || child.name.StartsWith("landing rail")) upstairs.Add(child.gameObject);
+            }
+
+            // Framed on the BUILDING for the plans, not the plot - the plot is mostly garden and a
+            // plan you have to squint at is not a plan.
+            Bounds plan = new Bounds(new Vector3(0f, 3f, 0f), new Vector3(24f, 8f, 18f));
+
+            // Upstairs first, with the ground floor hidden under its own deck.
+            Frame(cam, plan, 30f, 70f);
+            Write(Render(cam, null), "house-plan-upper");
+
+            for (int i = 0; i < decks.Count; i++) decks[i].SetActive(false);
+            for (int i = 0; i < upstairs.Count; i++) upstairs[i].SetActive(false);
+            Frame(cam, plan, 30f, 70f);
+            Write(Render(cam, null), "house-plan-ground");
+            Frame(cam, plan, 0f, 78f);
+            Write(Render(cam, null), "house-plan-ground-square");
+            for (int i = 0; i < decks.Count; i++) decks[i].SetActive(true);
+            for (int i = 0; i < upstairs.Count; i++) upstairs[i].SetActive(true);
 
             Debug.Log("[house] renderers " + house.Root.GetComponentsInChildren<Renderer>().Length
                       + "  bounds centre " + bounds.center + " size " + bounds.size);

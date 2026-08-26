@@ -30,6 +30,7 @@ namespace Satisfying.Game
         /// </summary>
         public AudioClip[] StepsConcrete;
         public AudioClip[] StepsWood;
+        public AudioClip[] StepsMetal;
         public AudioClip Footstep;
         public AudioClip Jump;
         public AudioClip Land;
@@ -51,6 +52,7 @@ namespace Satisfying.Game
         /// </summary>
         public AudioClip GrenadeDraw;
         public AudioClip GrenadePin;
+        public AudioClip GrenadeSettle;
         public AudioClip GrenadeThrow;
         public AudioClip[] GrenadeBounce;
         public AudioClip Explosion;
@@ -85,10 +87,12 @@ namespace Satisfying.Game
             b.Death = Synth.Tone("death", 0.6f, 330f, 0.45f, -0.75f);
             b.StepsConcrete = new AudioClip[4];
             b.StepsWood = new AudioClip[4];
+            b.StepsMetal = new AudioClip[4];
             for (int i = 0; i < 4; i++)
             {
-                b.StepsConcrete[i] = Synth.Footstep("step concrete " + i, false, (uint)(i * 2654435761u + 17u));
-                b.StepsWood[i] = Synth.Footstep("step wood " + i, true, (uint)(i * 2246822519u + 101u));
+                b.StepsConcrete[i] = Synth.Footstep("step concrete " + i, StepSurface.Concrete, (uint)(i * 2654435761u + 17u));
+                b.StepsWood[i] = Synth.Footstep("step wood " + i, StepSurface.Wood, (uint)(i * 2246822519u + 101u));
+                b.StepsMetal[i] = Synth.Footstep("step metal " + i, StepSurface.Metal, (uint)(i * 1597334677u + 53u));
             }
             b.Footstep = b.StepsConcrete[0];
             b.Jump = Synth.Noise("jump", 0.10f, 0.2f, 700f);
@@ -104,7 +108,10 @@ namespace Satisfying.Game
             b.RoundStart = Synth.Tone("round", 0.5f, 520f, 0.35f, 0.4f);
 
             b.GrenadeDraw = Synth.Tingle("grenade draw", 0.55f);
-            b.GrenadePin = Synth.Click("grenade pin", 0.09f, 3100f, 0.55f);
+            // A ring pin coming out of a fuse is not a click. It is a hard scrape of steel on steel
+            // and then the spoon left loose against the body - two events, close together, both metal.
+            b.GrenadePin = Synth.PinPull("grenade pin", 0.42f);
+            b.GrenadeSettle = Synth.Tingle("grenade settle", 0.30f);
             b.GrenadeThrow = Synth.Noise("grenade throw", 0.14f, 0.24f, 1200f);
 
             // One per surface, indexed by SurfaceKind, so a bounce says what it bounced on.
@@ -138,7 +145,8 @@ namespace Satisfying.Game
 
         public AudioClip StepFor(StepSurface surface, int variant)
         {
-            AudioClip[] set = surface == StepSurface.Wood ? StepsWood : StepsConcrete;
+            AudioClip[] set = surface == StepSurface.Wood ? StepsWood
+                            : surface == StepSurface.Metal ? StepsMetal : StepsConcrete;
             if (set == null || set.Length == 0) return Footstep;
             int index = variant % set.Length;
             return set[index < 0 ? index + set.Length : index];
@@ -155,7 +163,8 @@ namespace Satisfying.Game
     public enum StepSurface : byte
     {
         Concrete = 0,
-        Wood = 1
+        Wood = 1,
+        Metal = 2
     }
 
     public static class Synth
@@ -224,21 +233,23 @@ namespace Satisfying.Game
         /// because a floorboard is a plate with air under it - that hollowness is the whole difference
         /// between being inside and being outside, and it is worth more than any amount of level.
         /// </summary>
-        public static AudioClip Footstep(string name, bool wood, uint variant)
+        public static AudioClip Footstep(string name, StepSurface surface, uint variant)
         {
             Seed(variant);
-            float duration = wood ? 0.30f : 0.20f;
+            bool wood = surface == StepSurface.Wood;
+            bool metal = surface == StepSurface.Metal;
+
+            float duration = wood ? 0.34f : metal ? 0.40f : 0.18f;
             int count = Mathf.Max(16, (int)(duration * SampleRate));
             float[] data = new float[count];
 
             // Every variant is a slightly different boot on a slightly different spot.
             float pitch = 0.88f + (variant % 71u) / 71f * 0.26f;
-            float toeDelay = wood ? 0.034f : 0.026f;
-            toeDelay *= 0.8f + (variant % 37u) / 37f * 0.5f;
+            float toeDelay = (wood ? 0.036f : metal ? 0.030f : 0.024f)
+                           * (0.8f + (variant % 37u) / 37f * 0.5f);
             float toeLevel = 0.42f + (variant % 53u) / 53f * 0.28f;
 
             float grit = 0f;
-            float bright = 0f;
             float previous = 0f;
 
             for (int i = 0; i < count; i++)
@@ -246,46 +257,61 @@ namespace Satisfying.Game
                 float t = i / (float)SampleRate;
                 float noise = NextNoise();
 
-                // One pole each way: a dull rumble and a bright hiss, mixed differently per surface.
-                grit = Mathf.Lerp(grit, noise, wood ? 0.10f : 0.22f);
-                bright = noise - previous;
+                grit = Mathf.Lerp(grit, noise, wood ? 0.10f : metal ? 0.30f : 0.26f);
+                float bright = noise - previous;
                 previous = noise;
 
-                float sample = Strike(t, 0f, 1f, wood, pitch, grit, bright);
-                sample += Strike(t, toeDelay, toeLevel, wood, pitch * 1.06f, grit, bright);
+                float sample = Strike(t, 0f, 1f, surface, pitch, grit, bright);
+                sample += Strike(t, toeDelay, toeLevel, surface, pitch * 1.06f, grit, bright);
 
-                data[i] = Mathf.Clamp(sample * (wood ? 0.34f : 0.42f), -1f, 1f);
+                data[i] = Mathf.Clamp(sample * (wood ? 0.36f : metal ? 0.30f : 0.44f), -1f, 1f);
             }
             return FromSamples(name, data);
         }
 
-        /// <summary>One impact of a footstep: the knock, what the floor does about it, and the scuff.</summary>
-        static float Strike(float t, float at, float level, bool wood, float pitch, float grit, float bright)
+        /// <summary>
+        /// One impact of a footstep: the knock, what the floor does about it, and the scuff.
+        ///
+        /// The three surfaces are deliberately far apart, because the whole value of them is being
+        /// able to tell which one you are hearing through a wall. Concrete is a dead slap with grit
+        /// under it and nothing after. Boards are quieter at the front and ring low - a plate with air
+        /// beneath. Steel is a bright clang that carries on for a third of a second.
+        /// </summary>
+        static float Strike(float t, float at, float level, StepSurface surface, float pitch, float grit, float bright)
         {
             float local = t - at;
             if (local < 0f) return 0f;
 
-            // The knock. Short and hard on concrete, softer and slower off boards.
-            float knock = Mathf.Exp(-local * (wood ? 210f : 330f));
-            float sample = bright * knock * (wood ? 0.55f : 0.95f);
-
-            if (wood)
+            if (surface == StepSurface.Wood)
             {
-                // A board is a plate: a couple of low modes that carry on after the foot has gone.
-                float ring = Mathf.Exp(-local * 30f);
-                sample += Mathf.Sin(2f * Mathf.PI * 186f * pitch * local) * ring * 0.55f;
-                sample += Mathf.Sin(2f * Mathf.PI * 297f * pitch * local) * Mathf.Exp(-local * 41f) * 0.30f;
-                sample += Mathf.Sin(2f * Mathf.PI * 452f * pitch * local) * Mathf.Exp(-local * 62f) * 0.14f;
-                sample += grit * Mathf.Exp(-local * 46f) * 0.22f;
-            }
-            else
-            {
-                // Concrete does not ring. It thuds once and the rest is the sole dragging on grit.
-                sample += Mathf.Sin(2f * Mathf.PI * 104f * pitch * local) * Mathf.Exp(-local * 58f) * 0.42f;
-                sample += grit * Mathf.Exp(-local * 34f) * 0.46f;
+                float knock = Mathf.Exp(-local * 210f);
+                float sample = bright * knock * 0.55f;
+                float ring = Mathf.Exp(-local * 26f);
+                sample += Mathf.Sin(2f * Mathf.PI * 172f * pitch * local) * ring * 0.62f;
+                sample += Mathf.Sin(2f * Mathf.PI * 281f * pitch * local) * Mathf.Exp(-local * 36f) * 0.34f;
+                sample += Mathf.Sin(2f * Mathf.PI * 437f * pitch * local) * Mathf.Exp(-local * 58f) * 0.15f;
+                sample += grit * Mathf.Exp(-local * 44f) * 0.20f;
+                return sample * level;
             }
 
-            return sample * level;
+            if (surface == StepSurface.Metal)
+            {
+                float knock = Mathf.Exp(-local * 260f);
+                float sample = bright * knock * 0.9f;
+                // Inharmonic partials and very little damping: that is what makes a sheet ring.
+                float ring = Mathf.Exp(-local * 7f);
+                sample += Mathf.Sin(2f * Mathf.PI * 660f * pitch * local) * ring * 0.40f;
+                sample += Mathf.Sin(2f * Mathf.PI * 1180f * pitch * local) * Mathf.Exp(-local * 9f) * 0.28f;
+                sample += Mathf.Sin(2f * Mathf.PI * 2290f * pitch * local) * Mathf.Exp(-local * 14f) * 0.16f;
+                return sample * level;
+            }
+
+            // Concrete does not ring. It thuds once and the rest is the sole dragging on grit.
+            float hard = Mathf.Exp(-local * 380f);
+            float flat = bright * hard * 1.05f;
+            flat += Mathf.Sin(2f * Mathf.PI * 98f * pitch * local) * Mathf.Exp(-local * 70f) * 0.36f;
+            flat += grit * Mathf.Exp(-local * 40f) * 0.50f;
+            return flat * level;
         }
 
         /// <summary>
@@ -293,13 +319,58 @@ namespace Satisfying.Game
         /// slightly detuned partials that keep catching each other. It is the sound that tells the
         /// room you have committed to something, so it is meant to be recognisable and not loud.
         /// </summary>
+        /// <summary>
+        /// Pulling the pin: a short bright scrape as the ring drags out of the fuse, then the spoon
+        /// ringing loose against the body. All metal, and deliberately louder and harder than the
+        /// draw - it is the point of no return and it should sound like one.
+        /// </summary>
+        public static AudioClip PinPull(string name, float duration)
+        {
+            int count = Mathf.Max(16, (int)(duration * SampleRate));
+            float[] data = new float[count];
+            Seed(0x9E3Du);
+            float previous = 0f;
+            float resonance = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                float t = i / (float)SampleRate;
+                float noise = NextNoise();
+                float bright = noise - previous;
+                previous = noise;
+
+                // The scrape: bright noise gated into a short rasp, with a wobble on it so it is a
+                // drag rather than a hiss.
+                float rasp = Mathf.Exp(-t * 34f) * (0.6f + 0.4f * Mathf.Sin(t * 320f));
+                float sample = bright * rasp * 0.85f;
+
+                // Steel underneath it, ringing on after the scrape stops.
+                resonance = Mathf.Lerp(resonance, bright, 0.5f);
+                float ring = Mathf.Exp(-t * 11f);
+                sample += Mathf.Sin(2f * Mathf.PI * 1840f * t) * ring * 0.30f;
+                sample += Mathf.Sin(2f * Mathf.PI * 2970f * t) * Mathf.Exp(-t * 15f) * 0.20f;
+                sample += Mathf.Sin(2f * Mathf.PI * 4310f * t) * Mathf.Exp(-t * 22f) * 0.10f;
+
+                // And the spoon knocking against the body once the pin is gone.
+                float spoon = t - 0.11f;
+                if (spoon > 0f)
+                {
+                    float knock = Mathf.Exp(-spoon * 40f);
+                    sample += Mathf.Sin(2f * Mathf.PI * 1240f * spoon) * knock * 0.34f;
+                    sample += Mathf.Sin(2f * Mathf.PI * 2180f * spoon) * knock * 0.20f;
+                }
+
+                data[i] = Mathf.Clamp(sample * 0.85f, -1f, 1f);
+            }
+            return FromSamples(name, data);
+        }
+
         public static AudioClip Tingle(string name, float duration)
         {
             int count = Mathf.Max(16, (int)(duration * SampleRate));
             float[] data = new float[count];
             Seed(0x51EBu);
 
-            // Four little chimes at irregular intervals, each a pair of high partials.
             float[] at = { 0.00f, 0.11f, 0.19f, 0.33f };
             float[] hz = { 2450f, 3120f, 2760f, 3380f };
 
@@ -315,7 +386,6 @@ namespace Satisfying.Game
                     sample += Mathf.Sin(2f * Mathf.PI * hz[c] * local) * env * 0.30f;
                     sample += Mathf.Sin(2f * Mathf.PI * hz[c] * 1.48f * local) * env * 0.16f;
                 }
-                // A little cloth and metal underneath it.
                 sample += NextNoise() * Mathf.Exp(-t * 9f) * 0.06f;
                 data[i] = Mathf.Clamp(sample * 0.55f, -1f, 1f);
             }
@@ -323,9 +393,9 @@ namespace Satisfying.Game
         }
 
         /// <summary>
-        /// Something hard landing on something. `ring` is how much of it carries on afterwards - metal
-        /// rings for most of a second, concrete does not ring at all - and that difference is the
-        /// whole reason bounces are worth listening to.
+        /// Something hard landing on something. `damping` is how fast it stops ringing - steel carries
+        /// for most of a second, concrete does not ring at all - and that difference is the whole
+        /// reason bounces are worth listening to.
         /// </summary>
         public static AudioClip Bounce(string name, float duration, float hz, float volume, float damping)
         {
@@ -341,10 +411,7 @@ namespace Satisfying.Game
                 float bright = noise - previous;
                 previous = noise;
 
-                // The knock.
                 float sample = bright * Mathf.Exp(-t * 420f) * 0.85f;
-
-                // And what the surface does about it: three partials, damped by the material.
                 float ring = Mathf.Exp(-t * (6f + damping * 90f));
                 sample += Mathf.Sin(2f * Mathf.PI * hz * t) * ring * 0.5f;
                 sample += Mathf.Sin(2f * Mathf.PI * hz * 2.41f * t) * ring * 0.22f;

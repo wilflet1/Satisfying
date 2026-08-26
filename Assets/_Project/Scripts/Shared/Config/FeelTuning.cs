@@ -131,6 +131,18 @@ namespace Satisfying.Shared
         [Tune("Weapon feel", -0.35f, 0.25f, Tip = "How far forward the viewmodel shoulders sit. Forward is towards the gun.")]
         public float armForward = 0f;
 
+        [Tune("Weapon feel", 0f, 0.12f, Tip = "How far the gun may travel back towards your eye under recoil, however long you hold the trigger.")]
+        public float recoilKickLimit = 0.045f;
+
+        [Tune("Weapon feel", 0f, 14f, Tip = "Degrees the muzzle climbs on the viewmodel per shot. This is the visible lift; it does not move your aim.")]
+        public float recoilMuzzleRise = 4.5f;
+
+        [Tune("Weapon feel", 0f, 3f, Tip = "Camera shake per shot, in degrees. Shakes the picture without moving where the round goes.")]
+        public float recoilShake = 0.55f;
+
+        [Tune("Weapon feel", 2f, 40f, Tip = "How fast the shake settles.")]
+        public float recoilShakeRecovery = 13f;
+
         // ---------------------------------------------------------------- hud
         [Tune("HUD", 0f, 40f)]
         public float crosshairSize = 7f;

@@ -131,9 +131,9 @@ namespace Satisfying.Game
             PollSpeedDial(move);
             PollWeapons();
 
-            if (Bindings.Pressed(GameAction.Jump)) { _latchJump = true; _latchMantle = true; }
-            if (Bindings.Pressed(GameAction.Reload)) _latchReload = true;
-            if (Bindings.Pressed(GameAction.Melee)) _latchMelee = true;
+            if (Bindings.Triggered(GameAction.Jump)) { _latchJump = true; _latchMantle = true; }
+            if (Bindings.Triggered(GameAction.Reload)) _latchReload = true;
+            if (Bindings.Triggered(GameAction.Melee)) _latchMelee = true;
             if (Bindings.Pressed(GameAction.Grab)) _latchGrab = true;
             if (Bindings.Pressed(GameAction.StepLeft)) _latchStepLeft = true;
             if (Bindings.Pressed(GameAction.StepRight)) _latchStepRight = true;
@@ -195,7 +195,7 @@ namespace Satisfying.Game
                 else if (_stance == Stance.Prone) _stance = Stance.Crouch;
             }
 
-            if (Bindings.Pressed(GameAction.Jump)) _stance = Stance.Stand;
+            if (Bindings.Triggered(GameAction.Jump)) _stance = Stance.Stand;
         }
 
         /// <summary>
@@ -226,8 +226,8 @@ namespace Satisfying.Game
                     Magnification *= Mathf.Pow(1.12f, Mathf.Sign(wheel));
                     Magnification = Mathf.Clamp(Magnification, ScopeMin, ScopeMax);
                 }
-                if (Bindings.Pressed(GameAction.SpeedUp)) Magnification = Mathf.Min(ScopeMax, Magnification * 1.12f);
-                if (Bindings.Pressed(GameAction.SpeedDown)) Magnification = Mathf.Max(ScopeMin, Magnification / 1.12f);
+                if (Bindings.Triggered(GameAction.SpeedUp)) Magnification = Mathf.Min(ScopeMax, Magnification * 1.12f);
+                if (Bindings.Triggered(GameAction.SpeedDown)) Magnification = Mathf.Max(ScopeMin, Magnification / 1.12f);
                 return;
             }
 
@@ -236,15 +236,15 @@ namespace Satisfying.Game
             if (_blindFiring)
             {
                 if (Mathf.Abs(wheel) > 0.01f) _blindAngle += Mathf.Sign(wheel) * move.blindFireAngleStep;
-                if (Bindings.Pressed(GameAction.SpeedUp)) _blindAngle += move.blindFireAngleStep;
-                if (Bindings.Pressed(GameAction.SpeedDown)) _blindAngle -= move.blindFireAngleStep;
+                if (Bindings.Triggered(GameAction.SpeedUp)) _blindAngle += move.blindFireAngleStep;
+                if (Bindings.Triggered(GameAction.SpeedDown)) _blindAngle -= move.blindFireAngleStep;
                 _blindAngle = Mathf.Clamp(_blindAngle, -1f, 1f);
                 return;
             }
 
             if (Mathf.Abs(wheel) > 0.01f) _speedDial += Mathf.Sign(wheel) * move.speedDialStep;
-            if (Bindings.Pressed(GameAction.SpeedUp)) _speedDial += move.speedDialStep;
-            if (Bindings.Pressed(GameAction.SpeedDown)) _speedDial -= move.speedDialStep;
+            if (Bindings.Triggered(GameAction.SpeedUp)) _speedDial += move.speedDialStep;
+            if (Bindings.Triggered(GameAction.SpeedDown)) _speedDial -= move.speedDialStep;
             _speedDial = Mathf.Clamp01(_speedDial);
         }
 
@@ -259,23 +259,33 @@ namespace Satisfying.Game
         {
             if (!Enabled || !LookEnabled) return;
 
-            if (Bindings.Pressed(GameAction.Grenade)) _grenadeSeq = (byte)((_grenadeSeq + 1) & 7);
+            if (Bindings.Triggered(GameAction.Grenade)) _grenadeSeq = (byte)((_grenadeSeq + 1) & 7);
 
-            if (predictedCarry != GrenadeCarry.Ready) return;
-            if (Bindings.Pressed(GameAction.Fire)) { _throwSeq = (byte)((_throwSeq + 1) & 7); _throwHard = true; }
-            else if (Bindings.Pressed(GameAction.Aim)) { _throwSeq = (byte)((_throwSeq + 1) & 7); _throwHard = false; }
+            // Pressing a mouse button with one in your hand pulls the pin; the sim throws it when the
+            // button comes back up. Which button decides the throw right up until you let go.
+            if (predictedCarry != GrenadeCarry.Held && predictedCarry != GrenadeCarry.Primed) return;
+
+            bool hard = Bindings.Held(GameAction.Fire);
+            bool soft = Bindings.Held(GameAction.Aim);
+            _throwHeld = hard || soft;
+            if (_throwHeld) _throwHard = hard;
+
+            if (predictedCarry != GrenadeCarry.Held) return;
+            if (Bindings.Pressed(GameAction.Fire) || Bindings.Pressed(GameAction.Aim))
+                _throwSeq = (byte)((_throwSeq + 1) & 7);
         }
 
         byte _grenadeSeq;
         byte _throwSeq;
         bool _throwHard = true;
+        bool _throwHeld;
 
         void PollWeapons()
         {
-            if (Bindings.Pressed(GameAction.Weapon1)) _weapon = 0;
-            if (Bindings.Pressed(GameAction.Weapon2)) _weapon = 1;
-            if (Bindings.Pressed(GameAction.Weapon3)) _weapon = 2;
-            if (Bindings.Pressed(GameAction.Weapon4)) _weapon = 3;
+            if (Bindings.Triggered(GameAction.Weapon1)) _weapon = 0;
+            if (Bindings.Triggered(GameAction.Weapon2)) _weapon = 1;
+            if (Bindings.Triggered(GameAction.Weapon3)) _weapon = 2;
+            if (Bindings.Triggered(GameAction.Weapon4)) _weapon = 3;
         }
 
         void RecoverRecoil(WeaponTuning weapon, float dt)
@@ -313,6 +323,7 @@ namespace Satisfying.Game
             c.GrenadeSeq = _grenadeSeq;
             c.ThrowSeq = _throwSeq;
             c.ThrowHard = _throwHard;
+            if (_throwHeld) c.Buttons |= Buttons.Throw;
             c.StanceRequest = _stance;
 
             if (!Enabled)

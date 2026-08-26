@@ -80,10 +80,10 @@ namespace Satisfying.Game
         {
             if (_browser != null) _browser.Poll(NetGame.Now());
 
-            if (Bindings.Pressed(GameAction.TuningPanel)) ShowTuning = !ShowTuning;
-            if (Bindings.Pressed(GameAction.BindingsPanel)) ShowControls = !ShowControls;
-            if (Bindings.Pressed(GameAction.GearPanel)) ShowGear = !ShowGear;
-            if (Bindings.Pressed(GameAction.NetGraph)) Feel.showNetGraph = Feel.showNetGraph > 0.5f ? 0f : 1f;
+            if (Bindings.Triggered(GameAction.TuningPanel)) ShowTuning = !ShowTuning;
+            if (Bindings.Triggered(GameAction.BindingsPanel)) ShowControls = !ShowControls;
+            if (Bindings.Triggered(GameAction.GearPanel)) ShowGear = !ShowGear;
+            if (Bindings.Triggered(GameAction.NetGraph)) Feel.showNetGraph = Feel.showNetGraph > 0.5f ? 0f : 1f;
 
             if (Bindings.Pressed(GameAction.Menu))
             {
