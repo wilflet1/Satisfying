@@ -43,6 +43,19 @@ namespace Satisfying.Game
         public AudioClip UiClick;
         public AudioClip RoundStart;
 
+        /// <summary>
+        /// The three noises a grenade makes before it makes the last one. The draw is the ring of the
+        /// spoon and the body coming out of a pouch; the pin is a short metallic snap; the bounce is
+        /// per surface, because a grenade rattling on floorboards upstairs and one skittering on
+        /// concrete outside are two different pieces of information.
+        /// </summary>
+        public AudioClip GrenadeDraw;
+        public AudioClip GrenadePin;
+        public AudioClip GrenadeThrow;
+        public AudioClip[] GrenadeBounce;
+        public AudioClip Explosion;
+        public AudioClip ExplosionDistant;
+
         public static AudioBank Build()
         {
             AudioBank b = new AudioBank();
@@ -89,6 +102,21 @@ namespace Satisfying.Game
             b.Drag = Synth.Noise("drag", 0.4f, 0.2f, 700f);
             b.UiClick = Synth.Click("ui", 0.04f, 1800f, 0.25f);
             b.RoundStart = Synth.Tone("round", 0.5f, 520f, 0.35f, 0.4f);
+
+            b.GrenadeDraw = Synth.Tingle("grenade draw", 0.55f);
+            b.GrenadePin = Synth.Click("grenade pin", 0.09f, 3100f, 0.55f);
+            b.GrenadeThrow = Synth.Noise("grenade throw", 0.14f, 0.24f, 1200f);
+
+            // One per surface, indexed by SurfaceKind, so a bounce says what it bounced on.
+            b.GrenadeBounce = new AudioClip[5];
+            b.GrenadeBounce[(int)SurfaceKind.Concrete] = Synth.Bounce("bounce concrete", 0.16f, 320f, 0.55f, 0.9f);
+            b.GrenadeBounce[(int)SurfaceKind.Wood] = Synth.Bounce("bounce wood", 0.28f, 190f, 0.5f, 0.35f);
+            b.GrenadeBounce[(int)SurfaceKind.Drywall] = Synth.Bounce("bounce drywall", 0.18f, 240f, 0.4f, 0.6f);
+            b.GrenadeBounce[(int)SurfaceKind.Metal] = Synth.Bounce("bounce metal", 0.62f, 720f, 0.6f, 0.08f);
+            b.GrenadeBounce[(int)SurfaceKind.Glass] = Synth.Bounce("bounce glass", 0.22f, 1900f, 0.4f, 0.3f);
+
+            b.Explosion = Synth.Gunshot("explosion", 0.85f, 46f, 1f);
+            b.ExplosionDistant = Synth.Gunshot("explosion distant", 1.1f, 32f, 0.7f);
             return b;
         }
 
@@ -100,6 +128,14 @@ namespace Satisfying.Game
 
         /// <summary>A step on the surface underfoot. The variant is the caller's business - pass a
         /// counter or a random number, anything that is not the same twice running.</summary>
+        public AudioClip BounceFor(SurfaceKind surface)
+        {
+            if (GrenadeBounce == null || GrenadeBounce.Length == 0) return Impact;
+            int index = (int)surface;
+            if (index < 0 || index >= GrenadeBounce.Length || GrenadeBounce[index] == null) return GrenadeBounce[0];
+            return GrenadeBounce[index];
+        }
+
         public AudioClip StepFor(StepSurface surface, int variant)
         {
             AudioClip[] set = surface == StepSurface.Wood ? StepsWood : StepsConcrete;
@@ -250,6 +286,73 @@ namespace Satisfying.Game
             }
 
             return sample * level;
+        }
+
+        /// <summary>
+        /// The spoon ringing against the body as it comes out of the pouch: a handful of close, quiet,
+        /// slightly detuned partials that keep catching each other. It is the sound that tells the
+        /// room you have committed to something, so it is meant to be recognisable and not loud.
+        /// </summary>
+        public static AudioClip Tingle(string name, float duration)
+        {
+            int count = Mathf.Max(16, (int)(duration * SampleRate));
+            float[] data = new float[count];
+            Seed(0x51EBu);
+
+            // Four little chimes at irregular intervals, each a pair of high partials.
+            float[] at = { 0.00f, 0.11f, 0.19f, 0.33f };
+            float[] hz = { 2450f, 3120f, 2760f, 3380f };
+
+            for (int i = 0; i < count; i++)
+            {
+                float t = i / (float)SampleRate;
+                float sample = 0f;
+                for (int c = 0; c < at.Length; c++)
+                {
+                    float local = t - at[c];
+                    if (local < 0f) continue;
+                    float env = Mathf.Exp(-local * 26f);
+                    sample += Mathf.Sin(2f * Mathf.PI * hz[c] * local) * env * 0.30f;
+                    sample += Mathf.Sin(2f * Mathf.PI * hz[c] * 1.48f * local) * env * 0.16f;
+                }
+                // A little cloth and metal underneath it.
+                sample += NextNoise() * Mathf.Exp(-t * 9f) * 0.06f;
+                data[i] = Mathf.Clamp(sample * 0.55f, -1f, 1f);
+            }
+            return FromSamples(name, data);
+        }
+
+        /// <summary>
+        /// Something hard landing on something. `ring` is how much of it carries on afterwards - metal
+        /// rings for most of a second, concrete does not ring at all - and that difference is the
+        /// whole reason bounces are worth listening to.
+        /// </summary>
+        public static AudioClip Bounce(string name, float duration, float hz, float volume, float damping)
+        {
+            int count = Mathf.Max(16, (int)(duration * SampleRate));
+            float[] data = new float[count];
+            Seed((uint)(hz * 7.3f) + 11u);
+            float previous = 0f;
+
+            for (int i = 0; i < count; i++)
+            {
+                float t = i / (float)SampleRate;
+                float noise = NextNoise();
+                float bright = noise - previous;
+                previous = noise;
+
+                // The knock.
+                float sample = bright * Mathf.Exp(-t * 420f) * 0.85f;
+
+                // And what the surface does about it: three partials, damped by the material.
+                float ring = Mathf.Exp(-t * (6f + damping * 90f));
+                sample += Mathf.Sin(2f * Mathf.PI * hz * t) * ring * 0.5f;
+                sample += Mathf.Sin(2f * Mathf.PI * hz * 2.41f * t) * ring * 0.22f;
+                sample += Mathf.Sin(2f * Mathf.PI * hz * 4.13f * t) * ring * 0.1f;
+
+                data[i] = Mathf.Clamp(sample * volume, -1f, 1f);
+            }
+            return FromSamples(name, data);
         }
 
         public static AudioClip Noise(string name, float duration, float volume, float cutoffHz)

@@ -28,6 +28,16 @@ namespace Satisfying.Shared
         public bool Vaulting;
         public bool Sliding;
 
+        /// <summary>
+        /// What is in their hands. Replicated because it is the difference between a man aiming at
+        /// you and a man about to throw something at you, and because the local player's prediction
+        /// has to be corrected on it like everything else - a mispredicted grenade count is a grenade
+        /// you thought you had.
+        /// </summary>
+        public GrenadeCarry Carry;
+        public float CarryTimer;
+        public byte GrenadesLeft;
+
         public byte WeaponIndex;
         public byte SightIndex;
         public short Ammo;
@@ -56,6 +66,9 @@ namespace Satisfying.Shared
             n.Mantling = s.Mantling;
             n.Vaulting = s.Vaulting;
             n.Sliding = s.Sliding;
+            n.Carry = s.Carry;
+            n.CarryTimer = s.CarryTimer;
+            n.GrenadesLeft = s.GrenadesLeft;
             n.WeaponIndex = s.Weapon.Index;
             n.SightIndex = s.Weapon.Sight;
             n.Ammo = s.Weapon.Ammo;
@@ -83,6 +96,9 @@ namespace Satisfying.Shared
             s.Mantling = Mantling;
             s.Vaulting = Vaulting;
             s.Sliding = Sliding;
+            s.Carry = Carry;
+            s.CarryTimer = CarryTimer;
+            s.GrenadesLeft = GrenadesLeft;
             s.Weapon.Index = WeaponIndex;
             s.Weapon.Sight = SightIndex;
             s.Weapon.Ammo = Ammo;
@@ -110,6 +126,9 @@ namespace Satisfying.Shared
             s.Mantling = Mantling;
             s.Vaulting = Vaulting;
             s.Sliding = Sliding;
+            s.Carry = Carry;
+            s.CarryTimer = CarryTimer;
+            s.GrenadesLeft = GrenadesLeft;
             s.Weapon.Index = WeaponIndex;
             s.Weapon.Sight = SightIndex;
             s.Weapon.Ammo = Ammo;
@@ -142,6 +161,9 @@ namespace Satisfying.Shared
             b.WriteBool(Mantling);
             b.WriteBool(Vaulting);
             b.WriteBool(Sliding);
+            b.WriteBits((uint)Carry, 2);
+            b.WriteQ(MathK.Clamp(CarryTimer, 0f, 4f), 0f, 4f, 7);
+            b.WriteBits((uint)MathK.Clamp(GrenadesLeft, 0, 7), 3);
             b.WriteBits(WeaponIndex, 3);
             b.WriteBits(SightIndex, 2);
             b.WriteBits((uint)MathK.Clamp(Ammo, 0, 511), 9);
@@ -175,6 +197,9 @@ namespace Satisfying.Shared
             n.Mantling = b.ReadBool();
             n.Vaulting = b.ReadBool();
             n.Sliding = b.ReadBool();
+            n.Carry = (GrenadeCarry)b.ReadBits(2);
+            n.CarryTimer = b.ReadQ(0f, 4f, 7);
+            n.GrenadesLeft = (byte)b.ReadBits(3);
             n.WeaponIndex = (byte)b.ReadBits(3);
             n.SightIndex = (byte)b.ReadBits(2);
             n.Ammo = (short)b.ReadBits(9);
@@ -199,6 +224,7 @@ namespace Satisfying.Shared
             r.Height = MathK.Lerp(a.Height, b.Height, t);
             r.Stamina = MathK.Lerp(a.Stamina, b.Stamina, t);
             r.Spread = MathK.Lerp(a.Spread, b.Spread, t);
+            r.CarryTimer = MathK.Lerp(a.CarryTimer, b.CarryTimer, t);
             return r;
         }
     }

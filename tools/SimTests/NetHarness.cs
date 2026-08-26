@@ -77,6 +77,21 @@ namespace Satisfying.Tests
         public int ZoneHolder = KothState.Nobody;
         public int ZoneChanges;
 
+        public int GrenadeUpdates;
+        public int Blasts;
+        public Vec3 LastBlast;
+        public Vec3 LastGrenade;
+        public int LastGrenadeBounces;
+
+        public void OnGrenade(int id, int owner, Vec3 position, float fuse, int bounces, SurfaceKind surface)
+        {
+            GrenadeUpdates++;
+            LastGrenade = position;
+            LastGrenadeBounces = bounces;
+        }
+
+        public void OnBlast(Vec3 position) { Blasts++; LastBlast = position; }
+
         public void OnZone(int zone, float secondsLeft, int holder)
         {
             if (zone != ActiveZone) ZoneChanges++;
@@ -180,6 +195,16 @@ namespace Satisfying.Tests
 
             client.Connect(Now, name);
             return client;
+        }
+
+        /// <summary>
+        /// Kills a player outright, through the server's own damage path, so everything that hangs off
+        /// dying happens - including dropping a grenade they had the pin out of. There is no way to
+        /// arrange this from the outside: a player cannot shoot themselves.
+        /// </summary>
+        public void KillHolder(int index)
+        {
+            Server.KillForTest(Clients[index].PeerId);
         }
 
         public void SetConditions(float latencyMs, float jitterMs, float lossPercent)

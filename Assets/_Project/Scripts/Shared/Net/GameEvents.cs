@@ -18,6 +18,16 @@ namespace Satisfying.Shared
 
         /// <summary>Which room is the hill, how long it has left, and who is standing in it.</summary>
         void OnZone(int zone, float secondsLeft, int holder);
+
+        /// <summary>
+        /// A grenade, wherever it currently is. Sent for every live one several times a second - a
+        /// thrown object has to be SEEN travelling or nobody can react to it, and eight of them at
+        /// twelve bytes is nothing next to the snapshot.
+        /// </summary>
+        void OnGrenade(int id, int owner, Vec3 position, float fuse, int bounces, SurfaceKind surface);
+
+        /// <summary>It went off. Everyone hears and sees it; the damage was decided by the server.</summary>
+        void OnBlast(Vec3 position);
         void OnTuning(string tuningText);
         void OnRemoteShot(int shooter, Vec3 origin, Vec3 direction, byte weaponIndex, bool hit, Vec3 hitPoint,
                           bool hitPlayer);
@@ -143,6 +153,25 @@ namespace Satisfying.Shared
             return b.ToArray();
         }
 
+        public static byte[] Grenade(int id, int owner, Vec3 position, float fuse, int bounces, SurfaceKind surface)
+        {
+            NetBuffer b = Writer(NetEventType.Grenade);
+            b.WriteBits((uint)MathK.Clamp(id, 0, 15), 4);
+            b.WriteBits((uint)MathK.Clamp(owner, 0, 7), 3);
+            b.WriteVec3(position);
+            b.WriteQ(MathK.Clamp(fuse, 0f, 12f), 0f, 12f, 9);
+            b.WriteBits((uint)MathK.Clamp(bounces, 0, 15), 4);
+            b.WriteBits((uint)surface, 3);
+            return b.ToArray();
+        }
+
+        public static byte[] Blast(Vec3 position)
+        {
+            NetBuffer b = Writer(NetEventType.Blast);
+            b.WriteVec3(position);
+            return b.ToArray();
+        }
+
         public static byte[] TuningSync(string text)
         {
             NetBuffer b = new NetBuffer(64 * 1024);
@@ -242,6 +271,20 @@ namespace Satisfying.Shared
                     sink.OnZone(zone, left, holder);
                     break;
                 }
+                case NetEventType.Grenade:
+                {
+                    int id = (int)b.ReadBits(4);
+                    int owner = (int)b.ReadBits(3);
+                    Vec3 at = b.ReadVec3();
+                    float fuse = b.ReadQ(0f, 12f, 9);
+                    int bounces = (int)b.ReadBits(4);
+                    SurfaceKind surface = (SurfaceKind)b.ReadBits(3);
+                    sink.OnGrenade(id, owner, at, fuse, bounces, surface);
+                    break;
+                }
+                case NetEventType.Blast:
+                    sink.OnBlast(b.ReadVec3());
+                    break;
                 case NetEventType.TuningSync:
                     sink.OnTuning(b.ReadString2());
                     break;

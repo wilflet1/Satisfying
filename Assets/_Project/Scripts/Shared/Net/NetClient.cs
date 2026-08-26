@@ -285,7 +285,7 @@ namespace Satisfying.Shared
             if (Alive)
             {
                 WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
-                MovementCore.Step(ref _predicted, cmd, Tuning.move, weapon, Tuning.Sight(cmd.SightIndex),
+                MovementCore.Step(ref _predicted, cmd, Tuning.move, weapon, Tuning.Sight(cmd.SightIndex), Tuning.grenade,
                     Protocol.TickDt, _world, ref ev);
                 PropSim.Step(PeerId, ref _predicted, cmd, Tuning.move, Model, World, _world, Protocol.TickDt, ref ev);
             }
@@ -518,7 +518,7 @@ namespace Satisfying.Shared
                 {
                     WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
                     SimEvents ev = new SimEvents();
-                    MovementCore.Step(ref corrected, cmd, Tuning.move, weapon, Tuning.Sight(cmd.SightIndex),
+                    MovementCore.Step(ref corrected, cmd, Tuning.move, weapon, Tuning.Sight(cmd.SightIndex), Tuning.grenade,
                         Protocol.TickDt, _world, ref ev);
                 }
                 _states[s] = corrected;
@@ -552,6 +552,7 @@ namespace Satisfying.Shared
         {
             PlayerSimState before = _predicted;
             _predicted = PlayerSimState.Spawn(position, yaw, Tuning.move, Tuning.Weapon(_predicted.Weapon.Index));
+            _predicted.GrenadesLeft = (byte)Tuning.grenade.CountInt;
             _predicted.CarryInputEdges(in before);
             _renderError = Vec3.Zero;
             _renderErrorTimer = 0f;

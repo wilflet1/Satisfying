@@ -289,6 +289,7 @@ namespace Satisfying.Game
 
             HitMarkerTimer = Mathf.Max(0f, HitMarkerTimer - dt);
             ZoneTimer = Mathf.Max(0f, ZoneTimer - dt);
+            SweepGrenades();
             LastTargetTimer = Mathf.Max(0f, LastTargetTimer - dt);
             DamageFlashTimer = Mathf.Max(0f, DamageFlashTimer - dt);
             RespawnCountdown = Mathf.Max(0f, RespawnCountdown - dt);
@@ -334,12 +335,35 @@ namespace Satisfying.Game
             RenderOwnBody(in state, dt);
 
             PlayWeaponCue(View.ConsumeWeaponCue(), View.Camera.transform.position, 0.55f);
+            PlayGrenadeCues(in state);
             TrackFootsteps(in state, Client.Tuning.move, dt);
 
             // Hands go where the object is, not where the gun is.
             int held = Client.World.FindPropHeldBy(Client.PeerId);
             HeldProp = held;
             View.SetGrabTarget(held >= 0 && Scenery != null ? Scenery.GrabPoint(held) : (Vector3?)null);
+        }
+
+        GrenadeCarry _lastCarry;
+
+        /// <summary>
+        /// The noises your own grenade makes in your own hands. Driven off the predicted carry state
+        /// changing rather than off the sim events, because the events are consumed by the prediction
+        /// loop and replayed on every correction - you would hear the pin come out four times.
+        /// </summary>
+        void PlayGrenadeCues(in PlayerSimState state)
+        {
+            if (state.Carry == _lastCarry) return;
+            GrenadeCarry from = _lastCarry;
+            _lastCarry = state.Carry;
+
+            Vector3 at = View.Camera.transform.position;
+            if (from == GrenadeCarry.Stowed && state.Carry == GrenadeCarry.Drawing)
+                Sound.Play2D(Audio.GrenadeDraw, 0.6f);
+            else if (from == GrenadeCarry.Drawing && state.Carry == GrenadeCarry.Ready)
+                Sound.Play2D(Audio.GrenadePin, 0.7f);
+            else if (state.Carry == GrenadeCarry.Stowed && from == GrenadeCarry.Throwing)
+                Sound.Play2D(Audio.GrenadeThrow, 0.5f);
         }
 
         void PlayWeaponCue(WeaponAnimator.SoundCue cue, Vector3 position, float volume)
@@ -668,6 +692,83 @@ namespace Satisfying.Game
             info.Kills = kills;
             info.Deaths = deaths;
         }
+
+        /// <summary>
+        /// A live grenade, as the server last saw it. Drawn from a small pool keyed by id, and the
+        /// bounce counter is what makes the noise: the server does not send an event per bounce, it
+        /// counts them, and a count that has gone up since last time is a bounce we have not heard.
+        /// </summary>
+        sealed class LiveGrenade
+        {
+            public GameObject Body;
+            public int Bounces;
+            public float LastSeen;
+        }
+
+        readonly System.Collections.Generic.Dictionary<int, LiveGrenade> _grenades =
+            new System.Collections.Generic.Dictionary<int, LiveGrenade>();
+
+        public void OnGrenade(int id, int owner, Vec3 position, float fuse, int bounces, SurfaceKind surface)
+        {
+            Vector3 at = position.ToUnity();
+
+            LiveGrenade live;
+            if (!_grenades.TryGetValue(id, out live))
+            {
+                live = new LiveGrenade();
+                live.Body = WeaponModels.BuildGrenade(Root, Palette, PlayerLayer);
+                live.Bounces = bounces;
+                _grenades[id] = live;
+            }
+
+            live.Body.transform.position = at;
+            // Tumbling. It is not replicated - a grenade's spin changes nothing - so it is spun from
+            // how far it has travelled, which at least means it stops turning when it stops moving.
+            live.Body.transform.rotation = Quaternion.Euler(at.z * 220f, at.x * 190f, at.y * 260f);
+            live.LastSeen = Time.time;
+
+            if (bounces != live.Bounces)
+            {
+                live.Bounces = bounces;
+                Sound.Play(Audio.BounceFor(surface), at, 0.75f, Random.Range(0.92f, 1.09f), 45f);
+            }
+        }
+
+        public void OnBlast(Vec3 position)
+        {
+            Vector3 at = position.ToUnity();
+            float distance = Vector3.Distance(at, View.Camera.transform.position);
+
+            Fx.MuzzleFlash(at, Vector3.up, 0.22f);
+            Fx.Shatter(at, Vector3.one * 1.6f, 20);
+            Sound.Play(distance > 40f ? Audio.ExplosionDistant : Audio.Explosion, at, 1f,
+                       Random.Range(0.95f, 1.05f), 320f);
+
+            // Anything close enough to hurt is close enough to ring your ears.
+            if (View != null && View.Blur != null && distance < Client.Tuning.grenade.radius * 1.4f)
+            {
+                float k = 1f - Mathf.Clamp01(distance / Mathf.Max(1f, Client.Tuning.grenade.radius * 1.4f));
+                View.Blur.Hit(0.75f * k, 1.4f * k);
+            }
+        }
+
+        /// <summary>Grenades the server has stopped mentioning have gone off or been cleaned up.</summary>
+        void SweepGrenades()
+        {
+            if (_grenades.Count == 0) return;
+            _staleGrenades.Clear();
+            foreach (System.Collections.Generic.KeyValuePair<int, LiveGrenade> kv in _grenades)
+                if (Time.time - kv.Value.LastSeen > 0.5f) _staleGrenades.Add(kv.Key);
+
+            for (int i = 0; i < _staleGrenades.Count; i++)
+            {
+                LiveGrenade live = _grenades[_staleGrenades[i]];
+                if (live.Body != null) Object.Destroy(live.Body);
+                _grenades.Remove(_staleGrenades[i]);
+            }
+        }
+
+        readonly System.Collections.Generic.List<int> _staleGrenades = new System.Collections.Generic.List<int>();
 
         public void OnZone(int zone, float secondsLeft, int holder)
         {

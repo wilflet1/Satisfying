@@ -91,8 +91,10 @@ namespace Satisfying.Game
         {
             MovementTuning move = Tuning.move;
             WeaponTuning weapon = Tuning.Weapon(_weapon);
+            predictedCarry = predicted.Carry;
 
             RecoverRecoil(weapon, dt);
+            PollGrenade();
 
             if (!Enabled)
             {
@@ -246,6 +248,28 @@ namespace Satisfying.Game
             _speedDial = Mathf.Clamp01(_speedDial);
         }
 
+        /// <summary>
+        /// What the prediction thinks is in your hand. Sampled once a frame from the predicted state
+        /// rather than tracked here, so a correction from the server cannot leave the input layer
+        /// believing you are holding something you are not.
+        /// </summary>
+        GrenadeCarry predictedCarry;
+
+        void PollGrenade()
+        {
+            if (!Enabled || !LookEnabled) return;
+
+            if (Bindings.Pressed(GameAction.Grenade)) _grenadeSeq = (byte)((_grenadeSeq + 1) & 7);
+
+            if (predictedCarry != GrenadeCarry.Ready) return;
+            if (Bindings.Pressed(GameAction.Fire)) { _throwSeq = (byte)((_throwSeq + 1) & 7); _throwHard = true; }
+            else if (Bindings.Pressed(GameAction.Aim)) { _throwSeq = (byte)((_throwSeq + 1) & 7); _throwHard = false; }
+        }
+
+        byte _grenadeSeq;
+        byte _throwSeq;
+        bool _throwHard = true;
+
         void PollWeapons()
         {
             if (Bindings.Pressed(GameAction.Weapon1)) _weapon = 0;
@@ -286,6 +310,9 @@ namespace Satisfying.Game
             c.SightIndex = Sights[Mathf.Clamp(_weapon, 0, Sights.Length - 1)];
             c.SpeedDial = _speedDial;
             c.BlindAngle = _blindAngle;
+            c.GrenadeSeq = _grenadeSeq;
+            c.ThrowSeq = _throwSeq;
+            c.ThrowHard = _throwHard;
             c.StanceRequest = _stance;
 
             if (!Enabled)
@@ -308,8 +335,13 @@ namespace Satisfying.Game
             if (_latchMantle) buttons |= Buttons.Mantle;
             if (Bindings.Held(GameAction.Sprint)) buttons |= Buttons.Sprint;
             // Firing and aiming follow the cursor: clicking a slider must never fire the gun.
-            if (LookEnabled && Bindings.Held(GameAction.Aim)) buttons |= Buttons.Ads;
-            if (LookEnabled && Bindings.Held(GameAction.Fire)) buttons |= Buttons.Fire;
+            // With a grenade in your hand the two mouse buttons stop being fire and aim and become
+            // the two throws: hard overarm on the left, a soft lob on the right. Nothing else in the
+            // game overloads a button like this, and it is worth it - reaching for a third key with a
+            // live grenade in your hand is not a thing anyone manages under pressure.
+            bool holdingGrenade = predictedCarry != GrenadeCarry.Stowed;
+            if (LookEnabled && !holdingGrenade && Bindings.Held(GameAction.Aim)) buttons |= Buttons.Ads;
+            if (LookEnabled && !holdingGrenade && Bindings.Held(GameAction.Fire)) buttons |= Buttons.Fire;
             if (Bindings.Held(GameAction.Reload) || _latchReload) buttons |= Buttons.Reload;
             if (Bindings.Held(GameAction.WalkSlow)) buttons |= Buttons.WalkToggle;
             if (_blindFiring) buttons |= Buttons.BlindFire;

@@ -84,6 +84,7 @@ namespace Satisfying.Tests
             ShapeTests.Register();
             SniperTests.Register();
             PenetrationTests.Register();
+            GrenadeTests.Register();
             ReachabilityTests.Register();
 
             int passed = 0;

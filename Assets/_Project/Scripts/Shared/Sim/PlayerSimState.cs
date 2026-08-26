@@ -59,6 +59,14 @@ namespace Satisfying.Shared
         public byte GrabSeqSeen;
 
         public float MeleeTimer;        // above zero while swinging
+
+        /// <summary>The grenade in your hand, if there is one.</summary>
+        public GrenadeCarry Carry;
+        public float CarryTimer;        // counts down through the draw, then through the throw
+        public byte GrenadesLeft;
+        public byte GrenadeSeqSeen;
+        public byte ThrowSeqSeen;
+        public bool ThrowHard;
         public float MeleeCooldown;
         public byte MeleeSeqSeen;
 
@@ -79,6 +87,8 @@ namespace Satisfying.Shared
         {
             GrabSeqSeen = previous.GrabSeqSeen;
             MeleeSeqSeen = previous.MeleeSeqSeen;
+            GrenadeSeqSeen = previous.GrenadeSeqSeen;
+            ThrowSeqSeen = previous.ThrowSeqSeen;
         }
 
         public static PlayerSimState Spawn(Vec3 position, float yaw, MovementTuning t, WeaponTuning w)
@@ -168,6 +178,12 @@ namespace Satisfying.Shared
 
         public bool IsBlindFiring { get { return BlindFire > 0.5f; } }
         public bool IsSwinging { get { return MeleeTimer > 0f; } }
+
+        /// <summary>Anything other than stowed: the weapon is down and you are holding a grenade.</summary>
+        public bool HoldingGrenade { get { return Carry != GrenadeCarry.Stowed; } }
+
+        /// <summary>Pin is out. Dying like this drops a live one at your feet.</summary>
+        public bool PinPulled { get { return Carry == GrenadeCarry.Ready || Carry == GrenadeCarry.Throwing; } }
     }
 
     /// <summary>One-frame outputs from a simulation step, used for effects and for server-side shot handling.</summary>
@@ -190,6 +206,11 @@ namespace Satisfying.Shared
         public bool DryFire;
         public int ShotsFired;
         public uint FirstShotIndex;
+
+        public bool GrenadeDrawStarted;
+        public bool GrenadePinPulled;
+        public bool GrenadeReleased;
+        public bool GrenadeHard;
 
         public void Clear() { this = new SimEvents(); }
     }

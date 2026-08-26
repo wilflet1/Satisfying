@@ -88,6 +88,23 @@ namespace Satisfying.Game
             }
         }
 
+        /// <summary>
+        /// A grenade: a body, a fly-off lever and a ring. Small - 60 mm across - because a grenade
+        /// drawn at the size people imagine one is a beach ball rolling across the floor.
+        /// </summary>
+        public static GameObject BuildGrenade(Transform parent, Palette palette, int layer)
+        {
+            GameObject go = Blockout.Group(parent, "grenade", Vector3.zero, layer);
+            Transform t = go.transform;
+
+            Blockout.Shape(t, "body", Vector3.zero, new Vector3(0.058f, 0.058f, 0.082f),
+                MeshShapes.Head(), palette.Gun, layer);
+            Piece(t, "fuse", new Vector3(0f, 0f, 0.048f), new Vector3(0.022f, 0.022f, 0.020f), palette.Metal, layer);
+            Piece(t, "lever", new Vector3(0.026f, 0f, 0.020f), new Vector3(0.008f, 0.020f, 0.062f), palette.Metal, layer);
+            Piece(t, "ring", new Vector3(-0.026f, 0f, 0.046f), new Vector3(0.020f, 0.005f, 0.020f), palette.Metal, layer);
+            return go;
+        }
+
         public static string Name(int index)
         {
             switch (index)

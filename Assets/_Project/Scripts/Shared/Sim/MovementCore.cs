@@ -20,6 +20,18 @@ namespace Satisfying.Shared
         public static void Step(ref PlayerSimState s, InputCommand cmd, MovementTuning t, WeaponTuning w,
                                 SightTuning sight, float dt, ICollisionWorld world, ref SimEvents ev)
         {
+            Step(ref s, cmd, t, w, sight, null, dt, world, ref ev);
+        }
+
+        /// <summary>
+        /// The full step. A null GrenadeTuning means this caller has no grenades in it - the movement
+        /// tests do not, and threading a tuning object through forty of them to say so would be worse
+        /// than the branch.
+        /// </summary>
+        public static void Step(ref PlayerSimState s, InputCommand cmd, MovementTuning t, WeaponTuning w,
+                                SightTuning sight, GrenadeTuning grenade, float dt, ICollisionWorld world,
+                                ref SimEvents ev)
+        {
             ev.Clear();
             if (dt <= 0f) return;
 
@@ -40,6 +52,7 @@ namespace Satisfying.Shared
             StepSlide(ref s, cmd, t, world, dt, ref wantsSprint, ref ev);
             StepBlindFire(ref s, cmd, t, dt, wantsSprint);
             StepMelee(ref s, cmd, t, dt, ref ev);
+            StepGrenade(ref s, cmd, t, grenade, dt, ref ev);
             StepStance(ref s, cmd, t, world, dt, wantsSprint, ref ev);
             StepLean(ref s, cmd, t, world, dt, wantsSprint);
             StepAds(ref s, cmd, t, w, sight, dt, wantsSprint);
@@ -227,6 +240,69 @@ namespace Satisfying.Shared
             float rate = dt / MathK.Max(0.02f, t.blindFireBlendTime);
             s.BlindFire = MathK.MoveTowards(s.BlindFire, wants ? 1f : 0f, rate);
             s.BlindAngle = MathK.MoveTowards(s.BlindAngle, MathK.Clamp(cmd.BlindAngle, -1f, 1f), rate * 2f);
+        }
+
+        // ------------------------------------------------------------------ grenades
+        /// <summary>
+        /// Getting one out, and letting it go.
+        ///
+        /// The draw is slow and the pin comes out at the end of it, which is the whole shape of the
+        /// decision: you are putting your weapon down for a second and change, in the open, and once
+        /// the pin is out the only ways back are throwing it or dying with it.
+        ///
+        /// It is deliberately NOT cookable. The fuse starts when it leaves your hand, so holding it
+        /// buys you nothing and there is no timing minigame - what you are choosing is the throw, not
+        /// the moment. Dying with the pin out drops a live one where you fell; that is the price, and
+        /// it is handled by the server, which is the only thing that knows you died.
+        /// </summary>
+        static void StepGrenade(ref PlayerSimState s, InputCommand cmd, MovementTuning t, GrenadeTuning g,
+                                float dt, ref SimEvents ev)
+        {
+            if (g == null) return;
+
+            bool drawPressed = InputCommand.Advanced(cmd.GrenadeSeq, s.GrenadeSeqSeen);
+            if (drawPressed) s.GrenadeSeqSeen = cmd.GrenadeSeq;
+
+            bool throwPressed = InputCommand.Advanced(cmd.ThrowSeq, s.ThrowSeqSeen);
+            if (throwPressed) s.ThrowSeqSeen = cmd.ThrowSeq;
+
+            switch (s.Carry)
+            {
+                case GrenadeCarry.Stowed:
+                    // Not while you are swinging, vaulting or dragging something: both hands.
+                    if (!drawPressed || s.GrenadesLeft == 0 || s.IsSwinging || s.Vaulting || s.Mantling) break;
+                    s.Carry = GrenadeCarry.Drawing;
+                    s.CarryTimer = MathK.Max(0.05f, g.drawTime);
+                    ev.GrenadeDrawStarted = true;
+                    break;
+
+                case GrenadeCarry.Drawing:
+                    s.CarryTimer -= dt;
+                    // Pressing it again puts it away, as long as the pin is still in.
+                    if (drawPressed) { s.Carry = GrenadeCarry.Stowed; s.CarryTimer = 0f; break; }
+                    if (s.CarryTimer > 0f) break;
+                    s.Carry = GrenadeCarry.Ready;
+                    s.CarryTimer = 0f;
+                    ev.GrenadePinPulled = true;
+                    break;
+
+                case GrenadeCarry.Ready:
+                    if (!throwPressed) break;
+                    s.Carry = GrenadeCarry.Throwing;
+                    s.CarryTimer = MathK.Max(0.02f, g.throwTime);
+                    s.ThrowHard = cmd.ThrowHard;
+                    break;
+
+                case GrenadeCarry.Throwing:
+                    s.CarryTimer -= dt;
+                    if (s.CarryTimer > 0f) break;
+                    s.Carry = GrenadeCarry.Stowed;
+                    s.CarryTimer = 0f;
+                    if (s.GrenadesLeft > 0) s.GrenadesLeft--;
+                    ev.GrenadeReleased = true;
+                    ev.GrenadeHard = s.ThrowHard;
+                    break;
+            }
         }
 
         // ------------------------------------------------------------------ melee

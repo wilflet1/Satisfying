@@ -26,6 +26,17 @@ namespace Satisfying.Shared
         // press survives loss, and a repeated tick cannot invent one.
         public byte GrabSeq;
         public byte MeleeSeq;
+
+        /// <summary>
+        /// Pulling one out, and letting it go. Counters like the other two, because an edge that only
+        /// exists on the tick it happened is an edge a dropped packet eats - and a grenade you thought
+        /// you threw and did not is the worst possible version of that.
+        /// </summary>
+        public byte GrenadeSeq;
+        public byte ThrowSeq;
+
+        /// <summary>True for an overarm throw, false for a lob. Rides with the throw counter.</summary>
+        public bool ThrowHard;
         /// <summary>Server tick (fractional, x256) this client was rendering other players at - drives lag compensation.</summary>
         public float RenderTick;
 
@@ -33,6 +44,8 @@ namespace Satisfying.Shared
 
         public void PressGrab()  { GrabSeq  = (byte)((GrabSeq  + 1) & 7); Buttons |= Buttons.Grab; }
         public void PressMelee() { MeleeSeq = (byte)((MeleeSeq + 1) & 7); Buttons |= Buttons.Melee; }
+        public void PressGrenade() { GrenadeSeq = (byte)((GrenadeSeq + 1) & 7); }
+        public void PressThrow(bool hard) { ThrowSeq = (byte)((ThrowSeq + 1) & 7); ThrowHard = hard; }
 
         /// <summary>
         /// True when the counter has moved forward, in the wrapping sense. Half the space counts as
@@ -79,6 +92,9 @@ namespace Satisfying.Shared
             b.WriteBits((uint)Buttons, 16);
             b.WriteBits(GrabSeq, 3);
             b.WriteBits(MeleeSeq, 3);
+            b.WriteBits(GrenadeSeq, 3);
+            b.WriteBits(ThrowSeq, 3);
+            b.WriteBool(ThrowHard);
             b.WriteQ(RenderTick - (baseTick - 64f), 0f, 128f, 12);
         }
 
@@ -99,6 +115,9 @@ namespace Satisfying.Shared
             c.Buttons = (Buttons)b.ReadBits(16);
             c.GrabSeq = (byte)b.ReadBits(3);
             c.MeleeSeq = (byte)b.ReadBits(3);
+            c.GrenadeSeq = (byte)b.ReadBits(3);
+            c.ThrowSeq = (byte)b.ReadBits(3);
+            c.ThrowHard = b.ReadBool();
             c.RenderTick = b.ReadQ(0f, 128f, 12) + (baseTick - 64f);
             return c;
         }

@@ -76,6 +76,10 @@ namespace Satisfying.Shared
         public readonly System.Collections.Generic.List<ZoneDef> Zones = new System.Collections.Generic.List<ZoneDef>();
 
         public KothState Hill;
+
+        readonly GrenadeState[] _grenades = new GrenadeState[GrenadeSim.MaxLive];
+        byte _nextGrenadeId;
+        float _grenadeAnnounce;
         float _zoneAnnounce;
         readonly float[] _zonePoints = new float[Protocol.MaxPeerId + 1];
 
@@ -157,7 +161,15 @@ namespace Satisfying.Shared
                 SimEvents ev = new SimEvents();
                 WeaponTuning weapon = Tuning.Weapon(cmd.WeaponIndex);
                 SightTuning sight = Tuning.Sight(cmd.SightIndex);
-                MovementCore.Step(ref p.Sim, cmd, Tuning.move, weapon, sight, Protocol.TickDt, _world, ref ev);
+                MovementCore.Step(ref p.Sim, cmd, Tuning.move, weapon, sight, Tuning.grenade,
+                                  Protocol.TickDt, _world, ref ev);
+
+                if (ev.GrenadeReleased)
+                {
+                    Vec3 from, velocity;
+                    GrenadeSim.Throw(in p.Sim, Tuning.move, Tuning.grenade, ev.GrenadeHard, out from, out velocity);
+                    SpawnGrenade(p, from, velocity);
+                }
 
                 // Always resolve the shot, live or not. Only damage waits for the match: a round still
                 // travels, still takes out a pane and still cracks off a wall while you are warming up,
@@ -547,6 +559,112 @@ namespace Satisfying.Shared
             p.HistoryAlive[slot] = p.Alive;
         }
 
+        // ================================================================== grenades
+        /// <summary>
+        /// Every live grenade, one tick. Bounces make a noise at whoever is near them and the fuse is
+        /// absolute - it started when the thing left a hand and nothing stops it, including the
+        /// thrower dying, which is the entire point of the pin being out.
+        /// </summary>
+        void StepGrenades()
+        {
+            bool any = false;
+            for (int i = 0; i < _grenades.Length; i++)
+            {
+                if (!_grenades[i].Active) continue;
+                any = true;
+
+                bool bounced;
+                GrenadeSim.Step(ref _grenades[i], _world, Model, Tuning.grenade, Tuning.move.gravity,
+                                Protocol.TickDt, out bounced);
+
+                if (_grenades[i].Fuse > 0f) continue;
+                Detonate(ref _grenades[i]);
+            }
+
+            if (!any) { _grenadeAnnounce = 0f; return; }
+
+            // Twelve a second. A grenade you cannot see arrive is a grenade you cannot leave.
+            _grenadeAnnounce -= Protocol.TickDt;
+            if (_grenadeAnnounce > 0f) return;
+            _grenadeAnnounce = 1f / 12f;
+
+            for (int i = 0; i < _grenades.Length; i++)
+            {
+                if (!_grenades[i].Active) continue;
+                Broadcast(GameEvents.Grenade(_grenades[i].Id, _grenades[i].Owner, _grenades[i].Position,
+                                             _grenades[i].Fuse, _grenades[i].Bounces, _grenades[i].LastSurface));
+            }
+        }
+
+        void Detonate(ref GrenadeState g)
+        {
+            Vec3 at = g.Position;
+            g.Active = false;
+            Broadcast(GameEvents.Blast(at));
+
+            GrenadeTuning tuning = Tuning.grenade;
+            ServerPlayer owner = Find(g.Owner);
+
+            for (int i = 0; i < _players.Count; i++)
+            {
+                ServerPlayer p = _players[i];
+                if (!p.Active || !p.Alive) continue;
+                if (p.SpawnProtection > 0f) continue;
+
+                // Measured to the middle of them rather than to their feet, so lying down under a
+                // blast is worth something and standing on it is not survivable.
+                Vec3 centre = p.Sim.Position + Vec3.Up * (p.Sim.Height * 0.45f);
+                float distance = (centre - at).Magnitude;
+                if (distance > tuning.radius) continue;
+
+                // Cover works. Without this a grenade in the next room kills you through the wall,
+                // which makes the whole map one room.
+                if (tuning.NeedsLineOfSight && distance > 0.35f)
+                {
+                    Vec3 toward = (centre - at) / distance;
+                    float blocked;
+                    Vec3 normal;
+                    if (_world.Raycast(at, toward, distance - 0.25f, out blocked, out normal)) continue;
+                }
+
+                float damage = tuning.DamageAt(distance);
+                if (damage <= 0.5f) continue;
+                ApplyDamage(p, owner != null ? owner : p, damage, HitZone.Chest, distance, centre);
+            }
+        }
+
+        /// <summary>Puts one in the air. Silently does nothing when there is no room for it, which is
+        /// better than the alternative of one player filling the array and stopping everyone else.</summary>
+        void SpawnGrenade(ServerPlayer thrower, Vec3 position, Vec3 velocity)
+        {
+            for (int i = 0; i < _grenades.Length; i++)
+            {
+                if (_grenades[i].Active) continue;
+                _grenades[i] = new GrenadeState();
+                _grenades[i].Active = true;
+                _grenades[i].Id = _nextGrenadeId;
+                _nextGrenadeId = (byte)((_nextGrenadeId + 1) & 15);
+                _grenades[i].Owner = (byte)thrower.PeerId;
+                _grenades[i].Position = position;
+                _grenades[i].Velocity = velocity;
+                _grenades[i].Fuse = MathK.Max(0.2f, Tuning.grenade.fuse);
+                _grenades[i].LastSurface = SurfaceKind.Concrete;
+                return;
+            }
+        }
+
+        /// <summary>
+        /// Kills a peer outright, for tests. Dying has consequences that nothing else can arrange -
+        /// a grenade with the pin out is dropped where you fall - and a test that reproduced the
+        /// damage path itself would be testing its own copy of it.
+        /// </summary>
+        public void KillForTest(int peerId)
+        {
+            ServerPlayer p = Find(peerId);
+            if (p == null || !p.Alive) return;
+            ApplyDamage(p, p, p.Health + 1000f, HitZone.Head, 0f, p.Sim.Position);
+        }
+
         void ApplyDamage(ServerPlayer victim, ServerPlayer shooter, float damage, HitZone zone, float distance,
                          Vec3 point)
         {
@@ -561,6 +679,17 @@ namespace Satisfying.Shared
 
             victim.Health = 0f;
             victim.Alive = false;
+
+            // Killed with the pin out. It goes where they fell and the fuse runs from now - which is
+            // what makes pulling one in the open a commitment rather than a free option.
+            if (victim.Sim.PinPulled && victim.Sim.GrenadesLeft > 0)
+            {
+                SpawnGrenade(victim, victim.Sim.Position + Vec3.Up * 0.4f,
+                             new Vec3(0f, 1.2f, 0f) + victim.Sim.Velocity.Flat * 0.3f);
+                victim.Sim.GrenadesLeft--;
+            }
+            victim.Sim.Carry = GrenadeCarry.Stowed;
+            victim.Sim.CarryTimer = 0f;
             PropSim.ReleaseAll(victim.PeerId, World);
             victim.RespawnTimer = Tuning.match.respawnDelay;
             victim.Deaths++;
@@ -653,6 +782,7 @@ namespace Satisfying.Shared
         {
             PhaseTimer = MathK.Max(0f, PhaseTimer - Protocol.TickDt);
             StepHill();
+            StepGrenades();
 
             switch (Phase)
             {
@@ -712,6 +842,7 @@ namespace Satisfying.Shared
             SpawnPoint sp = _spawns.Pick(_spawnCounter++, _avoid);
             PlayerSimState before = p.Sim;
             p.Sim = PlayerSimState.Spawn(sp.Position, sp.Yaw, Tuning.move, Tuning.Weapon(p.Sim.Weapon.Index));
+            p.Sim.GrenadesLeft = (byte)Tuning.grenade.CountInt;
             p.Sim.CarryInputEdges(in before);
             p.Health = Tuning.match.maxHealth;
             p.Alive = true;

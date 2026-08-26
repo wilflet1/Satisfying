@@ -301,6 +301,7 @@ namespace Satisfying.Shared
         public MatchTuning match = new MatchTuning();
         public PenetrationTuning penetration = new PenetrationTuning();
         public KothTuning koth = new KothTuning();
+        public GrenadeTuning grenade = new GrenadeTuning();
         public WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
         public SightTuning[] sights = SightTuning.Defaults();
 
@@ -323,6 +324,7 @@ namespace Satisfying.Shared
             c.match = match.Clone();
             c.penetration = penetration.Clone();
             c.koth = koth.Clone();
+            c.grenade = grenade.Clone();
             c.weapons = new WeaponTuning[weapons.Length];
             for (int i = 0; i < weapons.Length; i++) c.weapons[i] = weapons[i].Clone();
             c.sights = new SightTuning[sights.Length];

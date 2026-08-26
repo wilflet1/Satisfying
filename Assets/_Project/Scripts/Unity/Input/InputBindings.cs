@@ -13,6 +13,7 @@ namespace Satisfying.Game
         LeanLeft, LeanRight, LeanModifier,
         StepLeft, StepRight,
         Weapon1, Weapon2, Weapon3, Weapon4,
+        Grenade,
         SpeedUp, SpeedDown,
         Scoreboard, TuningPanel, BindingsPanel, GearPanel, NetGraph, Menu,
         Count
@@ -109,7 +110,8 @@ namespace Satisfying.Game
             Set(GameAction.Reload, KeyCode.R);
             // Lean owns Q/E - it is the point of the game - so interact and melee go where they do in
             // every other shooter, and blind fire takes the free key. Nothing may share a key with
-            // anything else: see AllConflicts().
+            // anything else: see AllConflicts(). G is the grenade, which is where every shooter puts
+            // it, so the gear menu moved to F4 alongside the other panels.
             Set(GameAction.BlindFire, KeyCode.B);
             Set(GameAction.Melee, KeyCode.V);
             Set(GameAction.Grab, KeyCode.F);
@@ -122,12 +124,13 @@ namespace Satisfying.Game
             Set(GameAction.Weapon2, KeyCode.Alpha2);
             Set(GameAction.Weapon3, KeyCode.Alpha3);
             Set(GameAction.Weapon4, KeyCode.Alpha4);
+            Set(GameAction.Grenade, KeyCode.G);
             Set(GameAction.SpeedUp, KeyCode.PageUp);
             Set(GameAction.SpeedDown, KeyCode.PageDown);
             Set(GameAction.Scoreboard, KeyCode.Tab);
             Set(GameAction.TuningPanel, KeyCode.F1);
             Set(GameAction.BindingsPanel, KeyCode.F2);
-            Set(GameAction.GearPanel, KeyCode.G);
+            Set(GameAction.GearPanel, KeyCode.F4);
             Set(GameAction.NetGraph, KeyCode.F3);
             Set(GameAction.Menu, KeyCode.Escape);
 
@@ -227,6 +230,7 @@ namespace Satisfying.Game
                 case GameAction.Weapon2: return "Weapon 2";
                 case GameAction.Weapon3: return "Weapon 3";
                 case GameAction.Weapon4: return "Weapon 4";
+                case GameAction.Grenade: return "Grenade";
                 default: return action.ToString();
             }
         }

@@ -128,7 +128,10 @@ namespace Satisfying.Tests
                 b.ResetWrite();
                 c.Write(b, 1002);
                 byte[] packet = b.ToArray();
-                Assert.Less(packet.Length, 16f, "command packs into 15 bytes or fewer");
+                // Sixteen, since grenades: a draw counter, a throw counter and the overarm bit are
+                // seven more. Ten copies of every command ride in each packet, so a byte here is ten
+                // bytes on the wire at 64 Hz - about 0.6 KB/s up, which is what a grenade costs.
+                Assert.Less(packet.Length, 17f, "command packs into 16 bytes or fewer");
 
                 NetBuffer r = new NetBuffer(64);
                 r.ResetRead(packet, packet.Length);
@@ -227,6 +230,20 @@ namespace Satisfying.Tests
         public int ZoneIndex = -1;
         public float ZoneLeft;
         public int ZoneHolder;
+        public int GrenadeId = -1;
+        public Vec3 GrenadeAt;
+        public float GrenadeFuse;
+        public SurfaceKind GrenadeSurface;
+        public Vec3 BlastAt;
+        public int Blasts;
+
+        public void OnGrenade(int id, int owner, Vec3 position, float fuse, int bounces, SurfaceKind surface)
+        {
+            GrenadeId = id; GrenadeAt = position; GrenadeFuse = fuse; GrenadeSurface = surface;
+        }
+
+        public void OnBlast(Vec3 position) { Blasts++; BlastAt = position; }
+
         public void OnZone(int zone, float secondsLeft, int holder)
         {
             ZoneIndex = zone; ZoneLeft = secondsLeft; ZoneHolder = holder;

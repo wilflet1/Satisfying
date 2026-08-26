@@ -165,6 +165,7 @@ namespace Satisfying.Game
             DrawHitMarker();
             DrawVitals(in state, move, weapon);
             DrawMatchBanner();
+            DrawGrenade(in state);
             DrawHill();
             DrawKillFeed();
             DrawStationCaption();
@@ -424,6 +425,59 @@ namespace Satisfying.Game
                        (won ? (Game.PlayingHill ? "the house is yours" : "the duel is yours")
                             : "better luck next round"),
                        _centreSmall, UiSkin.InkDim);
+        }
+
+        /// <summary>
+        /// What is in your hand and how many are left. The state matters more than the count: once
+        /// the pin is out the only ways back are throwing it or dying with it, and that deserves to
+        /// be said on the screen rather than remembered.
+        /// </summary>
+        void DrawGrenade(in PlayerSimState state)
+        {
+            GrenadeTuning tuning = Game.Client.Tuning.grenade;
+            float x = _width * 0.5f - 150f;
+            float y = _height - 96f;
+
+            if (state.Carry == GrenadeCarry.Stowed)
+            {
+                if (state.GrenadesLeft == 0) return;
+                _skin.Text(new Rect(x, y, 300f, 18f),
+                           "grenades  " + state.GrenadesLeft, _centreSmall, UiSkin.InkDim);
+                return;
+            }
+
+            string caption;
+            Color colour;
+            if (state.Carry == GrenadeCarry.Drawing)
+            {
+                caption = "PULLING THE PIN";
+                colour = UiSkin.Accent;
+            }
+            else
+            {
+                caption = "LEFT throw   RIGHT lob";
+                colour = UiSkin.Bad;
+            }
+
+            GUI.color = new Color(0.05f, 0.055f, 0.07f, 0.8f);
+            GUI.DrawTexture(new Rect(x, y - 4f, 300f, 40f), _skin.White);
+            GUI.color = Color.white;
+            _skin.Text(new Rect(x, y, 300f, 18f), caption, _centreSmall, colour);
+
+            if (state.Carry == GrenadeCarry.Drawing)
+            {
+                float k = 1f - Mathf.Clamp01(state.CarryTimer / Mathf.Max(0.05f, tuning.drawTime));
+                GUI.color = new Color(1f, 1f, 1f, 0.14f);
+                GUI.DrawTexture(new Rect(x + 60f, y + 22f, 180f, 3f), _skin.White);
+                GUI.color = new Color(UiSkin.Accent.r, UiSkin.Accent.g, UiSkin.Accent.b, 0.95f);
+                GUI.DrawTexture(new Rect(x + 60f, y + 22f, 180f * k, 3f), _skin.White);
+                GUI.color = Color.white;
+            }
+            else
+            {
+                _skin.Text(new Rect(x, y + 18f, 300f, 16f),
+                           "no cook - the fuse starts when it leaves your hand", _centreSmall, UiSkin.InkDim);
+            }
         }
 
         /// <summary>

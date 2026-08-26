@@ -29,7 +29,9 @@ namespace Satisfying.Shared
         Shot = 9,
         TargetHit = 10,
         Damaged = 11,
-        Zone = 12
+        Zone = 12,
+        Grenade = 13,
+        Blast = 14
     }
 
     /// <summary>
@@ -65,7 +67,7 @@ namespace Satisfying.Shared
     public static class Protocol
     {
         /// <summary>Bumped whenever the packet layout or the simulation changes shape.</summary>
-        public const ushort Version = 14;
+        public const ushort Version = 15;
 
         public const int DefaultPort = 7777;
         // Peer ids travel in 3 bits. 0 is the server and 7 is the "nobody" sentinel that a suicide or
