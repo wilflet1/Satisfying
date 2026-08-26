@@ -65,21 +65,31 @@ namespace Satisfying.Game
         }
 
         /// <summary>
-        /// The character this peer wears. Null means the blockout duellist - either because there are
-        /// no avatars to deal out, or because this one has not finished loading yet.
+        /// The character this peer wears. Null - which is the normal answer - means the duellist this
+        /// game builds itself, dressed by VariantFor below.
+        ///
+        /// An imported character is worn only when somebody has ASKED for one in the menu. It used to
+        /// deal them to everybody the moment any were on the machine, which put a stranger's model in
+        /// front of you instead of the game's own duellist and took the kit and colour variation with
+        /// it, because an avatar replaces the body it is worn over.
         /// </summary>
         public string SourceFor(int peerId)
         {
-            if (!string.IsNullOrEmpty(Chosen)) return Chosen;
+            return string.IsNullOrEmpty(Chosen) ? null : Chosen;
+        }
 
+        /// <summary>Every character on the machine, for the panel to offer.</summary>
+        public string Installed(int index)
+        {
             Rescan();
-            if (_sources.Count == 0) return null;
-            return _sources[(int)(Hash(peerId) % (uint)_sources.Count)];
+            if (index < 0 || index >= _sources.Count) return null;
+            return _sources[index];
         }
 
         /// <summary>
-        /// Which look the blockout character gets when there is no avatar for this peer. Same hash,
-        /// different salt, so a player's fallback appearance is stable for as long as they are here.
+        /// Which look this peer's duellist gets: kit colour, skin tone, and which rig they are
+        /// wearing. Same hash, different salt, so somebody's appearance is stable for as long as they
+        /// are here and identical on both machines without a byte being sent about it.
         /// </summary>
         public int VariantFor(int peerId)
         {

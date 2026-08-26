@@ -604,8 +604,15 @@ namespace Satisfying.Game
 
                 PlayerSimState sim = SimBase(move, stances[i]);
                 cam.transform.position = new Vector3(0f, sim.EyeHeight(move), 0f);
-                cam.transform.rotation = Quaternion.Euler(62f, 0f, 0f);
-                Write(Render(cam, null), "lookdown-" + names[i]);
+
+                // Several pitches, because "you can see your own body" and "your own body is all you
+                // can see" look identical at one angle and are not the same thing at all.
+                float[] pitches = { 35f, 55f, 75f };
+                for (int a = 0; a < pitches.Length; a++)
+                {
+                    cam.transform.rotation = Quaternion.Euler(pitches[a], 0f, 0f);
+                    Write(Render(cam, null), "lookdown-" + names[i] + "-" + pitches[a].ToString("0"));
+                }
 
                 Object.DestroyImmediate(holder);
             }

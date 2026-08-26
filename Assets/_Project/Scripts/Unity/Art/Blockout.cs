@@ -182,10 +182,25 @@ namespace Satisfying.Game
             public Material Kit;
 
             /// <summary>The bits that live inside your own camera. Wearing your own skull is not a look.</summary>
+            /// <summary>
+            /// Strips the parts of the body you cannot be shown your own of.
+            ///
+            /// The head and neck are obvious - the camera is inside the skull. The CHEST is the one
+            /// that took a photograph to notice: your eyes sit about 220 mm above your own shoulders
+            /// and your shoulders are 400 mm across, so from up there they subtend most of the screen.
+            /// Look down at anything past about thirty degrees and the entire view was a featureless
+            /// slab of shoulder - which is exactly what "why do I still look like a block" looks like
+            /// from the inside.
+            ///
+            /// What is left is what you actually want to see of yourself: belt, hips, legs and boots.
+            /// The plate carrier goes with the chest because it hangs off that bone, and no shooter
+            /// has ever shown you the top of your own body armour.
+            /// </summary>
             public void SetFirstPerson()
             {
                 Head.gameObject.SetActive(false);
                 Neck.SetVisible(false);
+                Chest.SetVisible(false);
             }
 
             /// <summary>

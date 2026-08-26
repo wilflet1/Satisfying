@@ -449,7 +449,12 @@ namespace Satisfying.Game
         {
             if (_ownBody == null)
             {
-                _ownBody = new RemotePlayerView(Root, Client.PeerId, Palette, Client.Tuning.move, PlayerLayer, true);
+                // With a variant, like everybody else. Without one the duellist falls back to the
+                // material it was handed, which since your own body stopped being forced to the
+                // friendly colour is the ENEMY red - so you would have spent the match wearing the
+                // shade you were shooting at.
+                _ownBody = new RemotePlayerView(Root, Client.PeerId, Palette, Client.Tuning.move, PlayerLayer,
+                                                true, Pool != null ? Pool.VariantFor(Client.PeerId) : -1);
                 ApplyAvatar(Client.PeerId, _ownBody);
             }
 

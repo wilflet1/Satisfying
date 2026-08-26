@@ -30,16 +30,23 @@ namespace Satisfying.Game
             StringBuilder report = new StringBuilder();
             report.AppendLine("[deal] blockout variants by peer id, and how they spread");
 
-            int[] kitCounts = new int[8];
+            int[] kitCounts = new int[Palette.KitCount];
             for (int peer = 1; peer <= 6; peer++)
             {
                 int variant = pool.VariantFor(peer);
                 int again = pool.VariantFor(peer);
+                int look = Mathf.Abs(variant);
+
+                // The same arithmetic Palette and Blockout do, or the report describes a duellist
+                // nobody is wearing.
                 report.AppendLine("  peer " + peer + "   variant " + variant
-                                  + "   kit " + (Mathf.Abs(variant) % 8)
-                                  + "   skin " + (Mathf.Abs(variant / 8) % 6)
+                                  + "   kit " + (look % Palette.KitCount)
+                                  + "   skin " + ((look / Palette.KitCount) % Palette.SkinCount)
+                                  + "   rig " + (look % 4)
+                                  + (((look / 4) % 3 != 0) ? "+straps" : "")
+                                  + (((look / 12) % 2 == 0) ? " +pouch" : "")
                                   + (variant == again ? "" : "   UNSTABLE"));
-                kitCounts[Mathf.Abs(variant) % 8]++;
+                kitCounts[look % Palette.KitCount]++;
             }
 
             int distinct = 0;

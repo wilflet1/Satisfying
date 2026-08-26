@@ -68,13 +68,12 @@ namespace Satisfying.Game
             _palette = palette;
             _layer = layer;
 
-            // Your own body is the friendly colour. Looking down and seeing the shade you have spent
-            // the match shooting at is a small thing that reads wrong every single time.
-            // Your own body stays the friendly colour whatever anyone else is wearing - looking down
-            // and seeing the shade you have spent the match shooting at reads wrong every single time.
+            // Your own body is dealt a look like everybody else's. It used to be forced to the plain
+            // friendly colour so you could not confuse yourself with the man you were shooting at -
+            // but there is only one other person in a duel and he is always the enemy, so all that
+            // rule bought was that the one character you look at most was the one with no kit on it.
             Character = Blockout.Duellist(parent, "Duellist " + peerId, palette,
-                firstPerson ? palette.Ally : palette.Enemy, layer, move.standHeight / 1.82f,
-                firstPerson ? -1 : variant);
+                palette.Enemy, layer, move.standHeight / 1.82f, variant);
 
             _weaponHolder = Blockout.Group(Character.Root.transform, "weapon holder", Vector3.zero, layer).transform;
 

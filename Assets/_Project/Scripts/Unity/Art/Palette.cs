@@ -73,7 +73,20 @@ namespace Satisfying.Game
             new Color(0.26f, 0.28f, 0.34f),     // navy
             new Color(0.32f, 0.32f, 0.28f),     // khaki
             new Color(0.22f, 0.26f, 0.30f),     // gunmetal
-            new Color(0.38f, 0.34f, 0.30f)      // sand
+            new Color(0.38f, 0.34f, 0.30f),     // sand
+
+            // The seven above are all the same muted brown-grey, which is honest for kit and useless
+            // for telling two duellists apart at forty metres - "randomised" that nobody can see the
+            // result of is not randomised. These carry enough hue to read across the arena while
+            // staying a colour someone might actually wear.
+            new Color(0.20f, 0.34f, 0.30f),     // teal
+            new Color(0.42f, 0.24f, 0.22f),     // rust
+            new Color(0.28f, 0.22f, 0.34f),     // plum
+            new Color(0.18f, 0.32f, 0.20f),     // forest
+            new Color(0.44f, 0.36f, 0.18f),     // ochre
+            new Color(0.20f, 0.24f, 0.40f),     // indigo
+            new Color(0.40f, 0.28f, 0.34f),     // mulberry
+            new Color(0.16f, 0.18f, 0.20f)      // charcoal
         };
 
         static readonly Color[] SkinColours =
@@ -90,6 +103,10 @@ namespace Satisfying.Game
             new System.Collections.Generic.Dictionary<int, Material>();
         readonly System.Collections.Generic.Dictionary<int, Material> _skinVariants =
             new System.Collections.Generic.Dictionary<int, Material>();
+
+        /// <summary>How many of each there are, so a report can say which one somebody got.</summary>
+        public static int KitCount { get { return KitColours.Length; } }
+        public static int SkinCount { get { return SkinColours.Length; } }
 
         public Material KitFor(int variant)
         {
