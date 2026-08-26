@@ -56,23 +56,38 @@ namespace Satisfying.Game
             for (int i = 0; i < args.Length - 1; i++)
                 if (args[i] == "-avatar") path = args[i + 1];
 
-            if (string.IsNullOrEmpty(path))
-            {
-                string folder = Path.Combine(Application.persistentDataPath, "avatars");
-                if (Directory.Exists(folder))
-                {
-                    string[] found = Directory.GetFiles(folder, "*.glb");
-                    if (found.Length > 0) path = found[0];
-                }
-            }
+            if (string.IsNullOrEmpty(path)) path = Path.Combine(Application.persistentDataPath, "avatars");
 
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            // A whole folder in one go. Starting Unity takes the best part of a minute, and checking
+            // sixteen characters one launch at a time is the difference between doing it and deciding
+            // it is probably fine.
+            if (Directory.Exists(path))
             {
-                Debug.Log("[avatar] no .glb to check. Pass one with -avatar <path>, or put one in "
-                          + Path.Combine(Application.persistentDataPath, "avatars"));
+                List<string> found = new List<string>();
+                found.AddRange(Directory.GetFiles(path, "*.vrm"));
+                found.AddRange(Directory.GetFiles(path, "*.glb"));
+                found.Sort();
+
+                if (found.Count == 0)
+                {
+                    Debug.Log("[avatar] nothing to check in " + path);
+                    return;
+                }
+                for (int i = 0; i < found.Count; i++) One(found[i]);
                 return;
             }
 
+            if (!File.Exists(path))
+            {
+                Debug.Log("[avatar] nothing to check. Pass a file or a folder with -avatar <path>, or "
+                          + "put one in " + Path.Combine(Application.persistentDataPath, "avatars"));
+                return;
+            }
+            One(path);
+        }
+
+        static void One(string path)
+        {
             byte[] bytes = File.ReadAllBytes(path);
             Debug.Log("[avatar] " + Path.GetFileName(path) + "  " + (bytes.Length / 1024) + " KB");
 
@@ -110,6 +125,11 @@ namespace Satisfying.Game
             report.AppendLine("  vertices    " + vertices);
             report.AppendLine("  triangles   " + triangles);
             report.AppendLine("  bones       " + model.Bones.Count);
+            if (!string.IsNullOrEmpty(model.Title) || !string.IsNullOrEmpty(model.Author))
+                report.AppendLine("  who made it " + (model.Title ?? "-") + " by " + (model.Author ?? "-"));
+            if (!string.IsNullOrEmpty(model.Licence))
+                report.AppendLine("  licence     " + model.Licence);
+
             report.AppendLine("  format      " + model.Flavour
                               + (model.Humanoid.Count > 0
                                  ? "  (declared humanoid map, " + model.Humanoid.Count + " bones)"
@@ -157,6 +177,7 @@ namespace Satisfying.Game
 
             MovementTuning move = new MovementTuning();
             WeaponTuning weapon = WeaponTuning.DefaultLoadout()[0];
+            string who = Path.GetFileNameWithoutExtension(path);
 
             GameObject holder = new GameObject("posed avatar");
             model.Root.transform.SetParent(holder.transform, false);
@@ -182,10 +203,12 @@ namespace Satisfying.Game
                 rig.Apply(in pose, holder.transform);
                 boxes.Render(in state, move, weapon);
 
-                Fit(model, in state, move, weapon, names[i]);
+                Fit(model, in state, move, weapon, who + " " + names[i]);
 
-                Shot(outDir, "avatar-" + names[i], holder, 90f);
-                Shot(outDir, "avatar-" + names[i] + "-front", holder, 0f);
+                // 180, not 0: the character faces the way its weapon points, and at 0 this camera
+                // sits behind it - every "front" shot in here was the back of somebody's head.
+                Shot(outDir, who + "-" + names[i], holder, 90f);
+                Shot(outDir, who + "-" + names[i] + "-front", holder, 180f);
             }
 
             Object.DestroyImmediate(holder);
@@ -200,6 +223,18 @@ namespace Satisfying.Game
         /// posed skin is baked and every vertex is measured against the same hitbox the server builds,
         /// with the same test the blockout character is held to.
         /// </summary>
+        /// <summary>
+        /// How far past a capsule a vertex may sit before it counts.
+        ///
+        /// Not zero, and this is the whole reason the first version of this report was useless. A
+        /// vertex on the SURFACE of an arm is about an arm's radius from the bone, which is about the
+        /// capsule's radius - so on a character that fits perfectly, half the skin lands a millimetre
+        /// or two outside and the report reads 90%. What is worth knowing is not how many vertices
+        /// are fractionally proud of the capsule but how much of the character is somewhere the
+        /// server will not find it, and five centimetres is where that starts to matter.
+        /// </summary>
+        const float Slack = 0.05f;
+
         static void Fit(GlbModel model, in PlayerSimState state, MovementTuning move,
                         WeaponTuning weapon, string stance)
         {
@@ -209,6 +244,7 @@ namespace Satisfying.Game
             float worst = 0f;
             string worstPart = "";
             HitZone worstZone = HitZone.None;
+            Vec3 worstAt = new Vec3();
             List<string> parts = new List<string>();
 
             SkinnedMeshRenderer[] skins = model.Root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
@@ -219,6 +255,17 @@ namespace Satisfying.Game
                 Mesh baked = new Mesh();
                 skins[i].BakeMesh(baked);
                 Vector3[] vertices = baked.vertices;
+
+                // Only the vertices a triangle actually uses.
+                //
+                // A glTF mesh's primitives usually SHARE one vertex buffer and differ only in their
+                // indices, so each primitive here carries the whole character's vertices and draws a
+                // ninth of them. The ones it does not draw are not weighted to anything that moved and
+                // sit wherever the bind pose left them - which is how this report came to insist that
+                // a character had a foot 380 mm out to the side that no screenshot has ever shown.
+                bool[] drawn = new bool[vertices.Length];
+                int[] triangles = baked.triangles;
+                for (int t = 0; t < triangles.Length; t++) drawn[triangles[t]] = true;
                 // Position and rotation only. BakeMesh has already applied the renderer's scale, and
                 // localToWorldMatrix would apply it a second time - which read as the whole character
                 // being 82% outside its own hitbox, and was a bug in the ruler rather than the thing
@@ -228,35 +275,42 @@ namespace Satisfying.Game
 
                 int partOutside = 0;
                 float partWorst = 0f;
+                int drawnCount = 0;
                 for (int v = 0; v < vertices.Length; v++)
                 {
+                    if (!drawn[v]) continue;
+                    drawnCount++;
                     Vec3 point = toWorld.MultiplyPoint3x4(vertices[v]).ToSim();
                     HitZone zone;
                     float d = Silhouette.Outside(point, in box, out zone);
                     total++;
-                    if (d <= 0.002f) continue;
+                    if (d > partWorst) partWorst = d;
+                    if (d <= Slack) continue;
                     outside++;
                     partOutside++;
-                    if (d > partWorst) partWorst = d;
                     if (d <= worst) continue;
                     worst = d;
                     worstPart = Label(skins[i]);
                     worstZone = zone;
+                    worstAt = point;
                 }
                 Object.DestroyImmediate(baked);
 
                 if (partOutside > 0)
                     parts.Add("      " + Label(skins[i]).PadRight(28)
-                              + (100f * partOutside / Mathf.Max(1, vertices.Length)).ToString("0").PadLeft(3)
+                              + (100f * partOutside / Mathf.Max(1, drawnCount)).ToString("0").PadLeft(3)
                               + "% out, worst " + (partWorst * 1000f).ToString("0") + " mm");
             }
 
             if (total == 0) return;
             float share = 100f * outside / total;
-            Debug.Log("[fit] " + stance.PadRight(7) + share.ToString("0.0").PadLeft(5)
-                      + "% of the character is outside its hitbox"
+            Debug.Log("[fit] " + stance.PadRight(30) + share.ToString("0.0").PadLeft(5)
+                      + "% of the character is more than " + (Slack * 1000f).ToString("0")
+                      + " mm outside its hitbox"
                       + (outside == 0 ? "" : "   worst " + (worst * 1000f).ToString("0") + " mm on "
-                         + worstPart + " (nearest " + worstZone + ")"));
+                         + worstPart + " (nearest " + worstZone + ") at "
+                         + worstAt.x.ToString("0.00") + "," + worstAt.y.ToString("0.00") + ","
+                         + worstAt.z.ToString("0.00")));
             for (int i = 0; i < parts.Count; i++) Debug.Log(parts[i]);
         }
 

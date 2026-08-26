@@ -611,7 +611,11 @@ namespace Satisfying.Game
             }
 
             Bounds bounds = Framing(crowd);
-            Frame(cam, bounds, 0f, 6f);
+
+            // 180: a duellist at yaw zero faces the way their weapon points, which is away from this
+            // camera at zero. Every "front" line-up ever taken was the back of six heads.
+            Bounds bounds2 = bounds;
+            Frame(cam, bounds2, 180f, 6f);
             Write(Render(cam, null), "lineup-front");
             Frame(cam, bounds, 32f, 10f);
             Write(Render(cam, null), "lineup-angle");

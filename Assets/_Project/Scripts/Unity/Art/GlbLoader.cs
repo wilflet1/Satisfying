@@ -26,6 +26,16 @@ namespace Satisfying.Game
         /// <summary>Where the humanoid map came from, for the panel to say so.</summary>
         public string Flavour = "glTF";
 
+        /// <summary>
+        /// Who made this character and what they allow, as the file itself states it.
+        ///
+        /// A VRM carries its own licence - that is one of the reasons the format exists, and it is
+        /// the difference between a model somebody put on the internet and a model you are allowed to
+        /// put in a game. Read it and say it rather than assuming; a file that says "personal use
+        /// only" says so in here, and nobody finds that out by looking at the character.
+        /// </summary>
+        public string Title, Author, Licence;
+
         /// <summary>Bone lookup that ignores case and any prefix an exporter has bolted on.</summary>
         public Transform Find(string name)
         {
@@ -181,6 +191,8 @@ namespace Satisfying.Game
             object extensions = Json.Member(c.Root, "extensions");
             if (extensions == null) return;
 
+            LoadMeta(c, extensions);
+
             // ---- VRM 1.0
             object modern = Json.Member(Json.Member(Json.Member(extensions, "VRMC_vrm"), "humanoid"), "humanBones");
             Dictionary<string, object> modernMap = Json.Object(modern);
@@ -209,6 +221,43 @@ namespace Satisfying.Game
                 if (bone == null || node < 0 || node >= c.Nodes.Length) continue;
                 c.Model.Humanoid[bone] = c.Nodes[node];
             }
+        }
+
+        /// <summary>Title, author and licence, from whichever of the two VRM shapes is present.</summary>
+        static void LoadMeta(Context c, object extensions)
+        {
+            object modern = Json.Member(Json.Member(extensions, "VRMC_vrm"), "meta");
+            if (modern != null)
+            {
+                c.Model.Title = Json.MemberString(modern, "name", null);
+                object authors = Json.Member(modern, "authors");
+                if (Json.Count(authors) > 0) c.Model.Author = Json.String(Json.At(authors, 0));
+
+                // 1.0 replaced the tick boxes with a URL and one word for what may be done with it.
+                string use = Json.MemberString(modern, "avatarPermission", null);
+                string commercial = Json.MemberString(modern, "commercialUsage", null);
+                string url = Json.MemberString(modern, "licenseUrl", null);
+                c.Model.Licence = Join(use, commercial, url);
+                return;
+            }
+
+            object legacy = Json.Member(Json.Member(extensions, "VRM"), "meta");
+            if (legacy == null) return;
+
+            c.Model.Title = Json.MemberString(legacy, "title", null);
+            c.Model.Author = Json.MemberString(legacy, "author", null);
+            c.Model.Licence = Join(Json.MemberString(legacy, "licenseName", null),
+                                   Json.MemberString(legacy, "allowedUserName", null),
+                                   Json.MemberString(legacy, "otherLicenseUrl", null));
+        }
+
+        static string Join(string a, string b, string c)
+        {
+            string joined = "";
+            if (!string.IsNullOrEmpty(a)) joined += a;
+            if (!string.IsNullOrEmpty(b)) joined += (joined.Length > 0 ? ", " : "") + b;
+            if (!string.IsNullOrEmpty(c)) joined += (joined.Length > 0 ? ", " : "") + c;
+            return joined.Length > 0 ? joined : null;
         }
 
         static void LoadTextures(Context c)
