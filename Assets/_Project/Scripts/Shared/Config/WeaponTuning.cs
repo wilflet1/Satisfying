@@ -135,7 +135,7 @@ namespace Satisfying.Shared
             m4.stomachMultiplier = 1.25f;
             m4.limbMultiplier = 0.8f;
             m4.armMultiplier = 0.8f;
-            m4.penetration = 0.18f;
+            m4.penetration = 0.28f;
             m4.falloffStart = 32f;
             m4.falloffEnd = 100f;
             m4.falloffMinMul = 0.62f;
@@ -165,7 +165,7 @@ namespace Satisfying.Shared
             mp5.stomachMultiplier = 1.2f;
             mp5.limbMultiplier = 0.85f;
             mp5.armMultiplier = 0.85f;
-            mp5.penetration = 0.10f;
+            mp5.penetration = 0.17f;
             mp5.falloffStart = 16f;
             mp5.falloffEnd = 48f;
             mp5.falloffMinMul = 0.42f;
@@ -195,7 +195,7 @@ namespace Satisfying.Shared
             usp.stomachMultiplier = 1.3f;
             usp.limbMultiplier = 0.75f;
             usp.armMultiplier = 0.75f;
-            usp.penetration = 0.07f;
+            usp.penetration = 0.11f;
             usp.falloffStart = 18f;
             usp.falloffEnd = 55f;
             usp.falloffMinMul = 0.55f;
@@ -235,7 +235,7 @@ namespace Satisfying.Shared
             sniper.limbMultiplier = 1.0f;
             sniper.armMultiplier = 0.9f;
             // Through a stud wall and out the other side still lethal, which is what it is for.
-            sniper.penetration = 0.55f;
+            sniper.penetration = 0.95f;
 
             // Nothing drops off inside 55 m, so "one tap within 50" is a property of the numbers
             // rather than a hope. SniperTests asserts it.

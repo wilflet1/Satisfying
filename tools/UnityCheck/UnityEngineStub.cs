@@ -77,6 +77,7 @@ namespace UnityEngine
         public Quaternion(float x, float y, float z, float w) { this.x = x; this.y = y; this.z = z; this.w = w; }
         public static Quaternion identity { get { return new Quaternion(0f, 0f, 0f, 1f); } }
         public static Quaternion Euler(float x, float y, float z) { return identity; }
+        public static Quaternion FromToRotation(Vector3 from, Vector3 to) { return identity; }
         public static Quaternion Euler(Vector3 e) { return identity; }
         public static Quaternion LookRotation(Vector3 forward) { return identity; }
         public static Quaternion LookRotation(Vector3 forward, Vector3 up) { return identity; }
@@ -225,6 +226,7 @@ namespace UnityEngine
         public static void Destroy(Object target) { }
         public static void Destroy(Object target, float delay) { }
         public static void DestroyImmediate(Object target) { }
+        public static T Instantiate<T>(T original, Transform parent) where T : Object { return original; }
         public static void DontDestroyOnLoad(Object target) { }
         public static T FindObjectOfType<T>() where T : Object { return null; }
         public static T FindFirstObjectByType<T>() where T : Object { return null; }
@@ -243,6 +245,8 @@ namespace UnityEngine
         public GameObject gameObject { get; set; }
         public T GetComponent<T>() where T : Component { return null; }
         public T[] GetComponentsInChildren<T>() where T : Component { return new T[0]; }
+        public T[] GetComponentsInChildren<T>(bool includeInactive) where T : Component { return new T[0]; }
+        public void GetComponentsInChildren<T>(bool includeInactive, System.Collections.Generic.List<T> results) where T : Component { }
         public T GetComponentInChildren<T>() where T : Component { return null; }
     }
 
@@ -251,7 +255,21 @@ namespace UnityEngine
         public bool enabled { get; set; }
     }
 
-    public class MonoBehaviour : Behaviour { }
+    public abstract class CustomYieldInstruction : System.Collections.IEnumerator
+    {
+        public abstract bool keepWaiting { get; }
+        public object Current { get { return null; } }
+        public bool MoveNext() { return keepWaiting; }
+        public void Reset() { }
+    }
+
+    public class Coroutine { }
+
+    public class MonoBehaviour : Behaviour
+    {
+        public Coroutine StartCoroutine(System.Collections.IEnumerator routine) { return new Coroutine(); }
+        public void StopCoroutine(Coroutine routine) { }
+    }
 
     [AttributeUsage(AttributeTargets.Class)]
     public sealed class DisallowMultipleComponentAttribute : Attribute { }
@@ -283,6 +301,7 @@ namespace UnityEngine
         public Vector3 InverseTransformPoint(Vector3 world) { return world; }
         public Vector3 TransformDirection(Vector3 local) { return local; }
         public Matrix4x4 localToWorldMatrix { get { return Matrix4x4.identity; } }
+        public T[] GetComponentsInChildren<T>(bool includeInactive) where T : Component { return new T[0]; }
     }
 
     public class GameObject : Object
@@ -298,6 +317,8 @@ namespace UnityEngine
         public T AddComponent<T>() where T : Component, new() { return new T(); }
         public T GetComponent<T>() where T : Component { return null; }
         public T[] GetComponentsInChildren<T>() where T : Component { return new T[0]; }
+        public T[] GetComponentsInChildren<T>(bool includeInactive) where T : Component { return new T[0]; }
+        public void GetComponentsInChildren<T>(bool includeInactive, System.Collections.Generic.List<T> results) where T : Component { }
         public static GameObject CreatePrimitive(PrimitiveType type) { return new GameObject(); }
         public static GameObject Find(string name) { return null; }
     }
@@ -369,6 +390,7 @@ namespace UnityEngine
     {
         public Material(Shader shader) { }
         public void SetTexture(string name, Texture value) { }
+        public Shader shader { get; set; }
         public Texture GetTexture(string name) { return null; }
         public bool HasProperty(string name) { return true; }
         public void SetColor(string name, Color value) { }
@@ -585,6 +607,8 @@ namespace UnityEngine
         public static void Quit(int exitCode) { }
         public static bool isFocused { get { return true; } }
         public static bool isPlaying { get { return true; } }
+        public static void OpenURL(string url) { }
+        public static string persistentDataPath2 { get { return "/tmp"; } }
         public static bool isMobilePlatform { get { return false; } }
         public static RuntimePlatform platform { get { return RuntimePlatform.WindowsPlayer; } }
     }
@@ -782,4 +806,35 @@ namespace UnityEngine.Rendering
     public enum BlendMode { Zero, One, SrcAlpha = 5, OneMinusSrcAlpha = 10 }
     public enum ShadowCastingMode { Off, On, TwoSided, ShadowsOnly }
     public enum AmbientMode { Skybox = 0, Trilight = 1, Flat = 3, Custom = 4 }
+}
+
+// -----------------------------------------------------------------------------------------------
+// UnityWebRequest, for the avatar loader. Only the handful of members it touches.
+// -----------------------------------------------------------------------------------------------
+namespace UnityEngine.Networking
+{
+    public class DownloadHandler
+    {
+        public byte[] data { get { return new byte[0]; } }
+        public string text { get { return ""; } }
+    }
+
+    public class UnityWebRequest : System.IDisposable
+    {
+        public enum Result { InProgress, Success, ConnectionError, ProtocolError, DataProcessingError }
+
+        public int timeout { get; set; }
+        public Result result { get { return Result.Success; } }
+        public string error { get { return null; } }
+        public DownloadHandler downloadHandler { get { return new DownloadHandler(); } }
+
+        public static UnityWebRequest Get(string url) { return new UnityWebRequest(); }
+        public UnityWebRequestAsyncOperation SendWebRequest() { return new UnityWebRequestAsyncOperation(); }
+        public void Dispose() { }
+    }
+
+    public class UnityWebRequestAsyncOperation : UnityEngine.CustomYieldInstruction
+    {
+        public override bool keepWaiting { get { return false; } }
+    }
 }

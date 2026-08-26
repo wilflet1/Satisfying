@@ -187,6 +187,43 @@ namespace Satisfying.Game
                 Neck.SetVisible(false);
             }
 
+            /// <summary>
+            /// Hides every drawn piece while leaving the joints where they are. An avatar replaces
+            /// what you SEE; the skeleton underneath still has to be there, because the weapon hangs
+            /// off the firing hand and the hitbox is built from the same joints.
+            /// </summary>
+            public void SetBodyVisible(bool visible)
+            {
+                ShowMesh(Head, visible);
+                ShowBone(Neck, visible);
+                ShowBone(Chest, visible);
+                ShowBone(Stomach, visible);
+                ShowBone(LeftUpperArm, visible);
+                ShowBone(LeftForearm, visible);
+                ShowBone(RightUpperArm, visible);
+                ShowBone(RightForearm, visible);
+                ShowMesh(LeftHand, visible);
+                ShowMesh(RightHand, visible);
+                ShowBone(LeftThigh, visible);
+                ShowBone(LeftShin, visible);
+                ShowBone(LeftFoot, visible);
+                ShowBone(RightThigh, visible);
+                ShowBone(RightShin, visible);
+                ShowBone(RightFoot, visible);
+            }
+
+            static void ShowBone(Bone bone, bool visible)
+            {
+                if (bone != null) ShowMesh(bone.Joint, visible);
+            }
+
+            static void ShowMesh(Transform t, bool visible)
+            {
+                if (t == null) return;
+                Renderer[] renderers = t.GetComponentsInChildren<Renderer>(true);
+                for (int i = 0; i < renderers.Length; i++) renderers[i].enabled = visible;
+            }
+
             public void SetArmsVisible(bool visible)
             {
                 LeftUpperArm.SetVisible(visible);

@@ -414,7 +414,43 @@ namespace Satisfying.Shared
                             float flown = travelled + best.Distance;
                             float damage = ShotSolver.Damage(weapon, best.Zone, flown) * damageScale;
                             ApplyDamage(victim, shooter, damage, best.Zone, flown, best.Point);
-                            break;
+
+                            // A LIMB IS NOT ARMOUR. A round that goes through an arm carries on into
+                            // whatever was behind it, which is usually the chest - so an opponent who
+                            // happens to have a forearm across their sternum does not get to take a
+                            // rifle round for 22 damage. The limb still takes its own hit, above; this
+                            // is what is left of the round afterwards.
+                            if (best.Zone != HitZone.Arm && best.Zone != HitZone.Leg) break;
+                            if (layers >= maxLayers) break;
+
+                            PlayerHitbox limbBox = PlayerHitbox.FromState(in victim.Sim, Tuning.move,
+                                Tuning.Weapon(victim.Sim.Weapon.Index));
+                            if (LagCompensation)
+                            {
+                                PlayerSimState rewoundVictim;
+                                if (RewindPlayer(victim, cmd.RenderTick, out rewoundVictim))
+                                    limbBox = PlayerHitbox.FromState(in rewoundVictim, Tuning.move,
+                                        Tuning.Weapon(rewoundVictim.Weapon.Index));
+                            }
+
+                            Vec3 la, lb;
+                            float lr;
+                            HitZone lzone;
+                            limbBox.Segment(best.Segment, out la, out lb, out lr, out lzone);
+                            float limbExit = RayGeometry.CapsuleExit(segment, dir, la, lb, lr, best.Distance);
+                            float crossed = MathK.Max(0.01f, limbExit - best.Distance);
+
+                            float limbCost = crossed * Tuning.penetration.flesh;
+                            if (limbCost > budget) break;
+                            budget -= limbCost;
+                            damageScale *= MathK.Clamp01(Tuning.penetration.fleshExitScale);
+                            layers++;
+
+                            float pastLimb = limbExit + 0.01f;
+                            segment += dir * pastLimb;
+                            travelled += pastLimb;
+                            remaining -= pastLimb;
+                            continue;
                         }
 
                         if (!hitWorld || layers >= maxLayers) break;

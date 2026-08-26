@@ -15,6 +15,7 @@ namespace Satisfying.Game
         public TuningPanelUI Tuning;
         public BindingsPanelUI Controls;
         public GearPanelUI Gear;
+        public CharacterPanelUI Character;
 
         /// <summary>Null on desktop. The thumb controls, drawn over the HUD and nothing else.</summary>
         public TouchControlsUI Touch;
@@ -24,6 +25,7 @@ namespace Satisfying.Game
         public bool ShowTuning;
         public bool ShowControls;
         public bool ShowGear;
+        public bool ShowCharacter;
 
         readonly ScreenGrade _grade = new ScreenGrade();
         UiSkin _skin;
@@ -54,6 +56,7 @@ namespace Satisfying.Game
             Tuning.Skin = _skin;
             Controls.Skin = _skin;
             Gear.Skin = _skin;
+            if (Character != null) Character.Skin = _skin;
             BuildDerivedStyles();
             StartBrowsing();
         }
@@ -94,6 +97,7 @@ namespace Satisfying.Game
             if (Bindings.Pressed(GameAction.Menu))
             {
                 if (ShowGear) ShowGear = false;
+                else if (ShowCharacter) ShowCharacter = false;
                 else if (ShowControls) ShowControls = false;
                 else if (ShowTuning) ShowTuning = false;
                 else if (Game.InGame) ShowMenu = !ShowMenu;
@@ -109,7 +113,7 @@ namespace Satisfying.Game
             // The menu is modal. The tuning and controls panels are not: they free the cursor but leave
             // the keyboard to you, so you can strafe and lean while dragging a slider.
             bool modal = ShowMenu || !Game.InGame;
-            bool panelOpen = ShowTuning || ShowControls || ShowGear;
+            bool panelOpen = ShowTuning || ShowControls || ShowGear || ShowCharacter;
             bool wantsCursor = modal || panelOpen;
 
             Cursor.lockState = wantsCursor ? CursorLockMode.None : CursorLockMode.Locked;
@@ -131,7 +135,7 @@ namespace Satisfying.Game
 
             bool connecting = !Game.InGame && Game.CurrentMode != NetGame.Mode.Offline;
             if (Game.InGame) DrawHud();
-            if (Touch != null && Game.InGame && !ShowMenu && !ShowTuning && !ShowControls && !ShowGear)
+            if (Touch != null && Game.InGame && !ShowMenu && !ShowTuning && !ShowControls && !ShowGear && !ShowCharacter)
             {
                 Touch.Skin = _skin;
                 Touch.Draw();
@@ -141,6 +145,8 @@ namespace Satisfying.Game
             if (ShowTuning) Tuning.Draw(new Rect(_width - 470f, 20f, 450f, _height - 40f));
             if (ShowControls) Controls.Draw(new Rect(20f, 20f, 520f, _height - 40f));
             if (ShowGear) Gear.Draw(new Rect(_width * 0.5f - 250f, _height * 0.5f - 230f, 500f, 460f));
+            if (ShowCharacter && Character != null)
+                Character.Draw(new Rect(_width * 0.5f - 280f, _height * 0.5f - 280f, 560f, 560f));
         }
 
         // ------------------------------------------------------------------ HUD
@@ -992,6 +998,11 @@ namespace Satisfying.Game
                 _skin.Small);
 
             GUILayout.Space(10f);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("character", _skin.ButtonPrimary)) ShowCharacter = !ShowCharacter;
+            if (GUILayout.Button("gear (F4)", _skin.Button)) ShowGear = !ShowGear;
+            GUILayout.EndHorizontal();
+
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("controls (F2)", _skin.Button)) ShowControls = !ShowControls;
             if (GUILayout.Button("tuning (F1)", _skin.Button)) ShowTuning = !ShowTuning;

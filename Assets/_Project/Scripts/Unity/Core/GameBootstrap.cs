@@ -26,6 +26,7 @@ namespace Satisfying.Game
         InputBindings _bindings;
         FeelTuning _feel;
         readonly System.Collections.Generic.List<ZoneDef> _zones = new System.Collections.Generic.List<ZoneDef>();
+        CharacterPanelUI _characterPanel;
         IPlayerInput _input;
         TouchInputSource _touch;
         TouchControlsUI _touchControls;
@@ -410,6 +411,25 @@ namespace Satisfying.Game
             _ui.Tuning = _tuningPanel;
             _ui.Controls = _bindingsPanel;
             _ui.Gear = _gearPanel;
+
+            // Avatars. The library needs a MonoBehaviour to run its downloads on and the shader the
+            // rest of the game draws with, so it is built here rather than by the panel.
+            _game.Avatars = new AvatarLibrary(this, Palette.Make("probe", Color.white, 0.5f, 0f).shader);
+            _characterPanel = new CharacterPanelUI();
+            _characterPanel.Library = _game.Avatars;
+            _characterPanel.Game = _game;
+            _characterPanel.Chosen = PlayerPrefs.GetString("satisfying.avatar", "");
+            if (_characterPanel.Chosen.Length == 0) _characterPanel.Chosen = null;
+            _game.AvatarSource = _characterPanel.Chosen;
+            _characterPanel.OnChosen = delegate(string source)
+            {
+                _game.AvatarSource = source;
+                PlayerPrefs.SetString("satisfying.avatar", source ?? "");
+                PlayerPrefs.Save();
+                _game.RefreshAvatars();
+            };
+            _ui.Character = _characterPanel;
+
             _ui.OnQuit = Quit;
             _ui.Touch = _touchControls;
             _ui.Initialise();

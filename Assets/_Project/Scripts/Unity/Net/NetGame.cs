@@ -471,6 +471,7 @@ namespace Satisfying.Game
                 {
                     view = new RemotePlayerView(Root, kv.Key, Palette, Client.Tuning.move, PlayerLayer);
                     _remoteViews[kv.Key] = view;
+                    ApplyAvatar(kv.Key, view);
                 }
 
                 if (!kv.Value.HasRender) { view.SetVisible(false); continue; }
@@ -812,6 +813,44 @@ namespace Satisfying.Game
             new System.Collections.Generic.Dictionary<int, HitboxView>();
 
         public bool ShowHitboxes;
+
+        /// <summary>
+        /// Avatars. One library for the whole match: a character is downloaded and parsed once and
+        /// every player who is wearing it gets a copy of the same loaded model.
+        /// </summary>
+        public AvatarLibrary Avatars;
+
+        /// <summary>What the local player chose. Remote players wear it too for now - the choice is
+        /// not replicated yet, so what you see on them is your own pick rather than theirs.</summary>
+        public string AvatarSource;
+
+        void ApplyAvatar(int peerId, RemotePlayerView view)
+        {
+            if (Avatars == null || string.IsNullOrEmpty(AvatarSource)) { view.SetAvatar(null); return; }
+
+            AvatarLibrary.Entry entry = Avatars.Get(AvatarSource);
+            if (entry == null || entry.Template == null)
+            {
+                // Not loaded yet. Ask for it, and put it on whoever is here when it arrives.
+                Avatars.Load(AvatarSource, delegate(AvatarLibrary.Entry loaded)
+                {
+                    if (loaded.Error != null) return;
+                    foreach (System.Collections.Generic.KeyValuePair<int, RemotePlayerView> kv in _remoteViews)
+                        kv.Value.SetAvatar(Avatars.Instantiate(loaded, Root, PlayerLayer));
+                });
+                view.SetAvatar(null);
+                return;
+            }
+
+            view.SetAvatar(Avatars.Instantiate(entry, Root, PlayerLayer));
+        }
+
+        /// <summary>Puts the current choice on everyone. Called when the player picks a new one.</summary>
+        public void RefreshAvatars()
+        {
+            foreach (System.Collections.Generic.KeyValuePair<int, RemotePlayerView> kv in _remoteViews)
+                ApplyAvatar(kv.Key, kv.Value);
+        }
 
         HitboxView HitboxFor(int peerId)
         {

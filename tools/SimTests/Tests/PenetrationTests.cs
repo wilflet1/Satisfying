@@ -89,6 +89,83 @@ namespace Satisfying.Tests
                 Assert.Near(thickness, 0.12f, 0.01f, "and how thick");
             });
 
+            TestRunner.Add("penetration/every weapon gets through the walls it is meant to", () =>
+            {
+                GameTuning tuning = new GameTuning();
+                float scale;
+
+                // A 140 mm plasterboard partition - the one the house is planned around. Everything
+                // except the pistol goes through it.
+                Assert.True(Penetration.Through(tuning.penetration, tuning.Weapon(0).penetration,
+                    SurfaceKind.Drywall, 0.14f, out scale), "a rifle through a partition");
+                Assert.True(Penetration.Through(tuning.penetration, tuning.Weapon(1).penetration,
+                    SurfaceKind.Drywall, 0.14f, out scale), "an smg through a partition");
+                Assert.True(Penetration.Through(tuning.penetration, tuning.Weapon(3).penetration,
+                    SurfaceKind.Drywall, 0.14f, out scale), "a bolt gun through a partition");
+
+                // 180 mm of floor. THIS is the one that was reported broken: wood cost more than any
+                // weapon could pay, so nothing went through a floor or a fence.
+                Assert.True(Penetration.Through(tuning.penetration, tuning.Weapon(0).penetration,
+                    SurfaceKind.Wood, 0.18f, out scale), "a rifle through a floor");
+                Assert.True(Penetration.Through(tuning.penetration, tuning.Weapon(3).penetration,
+                    SurfaceKind.Wood, 0.18f, out scale), "a bolt gun through a floor");
+
+                // A fence panel is 50 mm of board and everything goes through it, pistol included.
+                for (int w = 0; w < 4; w++)
+                    Assert.True(Penetration.Through(tuning.penetration, tuning.Weapon(w).penetration,
+                        SurfaceKind.Wood, 0.05f, out scale), "weapon " + w + " through a fence");
+
+                // And 300 mm of concrete still stops everything, or the map has no cover in it.
+                for (int w = 0; w < 4; w++)
+                    Assert.False(Penetration.Through(tuning.penetration, tuning.Weapon(w).penetration,
+                        SurfaceKind.Concrete, 0.30f, out scale), "weapon " + w + " must not cross concrete");
+            });
+
+            TestRunner.Add("penetration/a round crosses a limb instead of stopping on it", () =>
+            {
+                // An arm is roughly 100 mm across. Crossing one has to be affordable for every weapon,
+                // or an opponent with a forearm across their chest is wearing armour.
+                GameTuning tuning = new GameTuning();
+                float armThickness = 0.104f;
+                float cost = armThickness * tuning.penetration.flesh;
+
+                for (int w = 0; w < 4; w++)
+                    Assert.True(tuning.Weapon(w).penetration > cost,
+                        "weapon " + w + " must be able to cross an arm: budget " +
+                        tuning.Weapon(w).penetration.ToString("0.000") + " vs " + cost.ToString("0.000"));
+
+                // And what comes out the far side still matters.
+                Assert.True(tuning.penetration.fleshExitScale > 0.4f, "a round through an arm still hurts");
+                Assert.True(tuning.penetration.fleshExitScale < 1f, "but not as much as one that missed it");
+            });
+
+            TestRunner.Add("penetration/a capsule reports where the ray leaves it", () =>
+            {
+                // Straight across a horizontal capsule: in one side, out the other, one diameter apart.
+                Vec3 a = new Vec3(-0.2f, 1.4f, 0f);
+                Vec3 b = new Vec3(0.2f, 1.4f, 0f);
+                float r = 0.052f;
+
+                Vec3 origin = new Vec3(0f, 1.4f, -3f);
+                Vec3 dir = new Vec3(0f, 0f, 1f);
+
+                float entry;
+                Assert.True(RayGeometry.Capsule(origin, dir, a, b, r, out entry), "it hits");
+
+                float exit = RayGeometry.CapsuleExit(origin, dir, a, b, r, entry);
+                Assert.True(exit > entry, "and comes out after going in");
+                Assert.Near(exit - entry, r * 2f, 0.01f, "across the middle it is one diameter thick");
+
+                // Down the length of it is much further, which is the case a fixed step would get wrong.
+                Vec3 along = new Vec3(-3f, 1.4f, 0f);
+                Vec3 alongDir = new Vec3(1f, 0f, 0f);
+                float alongEntry;
+                Assert.True(RayGeometry.Capsule(along, alongDir, a, b, r, out alongEntry), "lengthways hits");
+                float alongExit = RayGeometry.CapsuleExit(along, alongDir, a, b, r, alongEntry);
+                Assert.True(alongExit - alongEntry > r * 4f,
+                    "lengthways is far thicker than across, at " + (alongExit - alongEntry).ToString("0.000"));
+            });
+
             TestRunner.Add("hill/feet decide who holds a room, not eyes", () =>
             {
                 ZoneDef zone;

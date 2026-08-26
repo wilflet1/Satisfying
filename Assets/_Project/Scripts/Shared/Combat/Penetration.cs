@@ -42,22 +42,28 @@ namespace Satisfying.Shared
         public float drywall = 1f;
 
         [Tune("Penetration", 0.1f, 30f, Tip = "Cost per metre of timber - floorboards, joists, a garden fence.")]
-        public float wood = 2.4f;
+        public float wood = 1.2f;
 
         [Tune("Penetration", 0.1f, 30f, Tip = "Cost per metre of glass. Almost free, and it breaks anyway.")]
         public float glass = 0.3f;
 
         [Tune("Penetration", 0.1f, 40f, Tip = "Cost per metre of sheet metal - a garage door, a locker.")]
-        public float metal = 7f;
+        public float metal = 5.5f;
 
         [Tune("Penetration", 0.1f, 60f, Tip = "Cost per metre of concrete. Nothing in this game gets through much of it.")]
         public float concrete = 14f;
 
+        [Tune("Penetration", 0.1f, 20f, Tip = "Cost per metre of a limb. An arm is not armour - a round that goes through one carries on into whatever is behind it.")]
+        public float flesh = 0.6f;
+
         [Tune("Penetration", 0f, 1f, Tip = "Damage left after a round has spent its whole budget getting through something.")]
         public float exitDamageFloor = 0.35f;
 
+        [Tune("Penetration", 0f, 1f, Tip = "How much damage is left after crossing a limb, on top of the budget cost. The limb still takes its own hit.")]
+        public float fleshExitScale = 0.75f;
+
         [Tune("Penetration", 1f, 4f, Tip = "How many surfaces one round may cross before it stops.")]
-        public float maxLayers = 2f;
+        public float maxLayers = 3f;
 
         public float CostPerMetre(SurfaceKind kind)
         {

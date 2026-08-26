@@ -100,6 +100,9 @@ namespace Satisfying.Shared
         public HitZone Zone;
         public float Distance;
         public Vec3 Point;
+
+        /// <summary>Which of the fifteen it was. Needed to work out where the round comes out of it.</summary>
+        public int Segment;
     }
 
     public static class RayGeometry
@@ -158,6 +161,40 @@ namespace Satisfying.Shared
         }
 
         /// <summary>
+        /// How far the ray is still inside a capsule after entering it at `entry`.
+        ///
+        /// Needed because a round does not stop at an arm. Crossing a limb costs it something and it
+        /// carries on, and to carry on from the right place you have to know where the limb ends -
+        /// stepping a fixed distance would work for a shot across a forearm and be wrong for one down
+        /// the length of it.
+        ///
+        /// Solved by walking forward from the entry point until the ray is outside again. A capsule is
+        /// convex, so there is exactly one exit and a short march finds it to well under a millimetre.
+        /// </summary>
+        public static float CapsuleExit(Vec3 ro, Vec3 rd, Vec3 a, Vec3 b, float r, float entry)
+        {
+            float lo = entry;
+            float hi = entry + r * 2f + (b - a).Magnitude;
+
+            // Binary search on "is this point still inside".
+            for (int i = 0; i < 24; i++)
+            {
+                float mid = (lo + hi) * 0.5f;
+                if (Inside(ro + rd * mid, a, b, r)) lo = mid;
+                else hi = mid;
+            }
+            return hi;
+        }
+
+        static bool Inside(Vec3 point, Vec3 a, Vec3 b, float r)
+        {
+            Vec3 ab = b - a;
+            float length2 = ab.SqrMagnitude;
+            float t = length2 < 1e-8f ? 0f : MathK.Clamp01(Vec3.Dot(point - a, ab) / length2);
+            return (point - (a + ab * t)).SqrMagnitude <= r * r;
+        }
+
+        /// <summary>
         /// Nearest part of the body the ray enters. Nearest wins outright - there is no priority list,
         /// because a rule that promotes a head over a nearer arm is a rule that lets you shoot through
         /// your opponent's own forearm.
@@ -172,6 +209,7 @@ namespace Satisfying.Shared
 
             float best = maxDistance;
             HitZone zone = HitZone.None;
+            int which = -1;
 
             for (int i = 0; i < PlayerHitbox.SegmentCount; i++)
             {
@@ -185,10 +223,12 @@ namespace Satisfying.Shared
                 if (t < 0f || t >= best) continue;
                 best = t;
                 zone = segmentZone;
+                which = i;
             }
 
             if (zone == HitZone.None) return false;
             result.Zone = zone;
+            result.Segment = which;
             result.Distance = best;
             result.Point = ro + rd * best;
             return true;

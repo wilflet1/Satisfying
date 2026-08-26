@@ -61,7 +61,7 @@ namespace Satisfying.Game
         const float Wall = 0.30f;       // outside and structural walls
         const float Soft = 0.14f;       // internal stud walls - the shootable ones
         const float Storey = 3.1f;      // floor to ceiling
-        const float Slab = 0.30f;       // thickness of the first floor
+        const float Slab = 0.18f;       // thickness of the first floor - boards and joists, not solid
         const float Upper = Storey + Slab;      // floor level upstairs
         const float Ridge = Upper + Storey;     // top of the walls
 
@@ -173,39 +173,39 @@ namespace Satisfying.Game
             Floor(t, palette, layer, model, "dining floor", W3, W4, N2, N3, SurfaceKind.Wood, palette.Timber);
 
             // ---- the shell. Each run spans two corner lines, so the corners meet.
-            AlongX(t, palette, layer, model, "front", W0, W4, N0, y, Storey, Wall,
+            AlongX(t, palette, layer, model, "front", W0, W4, N0, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Door(-8f, 3.6f, 2.6f),                       // garage opening
                    Hole.Door(-2.5f, DoorW, DoorH),                   // front door
                    Hole.Window(7f, 3.2f, 1.6f, 1.35f));              // living room window
 
-            AlongX(t, palette, layer, model, "back", W0, W4, N3, y, Storey, Wall,
+            AlongX(t, palette, layer, model, "back", W0, W4, N3, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Door(-9f, DoorW, DoorH),                     // kitchen door to the garden
                    Hole.Window(-2f, 3.6f, 1.4f, 1.55f),              // over the sink
                    Hole.Window(8.75f, 2.6f, 1.6f, 1.4f));            // dining
 
-            AlongZ(t, palette, layer, model, "west", N0, N3, W0, y, Storey, Wall,
+            AlongZ(t, palette, layer, model, "west", N0, N3, W0, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Window(5.5f, 2.4f, 1.4f, 1.5f));
 
-            AlongZ(t, palette, layer, model, "east", N0, N3, W4, y, Storey, Wall,
+            AlongZ(t, palette, layer, model, "east", N0, N3, W4, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Window(-5f, 2.6f, 1.6f, 1.35f),
                    Hole.Door(5f, DoorW, DoorH));                     // side door into the dining room
 
             // ---- internal structure.
             // Garage and utility are separated from the rest by a block wall with two doors in it.
-            AlongZ(t, palette, layer, model, "garage east", N0, N2, W1, y, Storey, Wall,
+            AlongZ(t, palette, layer, model, "garage east", N0, N2, W1, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Door(-5.5f, DoorW, DoorH),                   // garage to hall
                    Hole.Door(0f, DoorW, DoorH));                     // utility to hall
-            AlongX(t, palette, layer, model, "garage back", W0, W1, N1, y, Storey, Wall,
+            AlongX(t, palette, layer, model, "garage back", W0, W1, N1, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Door(-8f, DoorW, DoorH));
 
             // THE SPINE. Plasterboard, tile on the north side and boards on the south. This is the
             // wall the map exists for, and the doorway is offset so going round is a real decision.
-            AlongX(t, palette, layer, model, "spine", W0, W4, N2, y, Storey, Soft,
+            AlongX(t, palette, layer, model, "spine", W0, W4, N2, y, Storey, Soft, SurfaceKind.Drywall,
                    Hole.Door(-9f, DoorW, DoorH),                     // utility into the kitchen
                    Hole.Door(3f, 1.8f, 2.4f));                       // kitchen into the living room
 
             // Hall from the living room: another partition, so the ground floor is rooms.
-            AlongZ(t, palette, layer, model, "hall east", N0, N2, W2, y, Storey, Soft,
+            AlongZ(t, palette, layer, model, "hall east", N0, N2, W2, y, Storey, Soft, SurfaceKind.Drywall,
                    Hole.Door(-5.5f, DoorW, DoorH),
                    Hole.Door(1f, 1.8f, 2.4f));
 
@@ -273,25 +273,25 @@ namespace Satisfying.Game
             Deck(t, palette, layer, model, "deck north", StairX0, StairX1, StairZ1, N3);
 
             // ---- upper shell, on exactly the same lines as the lower one.
-            AlongX(t, palette, layer, model, "upper front", W0, W4, N0, y, Storey, Wall,
+            AlongX(t, palette, layer, model, "upper front", W0, W4, N0, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Window(-8f, 2.4f, 1.4f, Upper + 1.4f),
                    Hole.Window(7f, 2.8f, 1.5f, Upper + 1.4f));
-            AlongX(t, palette, layer, model, "upper back", W0, W4, N3, y, Storey, Wall,
+            AlongX(t, palette, layer, model, "upper back", W0, W4, N3, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Window(-6f, 2.6f, 1.4f, Upper + 1.4f),
                    Hole.Window(8.5f, 2.6f, 1.5f, Upper + 1.4f));
 
             // The landing window is the outside way in: off the garage roof, along to the porch roof,
             // and through here. It is tall and low so it can be vaulted rather than mantled.
-            AlongZ(t, palette, layer, model, "upper west", N0, N3, W0, y, Storey, Wall,
+            AlongZ(t, palette, layer, model, "upper west", N0, N3, W0, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Window(-4.5f, 2.0f, 2.0f, Upper + 1.15f));
-            AlongZ(t, palette, layer, model, "upper east", N0, N3, W4, y, Storey, Wall,
+            AlongZ(t, palette, layer, model, "upper east", N0, N3, W4, y, Storey, Wall, SurfaceKind.Concrete,
                    Hole.Window(1.5f, 2.4f, 1.5f, Upper + 1.4f));
 
             // ---- upstairs partitions. Plasterboard, so the bedroom can be fought through as well as
             // walked into - it is the upstairs hill.
-            AlongZ(t, palette, layer, model, "bedroom wall", N0, N3, W2, y, Storey, Soft,
+            AlongZ(t, palette, layer, model, "bedroom wall", N0, N3, W2, y, Storey, Soft, SurfaceKind.Drywall,
                    Hole.Door(0.5f, DoorW, DoorH + Upper - DoorH));
-            AlongX(t, palette, layer, model, "bathroom wall", W0, W2, N1, y, Storey, Soft,
+            AlongX(t, palette, layer, model, "bathroom wall", W0, W2, N1, y, Storey, Soft, SurfaceKind.Drywall,
                    Hole.Door(-8f, DoorW, DoorH + Upper - DoorH));
 
             UpperFurniture(t, palette, layer);
@@ -348,7 +348,7 @@ namespace Satisfying.Game
             Solid(t, palette, layer, "shed step", new Vector3(-12.2f, 0.55f, 13f), new Vector3(1.4f, 1.1f, 2.2f));
 
             Panel(t, palette, layer, model, "garden fence", new Vector3(5f, 0.95f, 12f),
-                new Vector3(16f, 1.9f, 0.12f), SurfaceKind.Wood, palette.Timber);
+                new Vector3(16f, 1.9f, 0.05f), SurfaceKind.Wood, palette.Timber);
 
             Solid(t, palette, layer, "car body", new Vector3(-19f, 0.7f, -7f), new Vector3(2.1f, 1.0f, 4.8f));
             Solid(t, palette, layer, "car roof", new Vector3(-19f, 1.45f, -6.6f), new Vector3(1.9f, 0.6f, 2.4f));
@@ -419,16 +419,16 @@ namespace Satisfying.Game
 
         static void AlongX(Transform t, Palette palette, int layer, WorldModel model, string name,
                            float x0, float x1, float z, float centreY, float height, float thickness,
-                           params Hole[] holes)
+                           SurfaceKind kind, params Hole[] holes)
         {
-            Run(t, palette, layer, model, name, x0, x1, z, centreY, height, thickness, true, holes);
+            Run(t, palette, layer, model, name, x0, x1, z, centreY, height, thickness, true, kind, holes);
         }
 
         static void AlongZ(Transform t, Palette palette, int layer, WorldModel model, string name,
                            float z0, float z1, float x, float centreY, float height, float thickness,
-                           params Hole[] holes)
+                           SurfaceKind kind, params Hole[] holes)
         {
-            Run(t, palette, layer, model, name, z0, z1, x, centreY, height, thickness, false, holes);
+            Run(t, palette, layer, model, name, z0, z1, x, centreY, height, thickness, false, kind, holes);
         }
 
         /// <summary>
@@ -441,7 +441,7 @@ namespace Satisfying.Game
         /// </summary>
         static void Run(Transform t, Palette palette, int layer, WorldModel model, string name,
                         float a0, float a1, float fixedAxis, float centreY, float height, float thickness,
-                        bool alongX, Hole[] holes)
+                        bool alongX, SurfaceKind kind, Hole[] holes)
         {
             float bottom = centreY - height * 0.5f;
             float top = centreY + height * 0.5f;
@@ -469,19 +469,19 @@ namespace Satisfying.Game
                     float end = Mathf.Clamp(holes[i].At + half, a0, a1);
                     if (end - start < 0.02f) continue;
 
-                    Block(t, palette, layer, name + " " + index++, cursor, start, fixedAxis,
-                          centreY, height, thickness, alongX);
+                    Block(t, palette, layer, model, name + " " + index++, cursor, start, fixedAxis,
+                          centreY, height, thickness, alongX, kind);
                     cursor = end;
 
                     float holeBottom = Mathf.Max(bottom, holes[i].CentreY - holes[i].Height * 0.5f);
                     float holeTop = Mathf.Min(top, holes[i].CentreY + holes[i].Height * 0.5f);
 
                     if (holeBottom - bottom > 0.02f)
-                        Block(t, palette, layer, name + " sill " + i, start, end, fixedAxis,
-                              (bottom + holeBottom) * 0.5f, holeBottom - bottom, thickness, alongX);
+                        Block(t, palette, layer, model, name + " sill " + i, start, end, fixedAxis,
+                              (bottom + holeBottom) * 0.5f, holeBottom - bottom, thickness, alongX, kind);
                     if (top - holeTop > 0.02f)
-                        Block(t, palette, layer, name + " head " + i, start, end, fixedAxis,
-                              (holeTop + top) * 0.5f, top - holeTop, thickness, alongX);
+                        Block(t, palette, layer, model, name + " head " + i, start, end, fixedAxis,
+                              (holeTop + top) * 0.5f, top - holeTop, thickness, alongX, kind);
 
                     if (!holes[i].Glazed) continue;
 
@@ -496,11 +496,26 @@ namespace Satisfying.Game
                 }
             }
 
-            Block(t, palette, layer, name + " " + index, cursor, a1, fixedAxis, centreY, height, thickness, alongX);
+            Block(t, palette, layer, model, name + " " + index, cursor, a1, fixedAxis, centreY, height,
+                  thickness, alongX, kind);
         }
 
-        static void Block(Transform t, Palette palette, int layer, string name, float from, float to,
-                          float fixedAxis, float centreY, float height, float thickness, bool alongX)
+        /// <summary>
+        /// One piece of wall, AND its entry in the world model.
+        ///
+        /// The registration is the whole point and it is why this exists rather than calling
+        /// Blockout.Box directly. When the house was rebuilt this method lost its AddPanel and every
+        /// wall in the map silently became solid - including the plasterboard spine the entire plan is
+        /// built around. Nothing caught it because a wall that cannot be shot through looks exactly
+        /// like a wall that can until you try.
+        ///
+        /// Concrete is registered too, even though nothing in the game can get through 300 mm of it:
+        /// the cost model decides that, not the absence of an entry, and it means SurfaceAt gives the
+        /// right answer for a grenade bouncing off it.
+        /// </summary>
+        static void Block(Transform t, Palette palette, int layer, WorldModel model, string name,
+                          float from, float to, float fixedAxis, float centreY, float height,
+                          float thickness, bool alongX, SurfaceKind kind)
         {
             if (to - from < 0.02f) return;
 
@@ -510,7 +525,13 @@ namespace Satisfying.Game
             Vector3 size = alongX
                 ? new Vector3(to - from, height, thickness)
                 : new Vector3(thickness, height, to - from);
-            Blockout.Box(t, name, centre, size, palette.Wall, true, layer);
+
+            Material material = kind == SurfaceKind.Drywall ? palette.Plaster
+                              : kind == SurfaceKind.Wood ? palette.Timber
+                              : kind == SurfaceKind.Metal ? palette.Metal : palette.Wall;
+
+            Blockout.Box(t, name, centre, size, material, true, layer);
+            model.AddPanel(centre.ToSim(), size.ToSim(), kind);
         }
     }
 }

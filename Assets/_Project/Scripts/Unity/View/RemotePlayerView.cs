@@ -33,6 +33,25 @@ namespace Satisfying.Game
         readonly bool _firstPerson;
 
         /// <summary>
+        /// The Ready Player Me character, when there is one. The blockout duellist stays built either
+        /// way and is simply hidden - it is the fallback for an avatar that fails to load, and the
+        /// weapon still hangs off its skeleton because the gun is not part of the avatar.
+        /// </summary>
+        AvatarRig _avatar;
+
+        public void SetAvatar(AvatarRig avatar)
+        {
+            if (_avatar != null && _avatar != avatar) _avatar.Destroy();
+            _avatar = avatar;
+
+            // Everything on the blockout body except the weapon holder comes off when an avatar is
+            // wearing the skeleton instead.
+            bool blockout = _avatar == null || !_avatar.Valid;
+            Character.SetBodyVisible(blockout);
+            if (_avatar != null) _avatar.SetVisible(!blockout && !_firstPerson);
+        }
+
+        /// <summary>
         /// firstPerson builds the same character for the player wearing it: look down and your own legs
         /// and chest are there. The head and neck come off (the camera lives inside them) and the arms
         /// and weapon are left to the viewmodel, which already draws them at the right scale.
@@ -76,6 +95,7 @@ namespace Satisfying.Game
 
         public void Destroy()
         {
+            if (_avatar != null) _avatar.Destroy();
             if (Character != null && Character.Root != null) Object.Destroy(Character.Root);
         }
 
@@ -121,6 +141,10 @@ namespace Satisfying.Game
             else { _deathTimer = 0f; _deathFall = Quaternion.identity; }
 
             Place(in pose, in state, weapon);
+
+            // The avatar is posed from the SAME BodyPose the hitbox is built from, which is what makes
+            // every character in the match the same thing to shoot at.
+            if (_avatar != null && _avatar.Valid && !_firstPerson) _avatar.Apply(in pose, root);
         }
 
         /// <summary>
