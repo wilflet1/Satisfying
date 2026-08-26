@@ -177,7 +177,12 @@ namespace Satisfying.Game
         }
 
         /// <summary>How far outside the nearest capsule this point is. Negative means inside one.</summary>
-        static float Outside(Vec3 point, in PlayerHitbox box, out HitZone nearest)
+        /// <summary>
+        /// How far outside the hitbox a point is, and which capsule it is nearest. Negative means it
+        /// is inside one. Public because the avatar checker measures imported characters the same way
+        /// - one definition of "sticking out" for the whole project.
+        /// </summary>
+        public static float Outside(Vec3 point, in PlayerHitbox box, out HitZone nearest)
         {
             nearest = HitZone.None;
             float best = float.MaxValue;

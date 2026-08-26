@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEditor;
@@ -181,11 +182,88 @@ namespace Satisfying.Game
                 rig.Apply(in pose, holder.transform);
                 boxes.Render(in state, move, weapon);
 
+                Fit(model, in state, move, weapon, names[i]);
+
                 Shot(outDir, "avatar-" + names[i], holder, 90f);
                 Shot(outDir, "avatar-" + names[i] + "-front", holder, 0f);
             }
 
             Object.DestroyImmediate(holder);
+        }
+
+        /// <summary>
+        /// The measurement this whole tool exists for: with the character posed, how much of it is
+        /// outside the capsules the server shoots at?
+        ///
+        /// Looking at a screenshot is not enough and this project has been caught by that before - a
+        /// limb half inside a translucent capsule reads as "fine" at a glance either way. So the
+        /// posed skin is baked and every vertex is measured against the same hitbox the server builds,
+        /// with the same test the blockout character is held to.
+        /// </summary>
+        static void Fit(GlbModel model, in PlayerSimState state, MovementTuning move,
+                        WeaponTuning weapon, string stance)
+        {
+            PlayerHitbox box = PlayerHitbox.FromState(in state, move, weapon);
+
+            int total = 0, outside = 0;
+            float worst = 0f;
+            string worstPart = "";
+            HitZone worstZone = HitZone.None;
+            List<string> parts = new List<string>();
+
+            SkinnedMeshRenderer[] skins = model.Root.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            for (int i = 0; i < skins.Length; i++)
+            {
+                if (skins[i].sharedMesh == null) continue;
+
+                Mesh baked = new Mesh();
+                skins[i].BakeMesh(baked);
+                Vector3[] vertices = baked.vertices;
+                // Position and rotation only. BakeMesh has already applied the renderer's scale, and
+                // localToWorldMatrix would apply it a second time - which read as the whole character
+                // being 82% outside its own hitbox, and was a bug in the ruler rather than the thing
+                // being measured.
+                Matrix4x4 toWorld = Matrix4x4.TRS(skins[i].transform.position,
+                                                  skins[i].transform.rotation, Vector3.one);
+
+                int partOutside = 0;
+                float partWorst = 0f;
+                for (int v = 0; v < vertices.Length; v++)
+                {
+                    Vec3 point = toWorld.MultiplyPoint3x4(vertices[v]).ToSim();
+                    HitZone zone;
+                    float d = Silhouette.Outside(point, in box, out zone);
+                    total++;
+                    if (d <= 0.002f) continue;
+                    outside++;
+                    partOutside++;
+                    if (d > partWorst) partWorst = d;
+                    if (d <= worst) continue;
+                    worst = d;
+                    worstPart = Label(skins[i]);
+                    worstZone = zone;
+                }
+                Object.DestroyImmediate(baked);
+
+                if (partOutside > 0)
+                    parts.Add("      " + Label(skins[i]).PadRight(28)
+                              + (100f * partOutside / Mathf.Max(1, vertices.Length)).ToString("0").PadLeft(3)
+                              + "% out, worst " + (partWorst * 1000f).ToString("0") + " mm");
+            }
+
+            if (total == 0) return;
+            float share = 100f * outside / total;
+            Debug.Log("[fit] " + stance.PadRight(7) + share.ToString("0.0").PadLeft(5)
+                      + "% of the character is outside its hitbox"
+                      + (outside == 0 ? "" : "   worst " + (worst * 1000f).ToString("0") + " mm on "
+                         + worstPart + " (nearest " + worstZone + ")"));
+            for (int i = 0; i < parts.Count; i++) Debug.Log(parts[i]);
+        }
+
+        static string Label(SkinnedMeshRenderer skin)
+        {
+            return skin.sharedMesh != null && !string.IsNullOrEmpty(skin.sharedMesh.name)
+                ? skin.sharedMesh.name : skin.name;
         }
 
         static void Shot(string outDir, string name, GameObject subject, float around)

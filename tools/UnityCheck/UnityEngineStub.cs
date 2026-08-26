@@ -83,6 +83,7 @@ namespace UnityEngine
         public static Quaternion LookRotation(Vector3 forward, Vector3 up) { return identity; }
         public static Quaternion AngleAxis(float angle, Vector3 axis) { return identity; }
         public static Quaternion Slerp(Quaternion a, Quaternion b, float t) { return a; }
+        public static Quaternion Inverse(Quaternion q) { return identity; }
         public Vector3 eulerAngles { get { return Vector3.zero; } }
         public static Quaternion operator *(Quaternion a, Quaternion b) { return identity; }
         public static Vector3 operator *(Quaternion q, Vector3 v) { return v; }
@@ -438,6 +439,8 @@ namespace UnityEngine
 
     public class SkinnedMeshRenderer : Renderer
     {
+        public void BakeMesh(Mesh mesh) { }
+        public void BakeMesh(Mesh mesh, bool useScale) { }
         public Mesh sharedMesh { get; set; }
         public Transform[] bones { get; set; }
         public Transform rootBone { get; set; }

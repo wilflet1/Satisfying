@@ -395,6 +395,12 @@ namespace Satisfying.Game
             object primitives = Json.Member(mesh, "primitives");
             int count = Json.Count(primitives);
 
+            // Carry the author's own name through. It costs nothing and it is the difference between
+            // a report saying "455 mm outside on primitive 0" and one saying which part of the
+            // character it was, which is the whole value of the report.
+            string label = Json.MemberString(mesh, "name", null);
+            if (string.IsNullOrEmpty(label)) label = "primitive";
+
             for (int p = 0; p < count; p++)
             {
                 object primitive = Json.At(primitives, p);
@@ -404,7 +410,7 @@ namespace Satisfying.Game
                 if (positions == null || positions.Length == 0) continue;
 
                 Mesh unityMesh = new Mesh();
-                unityMesh.name = "primitive " + p;
+                unityMesh.name = count == 1 ? label : label + " " + p;
                 if (positions.Length > 65000) unityMesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
                 unityMesh.vertices = positions;
 
@@ -431,7 +437,7 @@ namespace Satisfying.Game
                 Material material = c.Materials[Mathf.Clamp(Json.MemberInt(primitive, "material", 0),
                                                             0, c.Materials.Length - 1)];
 
-                Transform holder = count == 1 ? owner : new GameObject("primitive " + p).transform;
+                Transform holder = count == 1 ? owner : new GameObject(label + " " + p).transform;
                 if (count > 1) holder.SetParent(owner, false);
 
                 if (skinIndex >= 0 && ApplySkin(c, unityMesh, attributes, skinIndex, holder, material))

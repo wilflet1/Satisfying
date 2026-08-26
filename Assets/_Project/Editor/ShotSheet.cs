@@ -563,7 +563,15 @@ namespace Satisfying.Game
 
             GameObject stage = Stage(palette, false);
             Camera cam = ShotCamera();
-            AvatarPool pool = new AvatarPool(null);
+
+            // The real library, reading the real folder. Six duellists dealt out of whatever
+            // characters are on this machine is the only way to see that the deal works end to end;
+            // with no characters installed they come out as blockout mannequins in six palettes,
+            // which is also worth being able to see.
+            AvatarLibrary library = new AvatarLibrary(null, Palette.Make("probe", Color.white, 0.5f, 0f).shader);
+            AvatarPool pool = new AvatarPool(library);
+            Debug.Log("[shots] dealing from " + pool.Sources.Count + " character(s) in "
+                      + AvatarLibrary.CacheDirectory);
 
             GameObject crowd = new GameObject("line up");
             for (int peer = 1; peer <= 6; peer++)
@@ -573,6 +581,24 @@ namespace Satisfying.Game
 
                 RemotePlayerView view = new RemotePlayerView(holder.transform, peer, palette, move,
                     GameBootstrap.LayerPlayer, false, pool.VariantFor(peer));
+
+                string source = pool.SourceFor(peer);
+                if (!string.IsNullOrEmpty(source))
+                {
+                    library.Load(source, delegate(AvatarLibrary.Entry entry)
+                    {
+                        if (entry.Error != null)
+                        {
+                            Debug.LogWarning("[shots] peer " + peer + ": " + entry.Error);
+                            return;
+                        }
+                        AvatarRig rig = library.Instantiate(entry, holder.transform, GameBootstrap.LayerPlayer);
+                        string missing = rig == null ? "no rig" : rig.Missing();
+                        Debug.Log("[shots] peer " + peer + " wears " + entry.Name
+                                  + (string.IsNullOrEmpty(missing) ? "  (rig complete)" : "  MISSING " + missing));
+                        view.SetAvatar(rig);
+                    });
+                }
 
                 // Spaced by the STATE, not by the holder: Render writes a world position onto the
                 // character root every frame, so a parent offset is overwritten and all six end up

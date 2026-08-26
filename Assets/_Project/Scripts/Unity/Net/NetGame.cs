@@ -853,17 +853,24 @@ namespace Satisfying.Game
 
             // Not loaded yet. The blockout stands in until it arrives, and only the players this
             // particular avatar belongs to get it when it does - everyone else keeps their own.
-            int who = peerId;
+            //
+            // `arrived` is not paranoia: a character already on the disk loads without going round
+            // the frame loop, so this callback can run before Load returns. Clearing the avatar
+            // afterwards unconditionally would then throw away the one that had just been put on,
+            // and every duellist in the game would be a blockout mannequin again.
+            bool arrived = false;
             Avatars.Load(source, delegate(AvatarLibrary.Entry loaded)
             {
                 if (loaded.Error != null) return;
+                arrived = true;
                 foreach (System.Collections.Generic.KeyValuePair<int, RemotePlayerView> kv in _remoteViews)
                 {
                     if (Pool.SourceFor(kv.Key) != loaded.Source) continue;
                     kv.Value.SetAvatar(Avatars.Instantiate(loaded, Root, PlayerLayer));
                 }
             });
-            view.SetAvatar(null);
+
+            if (!arrived) view.SetAvatar(null);
         }
 
         /// <summary>Puts the current choice on everyone. Called when the player picks a new one.</summary>

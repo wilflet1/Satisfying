@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Satisfying.Shared;
 
@@ -430,6 +431,14 @@ namespace Satisfying.Game
                 _game.RefreshAvatars();
             };
             _ui.Character = _characterPanel;
+
+            // Read every character on the machine now, while there is a menu on the screen and
+            // nothing to interrupt. A VRM is ten megabytes of mesh and reading one takes long enough
+            // to notice; doing it the moment an opponent walks into view would put that hitch in the
+            // one second of the match where it costs a duel.
+            List<string> installed = _game.Pool.Sources;
+            for (int i = 0; i < installed.Count; i++)
+                _game.Avatars.Load(installed[i], null);
 
             _ui.OnQuit = Quit;
             _ui.Touch = _touchControls;

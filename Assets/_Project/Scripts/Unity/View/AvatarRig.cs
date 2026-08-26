@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Satisfying.Shared;
 
@@ -12,15 +13,20 @@ namespace Satisfying.Game
     /// avatar. Two players with different avatars are exactly as hard to hit as each other, and what
     /// you aim at is what the server tests. Press F5 and you can see it.
     ///
-    /// That is done in two steps per bone:
+    /// How: every joint the game has is PLACED, and each bone is then turned to look at the next one
+    /// down its chain. Placing the joints is what does the work - a bone that starts at one BodyPose
+    /// joint and whose child starts at the next spans exactly the right distance by construction, so
+    /// no bone ever needs stretching and the skin follows wherever the skeleton goes.
     ///
-    ///   aim     rotate the bone so it points from its BodyPose joint at its child's BodyPose joint
-    ///   fit     scale it along its own length so it REACHES that joint
-    ///
-    /// The second half is the part that matters and the part most retargeting skips. Without it an
-    /// avatar with long arms has hands past the ends of the arm capsules and an avatar with short
-    /// ones has hands inside its chest, and in both cases the model disagrees with the hitbox - which
-    /// is the exact failure this project has a README rule about.
+    /// WHAT THIS USED TO DO, AND WHY IT DOES NOT ANY MORE. The first version scaled each bone along
+    /// its own axis to make it reach, and found its child with GetChild(0). That survived a synthetic
+    /// test rig, where every bone has exactly one child in the obvious place, and came apart on the
+    /// first real character: in a VRM the first child of the chest is as likely to be a hair root or a
+    /// skirt bone as the neck, so the "stretch to reach" was computed against a bone two centimetres
+    /// long, clamped at four, and multiplied down the chain. Worse, a non-uniform scale on a parent
+    /// SHEARS everything below it. The result photographed as a twenty-metre spike with a character
+    /// hanging off it. Nothing here touches a bone scale now; the only scale in play is one uniform
+    /// factor on the root, which sets how thick the character is and cannot shear anything.
     ///
     /// Bones are found from the file's DECLARED humanoid map where there is one (VRM has it), and
     /// from node names where there is not. The declared map is right by construction; names are a
@@ -28,13 +34,8 @@ namespace Satisfying.Game
     /// </summary>
     public sealed class AvatarRig
     {
-        /// <summary>One drivable bone: the two BodyPose joints it spans, and its rest length.</summary>
-        struct Link
-        {
-            public Transform Bone;
-            public float RestLength;
-            public Vector3 RestDirection;   // in the bone's own parent space, at load time
-        }
+        /// <summary>The height the skeleton is built for. An avatar is scaled to match it.</summary>
+        const float ReferenceHeight = 1.82f;
 
         public GameObject Root { get { return _model != null ? _model.Root : null; } }
         public bool Valid { get { return _hips != null && _model != null; } }
@@ -44,10 +45,22 @@ namespace Satisfying.Game
         Transform _hips, _spine, _chest, _neck, _head;
         Transform _leftShoulder, _leftArm, _leftForearm, _leftHand;
         Transform _rightShoulder, _rightArm, _rightForearm, _rightHand;
-        Transform _leftThigh, _leftShin, _leftFoot;
-        Transform _rightThigh, _rightShin, _rightFoot;
+        Transform _leftThigh, _leftShin, _leftFoot, _leftToe;
+        Transform _rightThigh, _rightShin, _rightFoot, _rightToe;
 
-        Link[] _links;
+        float _scale = 1f;
+
+        // VRM 0.x characters face the opposite way to VRM 1.0 ones. This is not a bug in either of
+        // them: 0.x had the character looking down glTF +Z and 1.0 turned it round to -Z, and the
+        // migration notes say so. It survives the handedness conversion as a straight 180 degrees, and
+        // without it a 0.x avatar stands with its back to whatever its own rifle is pointing at.
+        Quaternion _facing = Quaternion.identity;
+
+        // Where each bone was pointing before anybody posed it. A bone with nothing below it to look
+        // at - the head, a hand - is put back to its rest orientation rather than left holding
+        // whatever its parent's aim happened to leave it with, which is how you get a head lying on
+        // its side because the neck was reaching forward.
+        readonly Dictionary<Transform, Quaternion> _rest = new Dictionary<Transform, Quaternion>();
 
         public AvatarRig(GlbModel model)
         {
@@ -81,6 +94,60 @@ namespace Satisfying.Game
             _rightThigh = Bone(model, "rightUpperLeg", "RightUpLeg", "mixamorig:RightUpLeg", "J_Bip_R_UpperLeg");
             _rightShin = Bone(model, "rightLowerLeg", "RightLeg", "mixamorig:RightLeg", "J_Bip_R_LowerLeg");
             _rightFoot = Bone(model, "rightFoot", "RightFoot", "mixamorig:RightFoot", "J_Bip_R_Foot");
+
+            _leftToe = Bone(model, "leftToes", "LeftToeBase", "mixamorig:LeftToeBase", "J_Bip_L_ToeBase");
+            _rightToe = Bone(model, "rightToes", "RightToeBase", "mixamorig:RightToeBase", "J_Bip_R_ToeBase");
+
+            if (model.Flavour == "VRM 0.x") _facing = Quaternion.Euler(0f, 180f, 0f);
+
+            Normalise();
+            RememberRest();
+        }
+
+        /// <summary>
+        /// One uniform scale on the root, so a character built at some other height is the size of
+        /// everybody else.
+        ///
+        /// This does not change where any joint ends up - those are placed - only how THICK the
+        /// character is and how big its head is, which is exactly what wants matching: the capsules
+        /// are sized for a 1.82 m duellist, and an avatar authored at 1.5 m rattles around inside them
+        /// while one authored at 2 m has shoulders sticking out of the sides of its own hitbox.
+        /// </summary>
+        void Normalise()
+        {
+            if (_model == null || _model.Root == null || _hips == null) return;
+
+            Transform root = _model.Root.transform;
+            root.localScale = Vector3.one;
+
+            // Measure the skeleton rather than the mesh: hair, a hat or a held prop all move a
+            // renderer bound and none of them are how tall somebody is.
+            float low = float.MaxValue, high = float.MinValue;
+            foreach (KeyValuePair<string, Transform> kv in _model.Bones)
+            {
+                if (kv.Value == null) continue;
+                float y = root.InverseTransformPoint(kv.Value.position).y;
+                if (y < low) low = y;
+                if (y > high) high = y;
+            }
+            if (high <= low) return;
+
+            // The topmost bone is the crown of the skull at best, and usually somewhere inside it, so
+            // the skeleton is a little shorter than the character. Eight centimetres of scalp is about
+            // right and stops every avatar coming out fractionally too large.
+            float height = (high - low) + 0.08f;
+            if (height < 0.5f || height > 4f) return;
+
+            _scale = Mathf.Clamp(ReferenceHeight / height, 0.5f, 2f);
+            root.localScale = new Vector3(_scale, _scale, _scale);
+        }
+
+        void RememberRest()
+        {
+            if (_model == null || _model.Root == null) return;
+            Quaternion inverse = Quaternion.Inverse(_model.Root.transform.rotation);
+            foreach (KeyValuePair<string, Transform> kv in _model.Bones)
+                if (kv.Value != null) _rest[kv.Value] = inverse * kv.Value.rotation;
         }
 
         /// <summary>
@@ -117,94 +184,94 @@ namespace Satisfying.Game
 
         /// <summary>
         /// Poses the avatar onto a skeleton. `pose` is in character space - origin at the feet, +Z the
-        /// way they are facing - and the root transform has already been put in the world, so
-        /// everything here is done in local space.
+        /// way they are facing - and the root transform has already been put in the world.
+        ///
+        /// Order matters: a bone is placed only after its parent has been turned, so it is worked
+        /// from the hips outwards and each limb from the shoulder or hip down.
         /// </summary>
         public void Apply(in BodyPose pose, Transform root)
         {
             if (!Valid) return;
 
-            // The hips are placed; everything else is aimed and stretched from them.
             _hips.position = root.TransformPoint(pose.Pelvis.ToUnity());
-            _hips.rotation = root.rotation;
+            _hips.rotation = root.rotation * _facing * Rest(_hips);
 
-            // Spine. The chest is drawn to the shoulder line, same as the blockout character.
-            Aim(_spine, root, pose.Pelvis, pose.ChestBase);
-            Aim(_chest, root, pose.ChestBase, pose.Shoulders);
-            Aim(_neck, root, pose.NeckBase, pose.Head);
+            // Spine. The chest is drawn up to the shoulder line, the neck to the head joint.
+            Segment(_spine, Below(_chest, _neck, _head), root, pose.Pelvis, pose.ChestBase);
+            Segment(_chest, Below(_neck, _head), root, pose.ChestBase, pose.Shoulders);
+            Segment(_neck, _head, root, pose.NeckBase, pose.Head);
 
-            // The head is not aimed at anything - there is no joint above it - so it takes the neck's
-            // direction and the aim pitch, which the caller has already baked into pose.Head.
-            if (_head != null) _head.rotation = root.rotation * Quaternion.Euler(0f, 0f, 0f);
+            // Nothing sits above the head to aim it at, so it goes back to rest and faces the way the
+            // body does. Where the player is LOOKING is a camera concern and deliberately not this
+            // one - a remote duellist's head does not swivel, and their aim is read off their weapon.
+            if (_head != null)
+            {
+                _head.position = root.TransformPoint(pose.Head.ToUnity());
+                _head.rotation = root.rotation * _facing * Rest(_head);
+            }
 
-            Aim(_leftShoulder, root, pose.Shoulders, pose.LeftShoulder);
-            Aim(_leftArm, root, pose.LeftShoulder, pose.LeftElbow);
-            Aim(_leftForearm, root, pose.LeftElbow, pose.LeftHand);
+            Segment(_leftShoulder, Below(_leftArm, _leftForearm), root, pose.Shoulders, pose.LeftShoulder);
+            Segment(_leftArm, Below(_leftForearm, _leftHand), root, pose.LeftShoulder, pose.LeftElbow);
+            Segment(_leftForearm, _leftHand, root, pose.LeftElbow, pose.LeftHand);
+            Settle(_leftHand, root, pose.LeftHand, _leftForearm);
 
-            Aim(_rightShoulder, root, pose.Shoulders, pose.RightShoulder);
-            Aim(_rightArm, root, pose.RightShoulder, pose.RightElbow);
-            Aim(_rightForearm, root, pose.RightElbow, pose.RightHand);
+            Segment(_rightShoulder, Below(_rightArm, _rightForearm), root, pose.Shoulders, pose.RightShoulder);
+            Segment(_rightArm, Below(_rightForearm, _rightHand), root, pose.RightShoulder, pose.RightElbow);
+            Segment(_rightForearm, _rightHand, root, pose.RightElbow, pose.RightHand);
+            Settle(_rightHand, root, pose.RightHand, _rightForearm);
 
-            Aim(_leftThigh, root, pose.LeftHip, pose.LeftKnee);
-            Aim(_leftShin, root, pose.LeftKnee, pose.LeftAnkle);
-            Aim(_leftFoot, root, pose.LeftAnkle, pose.LeftToe);
+            Segment(_leftThigh, Below(_leftShin, _leftFoot), root, pose.LeftHip, pose.LeftKnee);
+            Segment(_leftShin, Below(_leftFoot, _leftToe), root, pose.LeftKnee, pose.LeftAnkle);
+            Segment(_leftFoot, _leftToe, root, pose.LeftAnkle, pose.LeftToe);
 
-            Aim(_rightThigh, root, pose.RightHip, pose.RightKnee);
-            Aim(_rightShin, root, pose.RightKnee, pose.RightAnkle);
-            Aim(_rightFoot, root, pose.RightAnkle, pose.RightToe);
+            Segment(_rightThigh, Below(_rightShin, _rightFoot), root, pose.RightHip, pose.RightKnee);
+            Segment(_rightShin, Below(_rightFoot, _rightToe), root, pose.RightKnee, pose.RightAnkle);
+            Segment(_rightFoot, _rightToe, root, pose.RightAnkle, pose.RightToe);
         }
 
         /// <summary>
-        /// Points a bone from one joint at another, and stretches it to reach.
+        /// Puts a bone on its joint and turns it to look at the next one down the chain.
         ///
-        /// The rotation is worked out from where the bone's own child actually is once the bone has
-        /// been placed, not from a rest direction captured at load - a rest direction goes stale the
-        /// moment a parent moves, and the errors compound down a limb until the hands are somewhere
-        /// else entirely.
+        /// The direction it is CURRENTLY pointing is measured to a named bone, never to whatever
+        /// happens to be its first child. On a real character the first child of the chest is as
+        /// likely to be a hair root as the neck, and aiming a two-centimetre hair bone at the shoulder
+        /// line is how the whole skeleton used to come apart.
         /// </summary>
-        void Aim(Transform bone, Transform root, Vec3 from, Vec3 to)
+        void Segment(Transform bone, Transform next, Transform root, Vec3 from, Vec3 to)
         {
             if (bone == null) return;
 
-            Vector3 worldFrom = root.TransformPoint(from.ToUnity());
-            Vector3 worldTo = root.TransformPoint(to.ToUnity());
-            Vector3 delta = worldTo - worldFrom;
-            float wanted = delta.magnitude;
-            if (wanted < 0.0005f) return;
+            bone.position = root.TransformPoint(from.ToUnity());
+            if (next == null) return;
 
-            bone.position = worldFrom;
+            Vector3 wanted = root.TransformPoint(to.ToUnity()) - bone.position;
+            Vector3 have = next.position - bone.position;
+            if (wanted.sqrMagnitude < 1e-8f || have.sqrMagnitude < 1e-8f) return;
 
-            // Where does this bone currently point? At its first child, which is the next joint down
-            // the chain. A bone with no children (a toe, a fingertip) keeps its parent's rotation.
-            Transform child = bone.childCount > 0 ? bone.GetChild(0) : null;
-            if (child == null) return;
+            bone.rotation = Quaternion.FromToRotation(have, wanted) * bone.rotation;
+        }
 
-            Vector3 current = child.position - bone.position;
-            if (current.sqrMagnitude < 1e-8f) return;
+        /// <summary>A hand or a foot: on its joint, and carried round by the limb above it.</summary>
+        void Settle(Transform bone, Transform root, Vec3 at, Transform above)
+        {
+            if (bone == null) return;
+            bone.position = root.TransformPoint(at.ToUnity());
+            if (above != null) bone.rotation = above.rotation * Quaternion.Inverse(Rest(above)) * Rest(bone);
+        }
 
-            bone.rotation = Quaternion.FromToRotation(current, delta) * bone.rotation;
+        /// <summary>The first of these bones that the file actually has.</summary>
+        static Transform Below(params Transform[] candidates)
+        {
+            for (int i = 0; i < candidates.Length; i++)
+                if (candidates[i] != null) return candidates[i];
+            return null;
+        }
 
-            // Now it points the right way; make it the right LENGTH. The child sits at a fixed local
-            // offset, so scaling the bone along the axis that offset lies on moves the child onto the
-            // joint - which is what keeps the avatar inside its own capsules.
-            float have = (child.position - bone.position).magnitude;
-            if (have < 0.0005f) return;
-
-            float ratio = wanted / have;
-            Vector3 local = child.localPosition;
-            Vector3 scale = bone.localScale;
-
-            // Whichever local axis the child lies down is the one to stretch.
-            float ax = Mathf.Abs(local.x), ay = Mathf.Abs(local.y), az = Mathf.Abs(local.z);
-            if (ax >= ay && ax >= az) scale.x *= ratio;
-            else if (ay >= az) scale.y *= ratio;
-            else scale.z *= ratio;
-
-            // A sanity clamp. An avatar whose proportions are wildly different from the skeleton would
-            // otherwise produce a bone stretched by a factor of ten, and a spike across the screen.
-            scale = new Vector3(Mathf.Clamp(scale.x, 0.2f, 4f), Mathf.Clamp(scale.y, 0.2f, 4f),
-                                Mathf.Clamp(scale.z, 0.2f, 4f));
-            bone.localScale = scale;
+        Quaternion Rest(Transform bone)
+        {
+            Quaternion rest;
+            if (bone != null && _rest.TryGetValue(bone, out rest)) return rest;
+            return Quaternion.identity;
         }
 
         public void SetVisible(bool visible)

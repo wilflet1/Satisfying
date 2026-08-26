@@ -98,7 +98,67 @@ namespace Satisfying.Game
                 if (done != null) done(existing);
                 return;
             }
+
+            // Anything already on this machine is read straight through. Only a download needs a
+            // coroutine, and putting a local file through one means a character that is sitting on
+            // the disk still arrives a frame late - the player watches a blockout mannequin turn into
+            // themselves - and it makes the loader unusable from the editor tools, which have no
+            // MonoBehaviour to run a coroutine on and are the only place any of this gets checked.
+            string local = LocalPath(source);
+            if (local != null)
+            {
+                Entry entry = new Entry();
+                entry.Source = source;
+                entry.Name = NameOf(source);
+                _entries[source] = entry;
+
+                byte[] bytes = null;
+                try { bytes = File.ReadAllBytes(local); }
+                catch (Exception e) { entry.Error = "could not read the file: " + e.Message; }
+
+                Build(entry, bytes);
+                if (done != null) done(entry);
+                return;
+            }
+
+            if (_host == null)
+            {
+                Entry entry = new Entry();
+                entry.Source = source;
+                entry.Name = NameOf(source);
+                entry.Error = "there is nothing here that can download a file";
+                _entries[source] = entry;
+                if (done != null) done(entry);
+                return;
+            }
+
             _host.StartCoroutine(LoadRoutine(source, done));
+        }
+
+        /// <summary>The file this source is already on disk as, if it is: the path itself, or its cache.</summary>
+        static string LocalPath(string source)
+        {
+            bool isUrl = source.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                      || source.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+
+            if (!isUrl) return File.Exists(source) ? source : null;
+
+            string cached = CachePathFor(source);
+            return File.Exists(cached) ? cached : null;
+        }
+
+        /// <summary>Bytes to a posable character, or an entry that says why not.</summary>
+        void Build(Entry entry, byte[] bytes)
+        {
+            if (bytes == null || entry.Error != null) return;
+
+            string error;
+            GlbModel model = GlbLoader.Load(bytes, entry.Name, _shader, out error);
+            if (model == null) { entry.Error = error; return; }
+
+            // The template is kept inactive off to one side; players are given copies.
+            model.Root.SetActive(false);
+            entry.Template = model;
         }
 
         IEnumerator LoadRoutine(string source, Action<Entry> done)
@@ -109,58 +169,26 @@ namespace Satisfying.Game
             _entries[source] = entry;
 
             byte[] bytes = null;
+            string cached = CachePathFor(source);
 
-            bool isUrl = source.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
-                      || source.StartsWith("https://", StringComparison.OrdinalIgnoreCase);
+            using (UnityWebRequest request = UnityWebRequest.Get(source))
+            {
+                request.timeout = 30;
+                yield return request.SendWebRequest();
 
-            if (!isUrl)
-            {
-                try { bytes = File.ReadAllBytes(source); }
-                catch (Exception e) { entry.Error = "could not read the file: " + e.Message; }
-            }
-            else
-            {
-                string cached = CachePathFor(source);
-                if (File.Exists(cached))
+                if (request.result != UnityWebRequest.Result.Success)
                 {
-                    try { bytes = File.ReadAllBytes(cached); }
-                    catch (Exception) { bytes = null; }
+                    entry.Error = "download failed: " + request.error;
                 }
-
-                if (bytes == null)
-                {
-                    using (UnityWebRequest request = UnityWebRequest.Get(source))
-                    {
-                        request.timeout = 30;
-                        yield return request.SendWebRequest();
-
-                        if (request.result != UnityWebRequest.Result.Success)
-                        {
-                            entry.Error = "download failed: " + request.error;
-                        }
-                        else
-                        {
-                            bytes = request.downloadHandler.data;
-                            try { File.WriteAllBytes(cached, bytes); }
-                            catch (Exception) { }        // a cache we cannot write is not fatal
-                        }
-                    }
-                }
-            }
-
-            if (bytes != null && entry.Error == null)
-            {
-                string error;
-                GlbModel model = GlbLoader.Load(bytes, entry.Name, _shader, out error);
-                if (model == null) entry.Error = error;
                 else
                 {
-                    // The template is kept inactive off to one side; players are given copies.
-                    model.Root.SetActive(false);
-                    entry.Template = model;
+                    bytes = request.downloadHandler.data;
+                    try { File.WriteAllBytes(cached, bytes); }
+                    catch (Exception) { }        // a cache we cannot write is not fatal
                 }
             }
 
+            Build(entry, bytes);
             if (done != null) done(entry);
         }
 
@@ -181,19 +209,35 @@ namespace Satisfying.Game
             model.Flavour = entry.Template.Flavour;
             Collect(copy.transform, model);
 
-            // And carry the DECLARED humanoid map across, by node name. Without this every copy fell
-            // back to guessing bones from names - which happens to work for VRoid and would quietly
-            // stop working for the first file whose author named things differently, which is the
-            // entire problem the map exists to solve.
+            // And carry the DECLARED humanoid map across.
+            //
+            // By POSITION IN THE TREE, not by name. Instantiate clones the hierarchy exactly, so the
+            // nth child of the nth child is the same bone in both - whereas a name is not required to
+            // be unique and in a real character often is not. Carrying it by name put Alicia's
+            // "leftUpperArm" on the first node that happened to share a name with her arm, so her arms
+            // were never driven: she stood in the line-up with her arms at her sides and her rifle
+            // floating in front of her, while the rig reported itself complete because the entry it
+            // had found was not null.
+            Dictionary<Transform, Transform> twin = new Dictionary<Transform, Transform>();
+            Twin(entry.Template.Root.transform, copy.transform, twin);
+
             foreach (KeyValuePair<string, Transform> kv in entry.Template.Humanoid)
             {
                 if (kv.Value == null) continue;
-                Transform mine = model.Find(kv.Value.name);
-                if (mine != null) model.Humanoid[kv.Key] = mine;
+                Transform mine;
+                if (twin.TryGetValue(kv.Value, out mine)) model.Humanoid[kv.Key] = mine;
             }
             copy.GetComponentsInChildren(true, model.Skins);
 
             return new AvatarRig(model);
+        }
+
+        /// <summary>Pairs every transform of a clone with the one it was cloned from.</summary>
+        static void Twin(Transform template, Transform copy, Dictionary<Transform, Transform> map)
+        {
+            map[template] = copy;
+            int count = Mathf.Min(template.childCount, copy.childCount);
+            for (int i = 0; i < count; i++) Twin(template.GetChild(i), copy.GetChild(i), map);
         }
 
         static void Collect(Transform t, GlbModel model)
