@@ -95,7 +95,7 @@ namespace Satisfying.Shared
         public float sprintTilt = 24f;
 
         [Tune("Weapon feel", 0f, 0.3f, Tip = "How far the gun kicks back per shot.")]
-        public float recoilKickBack = 0.0303f;
+        public float recoilKickBack = 0.042f;
 
         [Tune("Weapon feel", 0f, 2f, Tip = "How much of the weapon recoil is applied to the camera.")]
         public float recoilCameraMul = 1f;
@@ -132,7 +132,13 @@ namespace Satisfying.Shared
         public float armForward = 0f;
 
         [Tune("Weapon feel", 0f, 0.12f, Tip = "How far the gun may travel back towards your eye under recoil, however long you hold the trigger. This is the thing that used to walk the receiver into your face.")]
-        public float recoilKickLimit = 0.030f;
+        public float recoilKickLimit = 0.048f;
+
+        [Tune("Weapon feel", 0f, 0.5f, Tip = "How hard a shot punches the VIEW up. This is the flick that takes the sights off the target - the felt recoil should be the gun moving, not the camera.")]
+        public float recoilViewPunch = 0.10f;
+
+        [Tune("Weapon feel", 0f, 0.02f, Tip = "How far the gun lifts on the viewmodel per shot. A little, on top of the travel backwards.")]
+        public float recoilKickUp = 0.0035f;
 
         // OFF by default, and it stays off. Rotating the viewmodel up per shot lifted the muzzle
         // across the sight picture and you could not see the reticle while firing, which is a worse

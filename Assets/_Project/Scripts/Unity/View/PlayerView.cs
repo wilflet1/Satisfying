@@ -140,24 +140,41 @@ namespace Satisfying.Game
 
             bool holding = state.HoldingGrenade;
             float target = holding ? 1f : 0f;
-            _grenadeBlend = Mathf.MoveTowards(_grenadeBlend, target,
-                dt / Mathf.Max(0.05f, tuning != null ? tuning.drawTime * 0.75f : 0.6f));
+
+            // Out at the draw speed, back a good deal faster - coming off a grenade is the weapon
+            // coming back up, and waiting the full draw time again for it is a second of standing
+            // there unable to shoot after you have already thrown.
+            float speed = holding
+                ? 1f / Mathf.Max(0.05f, tuning != null ? tuning.drawTime * 0.7f : 0.6f)
+                : 1f / 0.28f;
+            _grenadeBlend = Mathf.MoveTowards(_grenadeBlend, target, speed * dt);
 
             if (_grenade.activeSelf != _grenadeBlend > 0.01f) _grenade.SetActive(_grenadeBlend > 0.01f);
             if (_grenadeBlend <= 0.01f) return;
 
-            // Held low and forward while the pin is in; drawn back over the shoulder once it is out.
-            bool primed = state.Carry == GrenadeCarry.Primed;
-            Vector3 low = new Vector3(0.16f, -0.34f, 0.30f);
-            Vector3 up = new Vector3(0.19f, -0.16f, 0.34f);
-            Vector3 cocked = new Vector3(0.30f, 0.06f, 0.10f);
+            // A proper draw: it comes up from below the frame into the firing hand, the same way the
+            // weapon leaves. Eased, so it arrives rather than stopping dead.
+            float k = _grenadeBlend * _grenadeBlend * (3f - 2f * _grenadeBlend);
 
-            Vector3 where = Vector3.Lerp(low, up, Mathf.Clamp01(_grenadeBlend));
-            if (primed) where = Vector3.Lerp(where, cocked, 0.85f);
+            bool primed = state.Carry == GrenadeCarry.Primed;
+            Vector3 offscreen = new Vector3(0.24f, -0.55f, 0.18f);
+            Vector3 inHand = new Vector3(0.17f, -0.17f, 0.33f);
+            Vector3 cocked = new Vector3(0.30f, 0.10f, 0.06f);
+
+            Vector3 where = Vector3.Lerp(offscreen, inHand, k);
+            Quaternion facing = Quaternion.Euler(Mathf.Lerp(50f, 10f, k), Mathf.Lerp(-40f, -16f, k), 0f);
+
+            if (primed)
+            {
+                // Pin out: drawn back over the shoulder and turned, which is the read that says the
+                // throw is armed and coming.
+                where = Vector3.Lerp(where, cocked, 0.9f);
+                facing = Quaternion.Euler(-38f, 26f, 12f);
+            }
 
             _grenade.transform.localPosition = where;
-            _grenade.transform.localRotation = Quaternion.Euler(primed ? -35f : 12f, primed ? 25f : -18f, 0f);
-            _grenade.transform.localScale = Vector3.one * Mathf.Lerp(0.6f, 1f, _grenadeBlend);
+            _grenade.transform.localRotation = facing;
+            _grenade.transform.localScale = Vector3.one * Mathf.Lerp(0.75f, 1f, k);
         }
 
         public void SetWeapon(int index)
@@ -181,14 +198,19 @@ namespace Satisfying.Game
 
         public void OnShot(WeaponTuning weapon)
         {
-            _punch += weapon.recoilVertical * 0.35f;
+            // The VIEW punch, which is the thing that flicks the sights off the target. It is a tenth
+            // of what it was: felt recoil is meant to be the gun moving in your hands, not the camera
+            // being thrown, and a shooter who cannot see the reticle while firing cannot correct.
+            _punch += weapon.recoilVertical * _feel.recoilViewPunch;
 
             // Recoil used to be one accumulating shove back along Z, which on a held trigger walked
             // the gun into the camera until the receiver filled the screen. It is capped now, and what
             // was doing the work is done instead by the muzzle CLIMBING - a rotation, which reads as
             // recoil without ever getting between you and what you are shooting at - and by a shake
             // on the camera that settles fast and moves nothing but the picture.
-            _viewmodelKick += new Vector3(0f, weapon.recoilVertical * 0.002f, -_feel.recoilKickBack);
+            // Mostly BACKWARDS, with a little lift on top - the gun is driven into your shoulder and
+            // rises a bit as it goes, which is what recoil looks like from behind it.
+            _viewmodelKick += new Vector3(0f, _feel.recoilKickUp, -_feel.recoilKickBack);
             _viewmodelKick = Vector3.ClampMagnitude(_viewmodelKick, Mathf.Max(0.001f, _feel.recoilKickLimit));
 
             _muzzleRise = Mathf.Min(_muzzleRise + _feel.recoilMuzzleRise, _feel.recoilMuzzleRise * 2.6f);
@@ -360,17 +382,23 @@ namespace Satisfying.Game
             float bobMul = 1f - state.Ads * 0.85f;
             Vector3 bobOffset = new Vector3(bobX, bobY, 0f) * 1.6f * bobMul;
 
-            // Lowered out of frame while a grenade is in your hand, rather than switched off.
-            Vector3 stow = new Vector3(0.05f, -0.42f, -0.18f) * _grenadeBlend;
+            // PUT AWAY while a grenade is in your hand. It drops right out of frame and rolls as it
+            // goes, the way a weapon switch looks - it used to sink about forty centimetres, which
+            // left the receiver sitting in the bottom of the picture next to the grenade.
+            float stowK = _grenadeBlend * _grenadeBlend * (3f - 2f * _grenadeBlend);
+            Vector3 stow = new Vector3(0.10f, -0.95f, -0.30f) * stowK;
 
             ViewmodelRoot.localPosition = basePosition + _animator.PoseOffset
                 + _swayOffset * (1f - state.Ads * 0.6f) + _viewmodelKick + bobOffset + stow;
             ViewmodelRoot.localRotation = Quaternion.Euler(baseEuler + _animator.PoseEuler
                 + _swayRotation * (1f - state.Ads * 0.6f)
-                + new Vector3(-_muzzleRise, 0f, 0f));
+                + new Vector3(-_muzzleRise, 0f, 0f)
+                + new Vector3(38f, 22f, -18f) * stowK);
 
-            SolveArms(state.Ads);
-            if (_grenade != null && _grenadeBlend > 0.01f) SolveGrenadeHand();
+            // Whichever thing is in the hand is what the arms reach for. Halfway through a swap the
+            // grenade has it, because that is the half where the weapon is already gone.
+            if (_grenade != null && _grenadeBlend > 0.4f) SolveGrenadeHand();
+            else SolveArms(state.Ads);
         }
 
         /// <summary>The throwing hand goes onto the grenade; the other one comes down out of the way.</summary>

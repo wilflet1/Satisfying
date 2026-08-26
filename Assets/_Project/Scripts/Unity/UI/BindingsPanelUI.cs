@@ -53,6 +53,11 @@ namespace Satisfying.Game
             for (int i = 0; i < (int)GameAction.Count; i++)
             {
                 GameAction action = (GameAction)i;
+
+                // The menu key is not in this list and cannot be. It is Escape, it is always Escape,
+                // and a menu key you are able to rebind is one you are able to lose - after which
+                // there is no way back into the menu to put it right.
+                if (!InputBindings.Rebindable(action)) continue;
                 Binding binding = Bindings[action];
 
                 GUILayout.BeginHorizontal();

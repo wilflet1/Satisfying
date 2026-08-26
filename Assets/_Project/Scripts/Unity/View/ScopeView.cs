@@ -184,13 +184,12 @@ namespace Satisfying.Game
             //    top of it. The lit part is drawn twice - once wide and dim for the glow, once tight
             //    and bright - which is what an illuminated reticle looks like through glass.
             Rect reticle = ReticleRect(screenWidth, screenHeight);
+
+            // Glow underneath, then the reticle itself over it. Two passes and it reads as lit glass.
+            GUI.color = new Color(1f, 1f, 1f, Blend * 0.5f);
+            GUI.DrawTexture(reticle, _glow, ScaleMode.StretchToFill, true);
             GUI.color = new Color(1f, 1f, 1f, Blend);
             GUI.DrawTexture(reticle, _reticle, ScaleMode.StretchToFill, true);
-
-            GUI.color = new Color(1f, 1f, 1f, Blend * 0.55f);
-            GUI.DrawTexture(reticle, _glow, ScaleMode.StretchToFill, true);
-            GUI.color = new Color(1f, 1f, 1f, Blend);
-            GUI.DrawTexture(reticle, _glow, ScaleMode.StretchToFill, true);
 
             // 5. the housing, as a ring round the lens. Everything outside it is the world, drawn by
             //    the main camera, at the field of view it always had.
@@ -231,16 +230,19 @@ namespace Satisfying.Game
 
         public Rect ReticleRect(float screenWidth, float screenHeight)
         {
-            // FIXED SIZE. This is a second focal plane optic and it has to be: first focal plane
-            // multiplied the reticle by the magnification, so at eighteen power it was two and a half
-            // times the width of the lens and the stadia ran out across the housing and off both
-            // sides of the screen.
-            //
-            // 0.84 rather than filling the glass, because the etched marks run most of the way to the
-            // edge of their own texture and the tips would otherwise sit on the rim.
-            float size = Circle(screenWidth, screenHeight).width * 0.84f;
+            // The reticle GROWS with the magnification, the way a first focal plane optic does - a
+            // hold is then the same hold at any power, which is the whole reason to have one - but it
+            // is CLAMPED to the glass. Past the point where it would fill the lens it simply stops
+            // growing, so it never runs out over the housing and off the screen the way it used to.
+            float lens = Circle(screenWidth, screenHeight).width;
+            float scale = Magnification / ReferencePower;
+            float size = lens * 0.80f * scale;
+            size = Mathf.Clamp(size, lens * 0.34f, lens * 0.98f);
             return new Rect((screenWidth - size) * 0.5f, (screenHeight - size) * 0.5f, size, size);
         }
+
+        /// <summary>The power the reticle is drawn at its nominal size. Middle of the range.</summary>
+        const float ReferencePower = 8f;
 
         public Texture2D Surround { get { EnsureTextures(); return _surround; } }
         public Texture2D Sheen { get { EnsureTextures(); return _sheen; } }
@@ -421,6 +423,18 @@ namespace Satisfying.Game
         /// lines are hairline on purpose. A reticle you can hide a man behind is not one you can
         /// shoot with, which is what the last one did.
         /// </summary>
+        /// <summary>
+        /// A red circle with a dot in the middle of it, and nothing else.
+        ///
+        /// It used to be an etched black cross with the red centre sitting on top. The cross was the
+        /// problem: black lines over a dark target are invisible exactly when you need them, and four
+        /// stadia across the glass is a lot of furniture to look past. A ring is the oldest reticle
+        /// there is because it works - the eye centres a circle on a target without being told to,
+        /// and the middle stays completely clear.
+        ///
+        /// All of it is lit, so all of it goes through the bloom pass and reads as glass rather than
+        /// as paint.
+        /// </summary>
         void EnsureReticle()
         {
             if (_reticle != null) return;
@@ -429,19 +443,13 @@ namespace Satisfying.Game
             _reticle = Blank(size);
             _glow = Blank(size);
 
-            Color[] etched = new Color[size * size];
             Color[] lit = new Color[size * size];
-            for (int i = 0; i < etched.Length; i++)
-            {
-                etched[i] = new Color(0f, 0f, 0f, 0f);
-                lit[i] = new Color(0f, 0f, 0f, 0f);
-            }
+            for (int i = 0; i < lit.Length; i++) lit[i] = new Color(0f, 0f, 0f, 0f);
 
             float centre = (size - 1) * 0.5f;
-            float mil = size * 0.055f;
-            float inner = mil * 1.5f;
-            float outer = size * 0.425f;
-            float hair = size * 0.0022f;
+            float ring = size * 0.300f;         // radius of the circle
+            float thickness = size * 0.0125f;   // how heavy the line is
+            float dot = size * 0.0090f;
 
             for (int py = 0; py < size; py++)
             {
@@ -449,74 +457,38 @@ namespace Satisfying.Game
                 {
                     float dx = px - centre;
                     float dy = py - centre;
-                    float ax = Mathf.Abs(dx);
-                    float ay = Mathf.Abs(dy);
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
 
-                    // Four stadia, hairline near the middle and heavier out at the rim.
-                    float thickness = Mathf.Lerp(hair, hair * 2.4f,
-                        Mathf.Clamp01((Mathf.Max(ax, ay) - size * 0.20f) / (size * 0.24f)));
-                    bool on = (ax > inner && ax < outer && ay <= thickness)
-                           || (ay > inner && ay < outer && ax <= thickness);
-                    if (on) etched[py * size + px] = new Color(0f, 0f, 0f, 0.85f);
-                }
-            }
+                    float alpha = 0f;
 
-            // Mil ticks: holdover below, wind either side. Ticks only.
-            for (int m = 1; m <= 8; m++)
-            {
-                float offset = mil * m;
-                if (offset > outer - size * 0.01f) break;
-                float length = (m % 5 == 0) ? size * 0.020f : size * 0.010f;
-                Tick(etched, size, centre, centre - offset, length, true);
-                if (m <= 5)
-                {
-                    Tick(etched, size, centre - offset, centre, length * 0.85f, false);
-                    Tick(etched, size, centre + offset, centre, length * 0.85f, false);
-                }
-            }
-
-            // ---- the lit part. A chevron pointing up at the aim point, with a dot floating in it.
-            float dotRadius = size * 0.0060f;
-            float chevronSpan = size * 0.028f;
-            float chevronDrop = size * 0.030f;
-            float chevronWidth = size * 0.0038f;
-
-            for (int py = 0; py < size; py++)
-            {
-                for (int px = 0; px < size; px++)
-                {
-                    float dx = px - centre;
-                    float dy = py - centre;
-
-                    float value = 0f;
+                    // The ring, with a soft edge so it does not crawl when the reticle is scaled.
+                    float onRing = 1f - Mathf.Clamp01((Mathf.Abs(d - ring) - thickness) / (thickness * 0.9f));
+                    if (onRing > 0f) alpha = onRing;
 
                     // The dot, dead on the aim point.
-                    float d = Mathf.Sqrt(dx * dx + dy * dy);
-                    if (d <= dotRadius) value = 1f;
+                    float onDot = 1f - Mathf.Clamp01((d - dot) / (dot * 0.8f));
+                    if (onDot > alpha) alpha = onDot;
 
-                    // The chevron, hanging under it: two strokes meeting at the point.
-                    if (dy < -dotRadius * 1.6f && dy > -chevronDrop - chevronWidth)
-                    {
-                        float t = (-dy - dotRadius * 1.6f) / Mathf.Max(1f, chevronDrop - dotRadius * 1.6f);
-                        float armX = t * chevronSpan;
-                        if (Mathf.Abs(Mathf.Abs(dx) - armX) <= chevronWidth) value = Mathf.Max(value, 1f);
-                    }
+                    // Four short spurs just outside the ring, at the cardinals. They give the eye a
+                    // level to judge cant against, and they are the only thing left of the cross.
+                    float ax = Mathf.Abs(dx);
+                    float ay = Mathf.Abs(dy);
+                    bool spurH = ay <= thickness * 0.8f && ax > ring * 1.18f && ax < ring * 1.62f;
+                    bool spurV = ax <= thickness * 0.8f && ay > ring * 1.18f && ay < ring * 1.62f;
+                    if (spurH || spurV) alpha = Mathf.Max(alpha, 0.9f);
 
-                    if (value > 0f) lit[py * size + px] = new Color(1f, 0.18f, 0.12f, value);
+                    if (alpha > 0f) lit[py * size + px] = new Color(1f, 0.16f, 0.12f, Mathf.Clamp01(alpha));
                 }
             }
 
-            _reticle.SetPixels(etched);
+            // The reticle texture IS the lit one now - there is no etched layer any more.
+            _reticle.SetPixels(lit);
             _reticle.Apply();
 
-            // The glow is the lit part blurred - a couple of box passes, which is all a bloom is.
-            Color[] bloom = Blur(lit, size, 3);
-            bloom = Blur(bloom, size, 6);
+            Color[] bloom = Blur(lit, size, 4);
+            bloom = Blur(bloom, size, 8);
             for (int i = 0; i < bloom.Length; i++)
-            {
-                float a = Mathf.Clamp01(bloom[i].a * 1.5f + lit[i].a);
-                bloom[i] = new Color(1f, 0.24f, 0.16f, a);
-            }
+                bloom[i] = new Color(1f, 0.22f, 0.16f, Mathf.Clamp01(bloom[i].a * 1.7f));
             _glow.SetPixels(bloom);
             _glow.Apply();
         }

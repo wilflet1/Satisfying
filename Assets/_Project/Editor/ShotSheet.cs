@@ -419,11 +419,10 @@ namespace Satisfying.Game
                     {
                         float u = (x - reticle.x) / reticle.width;
                         float v = 1f - (guiY - reticle.y) / reticle.height;
+                        Color bloom = scope.Glow.GetPixelBilinear(u, v);
+                        bloom.a *= 0.5f;
+                        result = Over(result, bloom);
                         result = Over(result, marks.GetPixelBilinear(u, v));
-                        Color lit = scope.Glow.GetPixelBilinear(u, v);
-                        lit.a *= 0.55f;
-                        result = Over(result, lit);
-                        result = Over(result, scope.Glow.GetPixelBilinear(u, v));
                     }
 
                     Rect rim = ScopeView.Rim(circle);

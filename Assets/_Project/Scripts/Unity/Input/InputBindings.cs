@@ -149,6 +149,16 @@ namespace Satisfying.Game
         /// that always gets you out, and every crash report that starts "I can't open the menu" ends
         /// with someone having bound it to something else.
         /// </summary>
+        /// <summary>
+        /// Re-applies the bindings that are not the player's to change. Called after loading saved
+        /// keys: a prefs file written before Escape was locked can still contain something else for
+        /// it, and honouring that would hand back the exact problem the lock exists to prevent.
+        /// </summary>
+        public void ForceFixedBindings()
+        {
+            Set(GameAction.Menu, KeyCode.Escape);
+        }
+
         public static bool Rebindable(GameAction action)
         {
             return action != GameAction.Menu;
@@ -329,7 +339,7 @@ namespace Satisfying.Game
         public void Load()
         {
             string raw = PlayerPrefs.GetString(PrefsKey, "");
-            if (string.IsNullOrEmpty(raw)) return;
+            if (string.IsNullOrEmpty(raw)) { ForceFixedBindings(); return; }
 
             try
             {
@@ -354,6 +364,8 @@ namespace Satisfying.Game
                         LeanIsToggle = flags[2] == "1";
                     }
                 }
+
+                ForceFixedBindings();
             }
             catch (Exception e)
             {
