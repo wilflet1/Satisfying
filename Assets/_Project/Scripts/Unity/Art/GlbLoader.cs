@@ -280,6 +280,16 @@ namespace Satisfying.Game
                 if (!texture.LoadImage(data, false)) { UnityEngine.Object.Destroy(texture); continue; }
                 texture.wrapMode = TextureWrapMode.Clamp;
                 texture.name = Json.MemberString(image, "name", "image " + i);
+
+                // Then squash it. A character is a handful of 2048-square sheets, and kept as
+                // straight RGBA that is about 170 MB each - twelve of them had the game holding 2.7 GB
+                // before anybody had pressed anything. Block compression is four to eight times
+                // smaller, costs a moment at load, and is invisible on somebody three metres away who
+                // is trying to shoot you. Apply then drops the copy in system memory as well, which
+                // is another third of it for a texture nothing is ever going to read back.
+                texture.Compress(false);
+                texture.Apply(true, true);
+
                 c.Textures[i] = texture;
             }
         }

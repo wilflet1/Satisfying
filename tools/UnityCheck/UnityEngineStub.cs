@@ -328,6 +328,8 @@ namespace UnityEngine
 
     public class Texture2D : Texture
     {
+        public void Compress(bool highQuality) { }
+        public void Apply(bool updateMipmaps, bool makeNoLongerReadable) { }
         public Texture2D(int width, int height) { }
         public Texture2D(int width, int height, TextureFormat format, bool mipChain) { }
         public Texture2D(int width, int height, TextureFormat format, bool mipChain, bool linear) { }

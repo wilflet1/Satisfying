@@ -432,13 +432,16 @@ namespace Satisfying.Game
             };
             _ui.Character = _characterPanel;
 
-            // Read every character on the machine now, while there is a menu on the screen and
-            // nothing to interrupt. A VRM is ten megabytes of mesh and reading one takes long enough
-            // to notice; doing it the moment an opponent walks into view would put that hitch in the
-            // one second of the match where it costs a duel.
-            List<string> installed = _game.Pool.Sources;
-            for (int i = 0; i < installed.Count; i++)
-                _game.Avatars.Load(installed[i], null);
+            // Read the characters this machine is actually going to need, now, while there is a menu
+            // on the screen and nothing to interrupt. A VRM is fifteen megabytes and reading one takes
+            // long enough to notice; doing it the moment an opponent walks into view would put that
+            // hitch in the one second of a match where it costs a duel.
+            //
+            // Not all of them. The deal is a hash of the peer id, so the characters the first few
+            // peers will be handed are known before anybody connects - and a duel has two people in
+            // it, not twelve. Loading the whole folder meant carrying nine characters nobody was ever
+            // going to see, which was most of 2.7 GB.
+            WarmAvatars(8, 4);
 
             _ui.OnQuit = Quit;
             _ui.Touch = _touchControls;
@@ -498,6 +501,26 @@ namespace Satisfying.Game
             if (_game != null) _game.Leave();
             if (_world != null) _world.Dispose();
             if (Instance == this) Instance = null;
+        }
+
+        /// <summary>
+        /// Loads the characters the first `peers` peer ids would be dealt, up to `limit` of them.
+        /// </summary>
+        void WarmAvatars(int peers, int limit)
+        {
+            if (_game == null || _game.Pool == null || _game.Avatars == null) return;
+
+            List<string> wanted = new List<string>();
+            if (!string.IsNullOrEmpty(_game.AvatarSource)) wanted.Add(_game.AvatarSource);
+
+            for (int peer = 1; peer <= peers && wanted.Count < limit; peer++)
+            {
+                string source = _game.Pool.SourceFor(peer);
+                if (string.IsNullOrEmpty(source) || wanted.Contains(source)) continue;
+                wanted.Add(source);
+            }
+
+            for (int i = 0; i < wanted.Count; i++) _game.Avatars.Load(wanted[i], null);
         }
 
         public void Quit()
