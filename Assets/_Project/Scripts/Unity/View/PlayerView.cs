@@ -213,16 +213,12 @@ namespace Satisfying.Game
             _viewmodelKick += new Vector3(0f, _feel.recoilKickUp, -_feel.recoilKickBack);
             _viewmodelKick = Vector3.ClampMagnitude(_viewmodelKick, Mathf.Max(0.001f, _feel.recoilKickLimit));
 
-            _muzzleRise = Mathf.Min(_muzzleRise + _feel.recoilMuzzleRise, _feel.recoilMuzzleRise * 2.6f);
-
             float shake = _feel.recoilShake;
             _shake += new Vector3(Random.Range(-shake, shake), Random.Range(-shake, shake),
                                   Random.Range(-shake, shake) * 0.6f);
             _animator.OnShot();
         }
 
-        float _muzzleRise;
-        float _muzzleRiseVelocity;
         Vector3 _shake;
 
         /// <summary>
@@ -268,8 +264,6 @@ namespace Satisfying.Game
             // recoil is _punch, and that is the only thing here that changes where you are shooting.
             float settle = 1f - Mathf.Exp(-_feel.recoilShakeRecovery * dt);
             _shake = Vector3.Lerp(_shake, Vector3.zero, settle);
-            MathK.Spring(ref _muzzleRise, ref _muzzleRiseVelocity, 0f, _feel.recoilStiffness, _feel.recoilDamping, dt);
-
             Rig.rotation = Quaternion.Euler(pitch - _punch + _shake.x, yaw + _shake.y, _viewRoll + _shake.z);
 
             Vector3 eye = renderPosition + Vector3.up * state.EyeHeight(move);
@@ -392,7 +386,6 @@ namespace Satisfying.Game
                 + _swayOffset * (1f - state.Ads * 0.6f) + _viewmodelKick + bobOffset + stow;
             ViewmodelRoot.localRotation = Quaternion.Euler(baseEuler + _animator.PoseEuler
                 + _swayRotation * (1f - state.Ads * 0.6f)
-                + new Vector3(-_muzzleRise, 0f, 0f)
                 + new Vector3(38f, 22f, -18f) * stowK);
 
             // Whichever thing is in the hand is what the arms reach for. Halfway through a swap the

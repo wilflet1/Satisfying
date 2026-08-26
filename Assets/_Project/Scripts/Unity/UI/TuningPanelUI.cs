@@ -15,6 +15,13 @@ namespace Satisfying.Game
     /// </summary>
     public sealed class TuningPanelUI
     {
+        /// <summary>
+        /// Bumped whenever a default changes in a way a saved file would fight. A stored value beats
+        /// a new default silently and forever, which is how the gun carried on lifting after the knob
+        /// that lifted it had been set to zero - the player's own prefs were putting it back.
+        /// </summary>
+        const string FeelPrefsKey = "satisfying.feel.v2";
+
         public UiSkin Skin;
         public NetGame Game;
         public FeelTuning Feel;
@@ -281,13 +288,13 @@ namespace Satisfying.Game
         /// <summary>Feel settings are per player and follow you between sessions.</summary>
         public void SaveFeelToPrefs()
         {
-            PlayerPrefs.SetString("satisfying.feel.v1", TuningSerializer.ToText(Feel));
+            PlayerPrefs.SetString(FeelPrefsKey, TuningSerializer.ToText(Feel));
             PlayerPrefs.Save();
         }
 
         public void LoadFeelFromPrefs()
         {
-            string text = PlayerPrefs.GetString("satisfying.feel.v1", "");
+            string text = PlayerPrefs.GetString(FeelPrefsKey, "");
             if (text.Length > 0) TuningSerializer.FromText(Feel, text);
         }
     }

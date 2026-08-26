@@ -93,7 +93,13 @@ namespace Satisfying.Tests
 
                 Assert.True(scope.IsScope, "the scope is a scope");
                 Assert.True(scope.IsVariable, "and a variable one");
-                Assert.Near(scope.ClampMagnification(1f), scope.magnification, 0.001f, "clamps up to the bottom");
+
+                // It goes down to life size. IsScope has to read the TOP of the range for that to be
+                // possible - judging it on the bottom would stop a 1-18x being a scope at all, and the
+                // picture would simply not be drawn.
+                Assert.Near(scope.magnification, 1f, 0.001f, "the bottom of the range is 1x");
+                Assert.True(scope.magnificationMax >= 10f, "and the top is worth having");
+                Assert.Near(scope.ClampMagnification(0.2f), 1f, 0.001f, "never below life size");
                 Assert.Near(scope.ClampMagnification(999f), scope.magnificationMax, 0.001f, "clamps down to the top");
                 Assert.Near(scope.ClampMagnification(6f), 6f, 0.001f, "leaves what it can");
 

@@ -137,15 +137,10 @@ namespace Satisfying.Shared
         [Tune("Weapon feel", 0f, 0.5f, Tip = "How hard a shot punches the VIEW up. This is the flick that takes the sights off the target - the felt recoil should be the gun moving, not the camera.")]
         public float recoilViewPunch = 0.10f;
 
-        [Tune("Weapon feel", 0f, 0.02f, Tip = "How far the gun lifts on the viewmodel per shot. A little, on top of the travel backwards.")]
-        public float recoilKickUp = 0.0035f;
-
-        // OFF by default, and it stays off. Rotating the viewmodel up per shot lifted the muzzle
-        // across the sight picture and you could not see the reticle while firing, which is a worse
-        // problem than the one it was solving. The knob is left here because it is the right way to
-        // add visible lift IF a weapon ever wants it, but nothing does.
-        [Tune("Weapon feel", 0f, 14f, Tip = "Degrees the muzzle climbs on the viewmodel per shot. Leave at 0: any of this and the sights walk off the target while you fire.")]
-        public float recoilMuzzleRise = 0f;
+        // ZERO. The gun travels straight back and does not rise: no rotation, and no lift either.
+        // A muzzle that climbs is a sight picture you cannot follow, and it has been asked for twice.
+        [Tune("Weapon feel", 0f, 0.02f, Tip = "How far the gun lifts on the viewmodel per shot. 0 keeps it dead straight, which is what it is set to.")]
+        public float recoilKickUp = 0f;
 
         [Tune("Weapon feel", 0f, 3f, Tip = "Camera shake per shot, in degrees. Small on purpose - it is there to be felt, not to stop you aiming.")]
         public float recoilShake = 0.12f;

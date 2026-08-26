@@ -99,7 +99,7 @@ namespace Satisfying.Game
             //
             // It scales with magnification because that is how eyeboxes work: 18x is unforgiving and
             // 3.5x you can be halfway off and still see everything.
-            float forgiveness = Mathf.Lerp(0.35f, 1f, Mathf.InverseLerp(3.5f, 18f, magnification));
+            float forgiveness = Mathf.Lerp(0.2f, 1f, Mathf.InverseLerp(1f, 18f, magnification));
             Vector2 target = new Vector2(Mathf.Clamp(-turnRate * 0.010f, -1.2f, 1.2f),
                                          Mathf.Clamp(pitchRate * 0.010f, -1.2f, 1.2f)) * forgiveness;
             float step = 1f - Mathf.Exp(-14f * Mathf.Max(0.0001f, dt));

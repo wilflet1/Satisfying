@@ -24,7 +24,7 @@ namespace Satisfying.Game
             // The bolt gun comes with its glass on. Everything else starts on irons, as it did.
             Sights[3] = (byte)SightKind.Scope;
             Magnification = 6f;
-            ScopeMin = 3.5f;
+            ScopeMin = 1f;
             ScopeMax = 18f;
         }
 

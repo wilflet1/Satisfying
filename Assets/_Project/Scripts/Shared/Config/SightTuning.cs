@@ -36,8 +36,14 @@ namespace Satisfying.Shared
         [Tune("Sights", 1f, 30f, Tip = "Top of the magnification range. Above the bottom of it the optic is variable and the wheel changes it while you are aiming.")]
         public float magnificationMax = 1f;
 
-        /// <summary>Whether this optic is drawn as a scope picture rather than a piece of the gun.</summary>
-        public bool IsScope { get { return magnification >= 1.5f; } }
+        /// <summary>
+        /// Whether this optic is drawn as a scope picture rather than a piece of the gun.
+        ///
+        /// Judged on the TOP of the range, not the bottom. A 1-18x is a scope that happens to go down
+        /// to life size; testing the bottom would have stopped it being one the moment its minimum
+        /// reached 1x, and the picture would have vanished.
+        /// </summary>
+        public bool IsScope { get { return magnificationMax >= 1.5f; } }
 
         /// <summary>Whether the wheel does anything to it.</summary>
         public bool IsVariable { get { return magnificationMax > magnification + 0.05f; } }
@@ -69,14 +75,15 @@ namespace Satisfying.Shared
             holo.spreadMul = 0.8f;
             holo.zoomMul = 0.93f;
 
-            // A 3.5-18 first focal plane precision optic. The bottom of the range is for holding a
-            // room; the top is for a shot you have time to set up.
+            // A 1-18x variable. At the bottom it is life size - what you see through the tube is the
+            // same scale as the world round it, which is what makes a low power variable usable
+            // indoors at all; at the top it is a shot you have time to set up.
             SightTuning scope = new SightTuning();
-            scope.name = "Scope 3.5-18";
+            scope.name = "Scope 1-18";
             scope.adsTimeMul = 1.45f;
             scope.spreadMul = 0.7f;
             scope.zoomMul = 1f;
-            scope.magnification = 3.5f;
+            scope.magnification = 1f;
             scope.magnificationMax = 18f;
 
             return new SightTuning[] { iron, dot, holo, scope };
