@@ -448,7 +448,10 @@ namespace Satisfying.Game
         void RenderOwnBody(in PlayerSimState state, float dt)
         {
             if (_ownBody == null)
+            {
                 _ownBody = new RemotePlayerView(Root, Client.PeerId, Palette, Client.Tuning.move, PlayerLayer, true);
+                ApplyAvatar(Client.PeerId, _ownBody);
+            }
 
             PlayerNetState shown = PlayerNetState.FromSim((byte)Client.PeerId, in state, Client.Alive, Client.Health);
             shown.Position = Client.RenderPosition;
@@ -868,6 +871,9 @@ namespace Satisfying.Game
                     if (Pool.SourceFor(kv.Key) != loaded.Source) continue;
                     kv.Value.SetAvatar(Avatars.Instantiate(loaded, Root, PlayerLayer));
                 }
+
+                if (_ownBody != null && Client != null && Pool.SourceFor(Client.PeerId) == loaded.Source)
+                    _ownBody.SetAvatar(Avatars.Instantiate(loaded, Root, PlayerLayer));
             });
 
             if (!arrived) view.SetAvatar(null);
@@ -878,6 +884,10 @@ namespace Satisfying.Game
         {
             foreach (System.Collections.Generic.KeyValuePair<int, RemotePlayerView> kv in _remoteViews)
                 ApplyAvatar(kv.Key, kv.Value);
+
+            // Including the one you are inside. Picking a character in the menu and then looking down
+            // at somebody else's legs is exactly the bug this line exists to not have.
+            if (_ownBody != null && Client != null) ApplyAvatar(Client.PeerId, _ownBody);
         }
 
         HitboxView HitboxFor(int peerId)

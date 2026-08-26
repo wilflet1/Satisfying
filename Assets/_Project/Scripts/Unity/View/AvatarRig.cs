@@ -49,6 +49,7 @@ namespace Satisfying.Game
         Transform _rightThigh, _rightShin, _rightFoot, _rightToe;
 
         float _scale = 1f;
+        bool _firstPerson;
 
         // VRM 0.x characters face the opposite way to VRM 1.0 ones. This is not a bug in either of
         // them: 0.x had the character looking down glTF +Z and 1.0 turned it round to -Z, and the
@@ -204,21 +205,27 @@ namespace Satisfying.Game
             // Nothing sits above the head to aim it at, so it goes back to rest and faces the way the
             // body does. Where the player is LOOKING is a camera concern and deliberately not this
             // one - a remote duellist's head does not swivel, and their aim is read off their weapon.
-            if (_head != null)
+            if (_head != null && !_firstPerson)
             {
                 _head.position = root.TransformPoint(pose.Head.ToUnity());
                 _head.rotation = root.rotation * _facing * Rest(_head);
             }
 
-            Segment(_leftShoulder, Below(_leftArm, _leftForearm), root, pose.Shoulders, pose.LeftShoulder);
-            Segment(_leftArm, Below(_leftForearm, _leftHand), root, pose.LeftShoulder, pose.LeftElbow);
-            Segment(_leftForearm, _leftHand, root, pose.LeftElbow, pose.LeftHand);
-            Settle(_leftHand, root, pose.LeftHand, _leftForearm);
+            // Your own arms are the viewmodel's job, and the bones have been collapsed to nothing.
+            // Placing a joint through a bone scaled to a ten-thousandth asks for a local offset ten
+            // thousand times too big, which is how you get a limb across the whole map.
+            if (!_firstPerson)
+            {
+                Segment(_leftShoulder, Below(_leftArm, _leftForearm), root, pose.Shoulders, pose.LeftShoulder);
+                Segment(_leftArm, Below(_leftForearm, _leftHand), root, pose.LeftShoulder, pose.LeftElbow);
+                Segment(_leftForearm, _leftHand, root, pose.LeftElbow, pose.LeftHand);
+                Settle(_leftHand, root, pose.LeftHand, _leftForearm);
 
-            Segment(_rightShoulder, Below(_rightArm, _rightForearm), root, pose.Shoulders, pose.RightShoulder);
-            Segment(_rightArm, Below(_rightForearm, _rightHand), root, pose.RightShoulder, pose.RightElbow);
-            Segment(_rightForearm, _rightHand, root, pose.RightElbow, pose.RightHand);
-            Settle(_rightHand, root, pose.RightHand, _rightForearm);
+                Segment(_rightShoulder, Below(_rightArm, _rightForearm), root, pose.Shoulders, pose.RightShoulder);
+                Segment(_rightArm, Below(_rightForearm, _rightHand), root, pose.RightShoulder, pose.RightElbow);
+                Segment(_rightForearm, _rightHand, root, pose.RightElbow, pose.RightHand);
+                Settle(_rightHand, root, pose.RightHand, _rightForearm);
+            }
 
             Segment(_leftThigh, Below(_leftShin, _leftFoot), root, pose.LeftHip, pose.LeftKnee);
             Segment(_leftShin, Below(_leftFoot, _leftToe), root, pose.LeftKnee, pose.LeftAnkle);
@@ -272,6 +279,38 @@ namespace Satisfying.Game
             Quaternion rest;
             if (bone != null && _rest.TryGetValue(bone, out rest)) return rest;
             return Quaternion.identity;
+        }
+
+        /// <summary>
+        /// Wears this character as your OWN body - the one you see when you look down.
+        ///
+        /// The head and the arms come off. The camera lives inside the skull, so a head left on fills
+        /// the screen with the inside of somebody's face, and the arms are already being drawn at
+        /// arm's length by the viewmodel: two sets of arms is worse than none. That is the same thing
+        /// the blockout duellist does, and the reason your own body has never been a character until
+        /// now is that this was missing and the avatar was simply switched off instead.
+        ///
+        /// "Comes off" means collapsed to a point, not hidden, because a skinned character is one mesh
+        /// and there is nothing to hide separately - shrinking the bone takes its vertices with it.
+        /// This is the one place a bone scale is allowed. It is safe where the rest of this class
+        /// refuses to touch one, because nothing below these bones is ever aimed at anything
+        /// afterwards: Apply skips the whole arm chain and the head while it is on.
+        /// </summary>
+        public void SetFirstPerson(bool first)
+        {
+            _firstPerson = first;
+
+            float scale = first ? 0.0001f : 1f;
+            Collapse(_head, scale);
+            Collapse(_leftShoulder, scale);
+            Collapse(_rightShoulder, scale);
+            if (_leftShoulder == null) Collapse(_leftArm, scale);
+            if (_rightShoulder == null) Collapse(_rightArm, scale);
+        }
+
+        static void Collapse(Transform bone, float scale)
+        {
+            if (bone != null) bone.localScale = new Vector3(scale, scale, scale);
         }
 
         public void SetVisible(bool visible)

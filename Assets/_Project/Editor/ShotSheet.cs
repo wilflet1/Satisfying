@@ -551,6 +551,69 @@ namespace Satisfying.Game
             Debug.Log("[shots] house written to " + Path.GetFullPath(_outDir));
         }
 
+        /// <summary>
+        /// What you see when you look down at yourself.
+        ///
+        /// This is the one view of a character nothing else in here photographs, and it went wrong
+        /// without anybody noticing for exactly that reason: your own body is a separate view built
+        /// with firstPerson set, it was never dealt a character, and the code that would have put one
+        /// on it hid it again on the next line. So you could pick a character, watch six of them in
+        /// the line-up, and still look down at a stack of boxes.
+        ///
+        /// The camera goes where the eyes go - the same EyeHeight the simulation uses - and looks
+        /// down, in each stance.
+        /// </summary>
+        [MenuItem("Satisfying/Shots/Look down at yourself", priority = 69)]
+        public static void LookDown()
+        {
+            Prepare();
+            Palette palette = Palette.Build();
+            MovementTuning move = new MovementTuning();
+            WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
+
+            GameObject stage = Stage(palette, false);
+            Camera cam = ShotCamera();
+            cam.fieldOfView = 75f;          // a playing field of view, not a portrait one
+
+            AvatarLibrary library = new AvatarLibrary(null, Palette.Make("probe", Color.white, 0.5f, 0f).shader);
+            AvatarPool pool = new AvatarPool(library);
+
+            Stance[] stances = { Stance.Stand, Stance.Crouch, Stance.Prone };
+            string[] names = { "stand", "crouch", "prone" };
+
+            for (int i = 0; i < stances.Length; i++)
+            {
+                GameObject holder = new GameObject("me");
+                RemotePlayerView view = new RemotePlayerView(holder.transform, 1, palette, move,
+                                                            GameBootstrap.LayerPlayer, true, pool.VariantFor(1));
+
+                string source = pool.SourceFor(1);
+                if (!string.IsNullOrEmpty(source))
+                {
+                    library.Load(source, delegate(AvatarLibrary.Entry entry)
+                    {
+                        if (entry.Error != null) { Debug.LogWarning("[shots] " + entry.Error); return; }
+                        Debug.Log("[shots] looking down at " + entry.Name);
+                        view.SetAvatar(library.Instantiate(entry, holder.transform, GameBootstrap.LayerPlayer));
+                    });
+                }
+
+                PlayerNetState state = Base(move, stances[i]);
+                float impulse;
+                view.Render(in state, 1f / 64f, weapons[0], out impulse);
+
+                PlayerSimState sim = SimBase(move, stances[i]);
+                cam.transform.position = new Vector3(0f, sim.EyeHeight(move), 0f);
+                cam.transform.rotation = Quaternion.Euler(62f, 0f, 0f);
+                Write(Render(cam, null), "lookdown-" + names[i]);
+
+                Object.DestroyImmediate(holder);
+            }
+
+            Object.DestroyImmediate(stage);
+            Debug.Log("[shots] look-down written to " + Path.GetFullPath(_outDir));
+        }
+
         /// <summary>Six duellists dealt different kit, so "randomised characters" is a thing you can
         /// look at rather than a claim about a hash.</summary>
         [MenuItem("Satisfying/Shots/The line-up", priority = 68)]

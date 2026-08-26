@@ -48,7 +48,10 @@ namespace Satisfying.Game
             // wearing the skeleton instead.
             bool blockout = _avatar == null || !_avatar.Valid;
             Character.SetBodyVisible(blockout);
-            if (_avatar != null) _avatar.SetVisible(!blockout && !_firstPerson);
+
+            if (_avatar == null) return;
+            if (_firstPerson) _avatar.SetFirstPerson(true);
+            _avatar.SetVisible(!blockout);
         }
 
         /// <summary>
