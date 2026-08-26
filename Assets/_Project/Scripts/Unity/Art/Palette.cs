@@ -55,6 +55,62 @@ namespace Satisfying.Game
             return m;
         }
 
+        /// <summary>
+        /// A kit colour for a duellist who has no avatar, chosen from a small fixed set by their peer
+        /// id. Made on demand and cached, because a duel is two people and a lobby is six - there is
+        /// no sense generating twenty materials nobody uses.
+        ///
+        /// What varies is COLOUR ONLY. Nothing here touches a size: everyone is the same fifteen
+        /// capsules whatever they look like, and a variant that changed a proportion would be a
+        /// variant that changed how hard someone is to hit.
+        /// </summary>
+        static readonly Color[] KitColours =
+        {
+            new Color(0.30f, 0.33f, 0.38f),     // slate
+            new Color(0.34f, 0.30f, 0.24f),     // coyote
+            new Color(0.24f, 0.30f, 0.26f),     // olive
+            new Color(0.36f, 0.26f, 0.26f),     // brick
+            new Color(0.26f, 0.28f, 0.34f),     // navy
+            new Color(0.32f, 0.32f, 0.28f),     // khaki
+            new Color(0.22f, 0.26f, 0.30f),     // gunmetal
+            new Color(0.38f, 0.34f, 0.30f)      // sand
+        };
+
+        static readonly Color[] SkinColours =
+        {
+            new Color(0.78f, 0.60f, 0.48f),
+            new Color(0.66f, 0.48f, 0.36f),
+            new Color(0.52f, 0.36f, 0.26f),
+            new Color(0.38f, 0.26f, 0.19f),
+            new Color(0.86f, 0.70f, 0.58f),
+            new Color(0.30f, 0.20f, 0.15f)
+        };
+
+        readonly System.Collections.Generic.Dictionary<int, Material> _kitVariants =
+            new System.Collections.Generic.Dictionary<int, Material>();
+        readonly System.Collections.Generic.Dictionary<int, Material> _skinVariants =
+            new System.Collections.Generic.Dictionary<int, Material>();
+
+        public Material KitFor(int variant)
+        {
+            int index = Mathf.Abs(variant) % KitColours.Length;
+            Material found;
+            if (_kitVariants.TryGetValue(index, out found) && found != null) return found;
+            found = Make("kit " + index, KitColours[index], 0.2f, 0f);
+            _kitVariants[index] = found;
+            return found;
+        }
+
+        public Material SkinFor(int variant)
+        {
+            int index = Mathf.Abs(variant / KitColours.Length) % SkinColours.Length;
+            Material found;
+            if (_skinVariants.TryGetValue(index, out found) && found != null) return found;
+            found = Make("skin " + index, SkinColours[index], 0.14f, 0f);
+            _skinVariants[index] = found;
+            return found;
+        }
+
         public static Palette Build()
         {
             Palette p = new Palette();

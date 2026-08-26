@@ -179,6 +179,7 @@ namespace Satisfying.Game
             public Bone RightThigh, RightShin, RightFoot;
 
             public Material Skin;
+            public Material Kit;
 
             /// <summary>The bits that live inside your own camera. Wearing your own skull is not a look.</summary>
             public void SetFirstPerson()
@@ -235,17 +236,28 @@ namespace Satisfying.Game
             }
         }
 
+        /// <summary>
+        /// `variant` picks the kit colour and skin tone from Palette's fixed sets, so two duellists
+        /// without avatars are not the same mannequin twice. It changes NOTHING about the shape: the
+        /// sizes below are the same for everybody, because they are the sizes the hitbox capsules are
+        /// laid over.
+        /// </summary>
         public static Character Duellist(Transform parent, string name, Palette palette, Material skin, int layer,
-                                         float scale = 1f)
+                                         float scale = 1f, int variant = -1)
         {
             Character c = new Character();
+            if (variant >= 0)
+            {
+                skin = palette.SkinFor(variant);
+                c.Kit = palette.KitFor(variant);
+            }
             c.Skin = skin;
             c.Root = new GameObject(name);
             if (parent != null) c.Root.transform.SetParent(parent, false);
             c.Root.layer = layer;
             Transform t = c.Root.transform;
 
-            Material kit = palette.WallDark;
+            Material kit = c.Kit != null ? c.Kit : palette.WallDark;
 
             // Nothing drawn on a duellist may stick out past the capsules PlayerHitbox tests, or there
             // is a sliver of him you can see and cannot shoot. The chest is the one place it is allowed

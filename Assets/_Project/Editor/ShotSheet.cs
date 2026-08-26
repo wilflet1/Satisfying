@@ -533,6 +533,50 @@ namespace Satisfying.Game
             Debug.Log("[shots] house written to " + Path.GetFullPath(_outDir));
         }
 
+        /// <summary>Six duellists dealt different kit, so "randomised characters" is a thing you can
+        /// look at rather than a claim about a hash.</summary>
+        [MenuItem("Satisfying/Shots/The line-up", priority = 68)]
+        public static void LineUp()
+        {
+            Prepare();
+            Palette palette = Palette.Build();
+            MovementTuning move = new MovementTuning();
+            WeaponTuning[] weapons = WeaponTuning.DefaultLoadout();
+
+            GameObject stage = Stage(palette, false);
+            Camera cam = ShotCamera();
+            AvatarPool pool = new AvatarPool(null);
+
+            GameObject crowd = new GameObject("line up");
+            for (int peer = 1; peer <= 6; peer++)
+            {
+                GameObject holder = new GameObject("duellist " + peer);
+                holder.transform.SetParent(crowd.transform, false);
+
+                RemotePlayerView view = new RemotePlayerView(holder.transform, peer, palette, move,
+                    GameBootstrap.LayerPlayer, false, pool.VariantFor(peer));
+
+                // Spaced by the STATE, not by the holder: Render writes a world position onto the
+                // character root every frame, so a parent offset is overwritten and all six end up
+                // standing inside each other - which z-fights into a white smear.
+                PlayerNetState state = Base(move, Stance.Stand);
+                state.Position = new Vec3((peer - 3.5f) * 1.15f, 0f, 0f);
+                state.Yaw = 0f;
+                float impulse;
+                view.Render(in state, 1f / 64f, weapons[0], out impulse);
+            }
+
+            Bounds bounds = Framing(crowd);
+            Frame(cam, bounds, 0f, 6f);
+            Write(Render(cam, null), "lineup-front");
+            Frame(cam, bounds, 32f, 10f);
+            Write(Render(cam, null), "lineup-angle");
+
+            Object.DestroyImmediate(crowd);
+            Object.DestroyImmediate(stage);
+            Debug.Log("[shots] line-up written to " + Path.GetFullPath(_outDir));
+        }
+
         public static void All()
         {
             Character();

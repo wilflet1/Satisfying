@@ -57,7 +57,7 @@ namespace Satisfying.Game
         /// and weapon are left to the viewmodel, which already draws them at the right scale.
         /// </summary>
         public RemotePlayerView(Transform parent, int peerId, Palette palette, MovementTuning move, int layer,
-                                bool firstPerson = false)
+                                bool firstPerson = false, int variant = -1)
         {
             _firstPerson = firstPerson;
             PeerId = peerId;
@@ -67,8 +67,11 @@ namespace Satisfying.Game
 
             // Your own body is the friendly colour. Looking down and seeing the shade you have spent
             // the match shooting at is a small thing that reads wrong every single time.
+            // Your own body stays the friendly colour whatever anyone else is wearing - looking down
+            // and seeing the shade you have spent the match shooting at reads wrong every single time.
             Character = Blockout.Duellist(parent, "Duellist " + peerId, palette,
-                firstPerson ? palette.Ally : palette.Enemy, layer, move.standHeight / 1.82f);
+                firstPerson ? palette.Ally : palette.Enemy, layer, move.standHeight / 1.82f,
+                firstPerson ? -1 : variant);
 
             _weaponHolder = Blockout.Group(Character.Root.transform, "weapon holder", Vector3.zero, layer).transform;
 

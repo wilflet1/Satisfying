@@ -415,6 +415,7 @@ namespace Satisfying.Game
             // Avatars. The library needs a MonoBehaviour to run its downloads on and the shader the
             // rest of the game draws with, so it is built here rather than by the panel.
             _game.Avatars = new AvatarLibrary(this, Palette.Make("probe", Color.white, 0.5f, 0f).shader);
+            _game.Pool = new AvatarPool(_game.Avatars);
             _characterPanel = new CharacterPanelUI();
             _characterPanel.Library = _game.Avatars;
             _characterPanel.Game = _game;

@@ -469,7 +469,8 @@ namespace Satisfying.Game
                 RemotePlayerView view;
                 if (!_remoteViews.TryGetValue(kv.Key, out view))
                 {
-                    view = new RemotePlayerView(Root, kv.Key, Palette, Client.Tuning.move, PlayerLayer);
+                    view = new RemotePlayerView(Root, kv.Key, Palette, Client.Tuning.move, PlayerLayer,
+                                                false, Pool != null ? Pool.VariantFor(kv.Key) : -1);
                     _remoteViews[kv.Key] = view;
                     ApplyAvatar(kv.Key, view);
                 }
@@ -820,29 +821,49 @@ namespace Satisfying.Game
         /// </summary>
         public AvatarLibrary Avatars;
 
-        /// <summary>What the local player chose. Remote players wear it too for now - the choice is
-        /// not replicated yet, so what you see on them is your own pick rather than theirs.</summary>
-        public string AvatarSource;
+        /// <summary>
+        /// What the local player chose, or null for "deal them out". Set from the character panel.
+        /// </summary>
+        public string AvatarSource
+        {
+            get { return Pool != null ? Pool.Chosen : null; }
+            set { if (Pool != null) Pool.Chosen = value; }
+        }
+
+        /// <summary>
+        /// Who wears what. When nothing has been chosen deliberately every player and bot is dealt a
+        /// character by their peer id - and because the deal is a hash of the id rather than a random
+        /// number, both machines land on the same answer without replicating anything.
+        /// </summary>
+        public AvatarPool Pool;
 
         void ApplyAvatar(int peerId, RemotePlayerView view)
         {
-            if (Avatars == null || string.IsNullOrEmpty(AvatarSource)) { view.SetAvatar(null); return; }
+            if (Avatars == null || Pool == null) { view.SetAvatar(null); return; }
 
-            AvatarLibrary.Entry entry = Avatars.Get(AvatarSource);
-            if (entry == null || entry.Template == null)
+            string source = Pool.SourceFor(peerId);
+            if (string.IsNullOrEmpty(source)) { view.SetAvatar(null); return; }
+
+            AvatarLibrary.Entry entry = Avatars.Get(source);
+            if (entry != null && entry.Template != null)
             {
-                // Not loaded yet. Ask for it, and put it on whoever is here when it arrives.
-                Avatars.Load(AvatarSource, delegate(AvatarLibrary.Entry loaded)
-                {
-                    if (loaded.Error != null) return;
-                    foreach (System.Collections.Generic.KeyValuePair<int, RemotePlayerView> kv in _remoteViews)
-                        kv.Value.SetAvatar(Avatars.Instantiate(loaded, Root, PlayerLayer));
-                });
-                view.SetAvatar(null);
+                view.SetAvatar(Avatars.Instantiate(entry, Root, PlayerLayer));
                 return;
             }
 
-            view.SetAvatar(Avatars.Instantiate(entry, Root, PlayerLayer));
+            // Not loaded yet. The blockout stands in until it arrives, and only the players this
+            // particular avatar belongs to get it when it does - everyone else keeps their own.
+            int who = peerId;
+            Avatars.Load(source, delegate(AvatarLibrary.Entry loaded)
+            {
+                if (loaded.Error != null) return;
+                foreach (System.Collections.Generic.KeyValuePair<int, RemotePlayerView> kv in _remoteViews)
+                {
+                    if (Pool.SourceFor(kv.Key) != loaded.Source) continue;
+                    kv.Value.SetAvatar(Avatars.Instantiate(loaded, Root, PlayerLayer));
+                }
+            });
+            view.SetAvatar(null);
         }
 
         /// <summary>Puts the current choice on everyone. Called when the player picks a new one.</summary>

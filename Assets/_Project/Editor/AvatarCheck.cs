@@ -17,6 +17,36 @@ namespace Satisfying.Game
     /// </summary>
     public static class AvatarCheck
     {
+        /// <summary>
+        /// The deal: which peer gets which character, and whether it is stable and spread. Both halves
+        /// matter - stable because two machines have to agree without talking, spread because a deal
+        /// that hands four of six players the same character is not a deal.
+        /// </summary>
+        [MenuItem("Satisfying/Shots/Check the character deal", priority = 67)]
+        public static void CheckDeal()
+        {
+            AvatarPool pool = new AvatarPool(null);
+            StringBuilder report = new StringBuilder();
+            report.AppendLine("[deal] blockout variants by peer id, and how they spread");
+
+            int[] kitCounts = new int[8];
+            for (int peer = 1; peer <= 6; peer++)
+            {
+                int variant = pool.VariantFor(peer);
+                int again = pool.VariantFor(peer);
+                report.AppendLine("  peer " + peer + "   variant " + variant
+                                  + "   kit " + (Mathf.Abs(variant) % 8)
+                                  + "   skin " + (Mathf.Abs(variant / 8) % 6)
+                                  + (variant == again ? "" : "   UNSTABLE"));
+                kitCounts[Mathf.Abs(variant) % 8]++;
+            }
+
+            int distinct = 0;
+            for (int i = 0; i < kitCounts.Length; i++) if (kitCounts[i] > 0) distinct++;
+            report.AppendLine("  " + distinct + " distinct kits across 6 players");
+            Debug.Log(report.ToString());
+        }
+
         [MenuItem("Satisfying/Shots/Check an avatar", priority = 66)]
         public static void Run()
         {

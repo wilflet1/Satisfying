@@ -43,9 +43,10 @@ namespace Satisfying.Game
         {
             GUILayout.BeginArea(rect, Skin.Panel);
             GUILayout.Label("CHARACTER", Skin.Header);
-            GUILayout.Label("Your avatar is a Ready Player Me character. Everyone is the same size to " +
-                            "shoot at whatever you pick - the hitbox comes from the game, not from the " +
-                            "model, and F5 draws it over anyone so you can see that for yourself.",
+            GUILayout.Label("Your avatar is a Ready Player Me character. Pick one and everyone wears it; " +
+                            "pick none and every player and bot is dealt one of the characters you have. " +
+                            "Everyone is the same size to shoot at either way - the hitbox comes from the " +
+                            "game, not the model, and F5 draws it over anyone so you can see that.",
                             Skin.SmallDim);
 
             GUILayout.Space(10f);
@@ -103,12 +104,16 @@ namespace Satisfying.Game
             }
 
             GUILayout.Space(8f);
-            if (GUILayout.Button("use the built-in blockout character instead", Skin.Button))
+            if (GUILayout.Button("don't pick - deal everyone a random one", Skin.Button))
             {
                 Chosen = null;
-                _status = "back to the blockout character";
+                _status = _cached.Count > 0
+                    ? "every player and bot will be dealt one of your " + _cached.Count + " characters"
+                    : "no characters downloaded yet, so everyone gets a differently kitted blockout";
                 if (OnChosen != null) OnChosen(null);
             }
+            GUILayout.Label("Dealt by peer id rather than at random, so both machines agree on who is " +
+                            "wearing what without sending anything.", Skin.SmallDim);
 
             GUILayout.EndArea();
         }
