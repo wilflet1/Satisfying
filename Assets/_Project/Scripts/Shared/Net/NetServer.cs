@@ -917,6 +917,19 @@ namespace Satisfying.Shared
         public double LastConnectAttemptAt { get; private set; }
         public string LastConnectResult { get; private set; }
 
+        /// <summary>
+        /// Attempts that came from another machine, and where the last one came from.
+        ///
+        /// The count above includes the host's own client, because hosting connects to its own server
+        /// over loopback exactly like anybody else - so the panel that exists to answer "did they
+        /// reach me" read "1 connection attempt arrived - last one accepted" on a machine nobody had
+        /// ever tried to join, and went on reading it while a player sat there failing to connect.
+        /// The one number worth having is the one that does not count yourself.
+        /// </summary>
+        public int ConnectAttemptsFromElsewhere { get; private set; }
+        public string LastConnectFrom { get; private set; }
+        public double LastElsewhereAttemptAt { get; private set; }
+
         void HandleConnect(int peerId)
         {
             ushort version = _read.ReadUShort();
@@ -925,6 +938,14 @@ namespace Satisfying.Shared
             ConnectAttemptsSeen++;
             LastConnectAttemptAt = _now;
             LastConnectResult = "accepted";
+
+            string from = _transport.Describe(peerId);
+            if (!IsLoopback(from))
+            {
+                ConnectAttemptsFromElsewhere++;
+                LastConnectFrom = from;
+                LastElsewhereAttemptAt = _now;
+            }
 
             ServerPlayer existing = Find(peerId);
             if (existing != null && existing.Bot != null)
@@ -984,6 +1005,17 @@ namespace Satisfying.Shared
             BroadcastExcept(p.PeerId, GameEvents.PlayerJoined(p.PeerId, p.Name));
 
             Respawn(p);
+        }
+
+        /// <summary>
+        /// Is this endpoint this machine talking to itself? Text rather than an IPAddress because the
+        /// simulation layer has no System.Net and is not having any.
+        /// </summary>
+        public static bool IsLoopback(string endPoint)
+        {
+            if (string.IsNullOrEmpty(endPoint)) return true;   // unknown: do not claim a visitor
+            if (endPoint.StartsWith("loopback")) return true;  // the in-process link used by the tests
+            return endPoint.StartsWith("127.") || endPoint.StartsWith("::1") || endPoint.StartsWith("[::1]");
         }
 
         void SendConnectAccept(ServerPlayer p)

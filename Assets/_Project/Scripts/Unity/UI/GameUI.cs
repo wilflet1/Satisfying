@@ -678,10 +678,17 @@ namespace Satisfying.Game
             NetServer server = Game.Server;
             if (server != null)
             {
-                GUILayout.Label(server.ConnectAttemptsSeen == 0
-                        ? "no connection attempts have reached this machine yet"
-                        : server.ConnectAttemptsSeen + " connection attempt(s) arrived - last one " + server.LastConnectResult,
+                // Not ConnectAttemptsSeen: that counts the host's own client, which joins over
+                // loopback like everybody else, so it read "1 attempt, accepted" on a machine nobody
+                // had ever tried to join. Only attempts from another machine answer the question this
+                // line is here to answer.
+                GUI.color = server.ConnectAttemptsFromElsewhere > 0 ? UiSkin.Good : UiSkin.InkDim;
+                GUILayout.Label(server.ConnectAttemptsFromElsewhere == 0
+                        ? "nobody else has reached this machine yet - their packets are not arriving"
+                        : server.ConnectAttemptsFromElsewhere + " attempt(s) from elsewhere, last from "
+                          + server.LastConnectFrom + " - " + server.LastConnectResult,
                     _skin.Small);
+                GUI.color = previous;
             }
 
             // The one failure neither of the lines above can see. A request turned away for want of a

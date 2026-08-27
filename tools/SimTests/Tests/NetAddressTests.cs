@@ -60,6 +60,22 @@ namespace Satisfying.Tests
                 Check("[fe80::1]:9000", "fe80::1", 9000);
                 Check("::1", "::1", 7777);
             });
+
+            TestRunner.Add("net/the host's own join does not count as somebody reaching it", () =>
+            {
+                // Hosting connects to its own server over loopback like anybody else, so the panel
+                // that exists to answer "are their packets arriving" counted the host itself. It read
+                // "1 connection attempt arrived - last one accepted" on a machine nobody had ever
+                // tried to join, and kept reading it while a player sat there failing to connect -
+                // which is worse than saying nothing, because it sends you looking at the wrong end.
+                Assert.True(NetServer.IsLoopback("127.0.0.1:7777"), "IPv4 loopback is yourself");
+                Assert.True(NetServer.IsLoopback("[::1]:7777"), "and so is IPv6 loopback");
+                Assert.True(NetServer.IsLoopback("loopback:2"), "and so is the in-process link");
+                Assert.True(NetServer.IsLoopback(null), "an address we cannot read is not a visitor");
+
+                Assert.True(!NetServer.IsLoopback("81.2.69.142:51413"), "a public address is somebody else");
+                Assert.True(!NetServer.IsLoopback("192.168.1.40:7777"), "so is another machine on the LAN");
+            });
         }
     }
 }
