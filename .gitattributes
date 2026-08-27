@@ -9,6 +9,13 @@
 *.meta      text eol=lf merge=unityyamlmerge
 *.txt       text eol=lf
 
+# Shell scripts MUST stay LF. This repository is edited on Windows with autocrlf on,
+# so without this line a fresh checkout hands you a deploy script full of carriage
+# returns, which the machine you upload it to answers with
+#   /usr/bin/env: 'bash': No such file or directory
+# and no clue that the file is the problem rather than the server.
+*.sh        text eol=lf
+
 # Binary art, should you add any. Enable Git LFS before committing large files.
 *.png       binary
 *.jpg       binary
