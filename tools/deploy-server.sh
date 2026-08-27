@@ -40,6 +40,41 @@ if [[ ! -f "$BINARY" ]]; then
 fi
 chmod +x "$BINARY"
 
+# ---------------------------------------------------------------- will it even run here
+#
+# Unity's player links against a newer glibc than some perfectly current distributions ship, and
+# when it does not match, systemd reports status=203/EXEC - which means "could not execute" and
+# says nothing whatsoever about why. The binary is present, executable, the right architecture,
+# and the error looks like a permissions problem. It is not.
+#
+# Oracle Linux 9 is the trap, because it is what Oracle Cloud offers you by default: glibc 2.34,
+# against the 2.35 a Unity 6 player wants. Ask the binary what it needs and compare, so this is one
+# line of output before anything is installed rather than an evening inside journalctl.
+NEED=$(strings "$INSTALL_DIR/UnityPlayer.so" 2>/dev/null \
+       | grep -oE 'GLIBC_2\.[0-9]+' | sort -uV | tail -1 | cut -d_ -f2)
+HAVE=$(ldd --version 2>/dev/null | head -1 | grep -oE '[0-9]+\.[0-9]+$')
+
+if [[ -n "$NEED" && -n "$HAVE" ]]; then
+    if [[ "$(printf '%s\n%s\n' "$NEED" "$HAVE" | sort -V | tail -1)" != "$HAVE" ]]; then
+        warn "This machine has glibc $HAVE and the server needs $NEED."
+        warn ""
+        warn "That is the whole problem - the binary is fine and this OS is too old for it."
+        warn "Oracle Linux 9 ships 2.34 and is the default image on Oracle Cloud; Ubuntu 22.04"
+        warn "ships exactly 2.35 and works. Recreate the instance with Ubuntu 22.04 or newer"
+        warn "and run this again. Nothing has been installed."
+        exit 1
+    fi
+    say "glibc $HAVE, server needs $NEED - fine"
+fi
+
+# SELinux gives systemd the same 203/EXEC for a different reason: a binary sitting in a home
+# directory carries user_home_t, which a service is not allowed to execute. Relabel it rather than
+# turning SELinux off, which is what every forum answer suggests and none of them should.
+if command -v getenforce >/dev/null 2>&1 && [[ "$(getenforce)" == "Enforcing" ]]; then
+    say "SELinux is enforcing - labelling the binary so systemd may run it"
+    sudo chcon -R -t bin_t "$INSTALL_DIR" 2>/dev/null || warn "could not relabel; the service may not start"
+fi
+
 # ---------------------------------------------------------------- service
 say "Writing $SERVICE"
 sudo tee "$SERVICE" >/dev/null <<UNIT

@@ -132,7 +132,11 @@ What actually works:
   If you set Target Architecture by hand in Build Profiles, the build prints which architecture it
   produced - believe that line rather than the folder name.
 
-1. Create an instance on an **AMD (x86-64)** shape and add your SSH key. Any of the images work -
+1. Create an instance on an **AMD (x86-64)** shape and add your SSH key. **The image must ship
+   glibc 2.35 or newer** - Ubuntu 22.04 does, and Oracle Linux 9 does not, which matters because
+   Oracle Linux is the console's default. Get it wrong and the service fails with `status=203/EXEC`,
+   which means "could not execute" and says nothing about why; the deploy script now checks first
+   and tells you. Other than that any of the images work -
    the deploy script runs as whatever user you log in as and tries ufw, firewall-cmd and iptables in
    turn - but **the login name differs**: `opc` on Oracle Linux, which is the console's default, and
    `ubuntu` on Ubuntu. Use that name in both commands below.
