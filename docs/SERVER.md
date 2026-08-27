@@ -1,5 +1,10 @@
 # Running a server anyone can join
 
+> **If one particular person cannot connect and everyone else can, stop debugging your router.**
+> Your port forward is not the variable — a machine on the internet is, and section 3 sets one up
+> for free in about twenty minutes. It also removes the host advantage, survives your PC being
+> switched off, and cannot be broken by your ISP changing your address.
+
 Three ways, in order of effort.
 
 ## 1. Just host, and let the game open the port
@@ -74,14 +79,43 @@ up. It prints a line every thirty seconds so a server left running has something
 
 This is the one that works for everybody, from anywhere, without touching a router.
 
-**Oracle Cloud Always Free** is the recommendation: the ARM instance (4 cores, 24 GB) is free
-indefinitely rather than for a trial period, and it is far more machine than a 64 Hz duel needs.
-Any small VPS works the same way — Hetzner, Fly, a Raspberry Pi on someone else's connection.
+**Oracle Cloud Always Free** is the recommendation: free indefinitely rather than for a trial
+period, and it has a Johannesburg region. Any small VPS works the same way.
 
-1. Create an **Ubuntu 22.04 ARM (Ampere)** instance and add your SSH key.
+**Take an AMD (x86-64) shape.** Oracle's headline free machine is an Ampere ARM with 4 cores and
+24 GB, but **Satisfying → Build → Linux dedicated server produces an x86-64 binary** and there is no
+scripted way to change that here — Unity does ship `linuxarm64` server variations, but
+`PlayerSettings.SetArchitecture` accepts an index and quietly changes nothing, so the build says
+which architecture it actually produced and it says x86-64. (If you want the ARM machine, set Target
+Architecture in Build Settings by hand and check the build line reports AArch64.)
+
+The Always Free tier also includes two **VM.Standard.E2.1.Micro** (AMD, x86-64, 1/8 OCPU, 1 GB), and
+one of those is ample. The simulation is about **1% of one core** at 64 Hz — 8461 real server ticks
+run in 1.4 seconds of wall clock in `tools/Playground`, with the client and bots in the same
+process. A duel is 10 KB/s. Nothing here is short of anything.
+
+### Playing from South Africa
+
+Latency is the whole reason to care where the machine is, and free tiers are thin on the ground in
+Africa:
+
+| Provider | South African region | Free? |
+|---|---|---|
+| **Oracle Cloud** | `af-johannesburg-1` | **Always Free, no time limit** — the one to use |
+| AWS | `af-south-1` (Cape Town) | No. Opt-in regions are outside the free tier |
+| Azure | South Africa North | Credit for a month, then it bills |
+| Google Cloud | `africa-south1` | No. The free `e2-micro` is US-only |
+
+**Pick Johannesburg as your home region when you sign up.** Always Free resources only exist in
+your home region, and it cannot be changed afterwards — choosing the default and noticing later
+means making a new account. From most of South Africa that is a 5–30 ms ping, against 150 ms+ to
+Europe, which is the difference between a duel and a slideshow.
+
+If the free AMD shapes are out of capacity in Johannesburg, keep trying — capacity is released
+constantly — or take the cheapest paid shape there, which is a few dollars a month.
+
+1. Create an **Ubuntu 22.04** instance on an **AMD (x86-64)** shape and add your SSH key.
 2. Build the server: **Satisfying → Build → Linux dedicated server**.
-   For an ARM instance, build on an ARM machine or use `-target linuxserver` with an ARM editor;
-   an x86 build will not run on Ampere.
 3. Copy it up and run the deploy script:
 
 ```bash
@@ -97,6 +131,7 @@ back after a reboot, and prints the address to give out. Re-running it upgrades 
 it is where this usually goes wrong:
 
 - Oracle Cloud — VCN → Security Lists → Add Ingress Rule, UDP 7777, source `0.0.0.0/0`
+  (Oracle also ships a locked-down iptables inside the machine; the deploy script handles that one.)
 - AWS — the instance's security group → Inbound rules
 - Hetzner / DigitalOcean — Networking → Firewalls
 
@@ -162,7 +197,9 @@ that alone explains everything: hand out the new one, or use a dedicated server.
 ## What it costs to run
 
 A 1v1 duel is about **10 KB/s up and 5 KB/s down per player**, and the simulation is a fixed 64 Hz
-tick that does not care how fast the machine is. A full server is well under a megabit. Any free
+tick that does not care how fast the machine is — 8461 server ticks run in 1.4 seconds of wall
+clock in `tools/Playground`, client and bots included, which is around 1% of a core at the rate it
+actually ticks at. A full server is well under a megabit. Any free
 tier will carry it; bandwidth allowances are the only thing worth checking, and a month of solid
 play is a few gigabytes.
 

@@ -130,6 +130,8 @@ namespace UnityEditor
         public static void SetScriptingBackend(BuildTargetGroup group, ScriptingImplementation backend) { }
         public static ScriptingImplementation GetScriptingBackend(BuildTargetGroup group) { return ScriptingImplementation.IL2CPP; }
         public static void SetArchitecture(BuildTargetGroup group, int architecture) { }
+        public static void SetArchitecture(NamedBuildTarget target, int architecture) { }
+        public static int GetArchitecture(NamedBuildTarget target) { return 0; }
 
         public static class Android
         {
@@ -145,6 +147,7 @@ namespace UnityEditor
     public static class EditorUserBuildSettings
     {
         public static BuildTarget activeBuildTarget { get; set; }
+        public static StandaloneBuildSubtarget standaloneBuildSubtarget { get; set; }
         public static bool buildAppBundle { get; set; }
         public static AndroidBuildType androidBuildType { get; set; }
         public static bool SwitchActiveBuildTarget(BuildTargetGroup group, BuildTarget target) { return true; }
@@ -179,6 +182,16 @@ namespace UnityEditor
     public enum BuildOptions { None = 0, Development = 1, AutoRunPlayer = 4 }
 
     public enum StandaloneBuildSubtarget { Default = 0, Server = 1, Player = 2 }
+
+    /// <summary>
+    /// UnityEditor.Build.NamedBuildTarget. Only the members the build script names; the real one is a
+    /// struct with static readonly fields, and Server is the one a dedicated server build settles on.
+    /// </summary>
+    public struct NamedBuildTarget
+    {
+        public static readonly NamedBuildTarget Standalone = new NamedBuildTarget();
+        public static readonly NamedBuildTarget Server = new NamedBuildTarget();
+    }
 
     public struct BuildPlayerOptions
     {

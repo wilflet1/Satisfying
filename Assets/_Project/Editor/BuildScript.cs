@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using UnityEditor;
+using UnityEditor.Build;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -70,10 +71,47 @@ namespace Satisfying.Editor
             EditorUserBuildSettings.buildAppBundle = false;
         }
 
+        /// <summary>
+        /// Says what machine a built binary is for, by reading the two bytes in the ELF header that
+        /// answer it.
+        ///
+        /// Worth printing because the failure it prevents is slow and remote: a server binary for the
+        /// wrong architecture uploads perfectly happily and then says "cannot execute binary file" on
+        /// a machine you are talking to over SSH. It also settles the question this project cannot
+        /// otherwise answer from a Windows editor - Unity ships linuxarm64 server variations, but
+        /// PlayerSettings.SetArchitecture accepts any index and quietly changes nothing, so what comes
+        /// out of here is x86-64 whatever you ask for. If you want the ARM build, set Target
+        /// Architecture in Build Settings by hand and check this line says AArch64.
+        /// </summary>
+        static void ReportElfMachine(string soPath)
+        {
+            try
+            {
+                if (!File.Exists(soPath)) { Debug.LogWarning("[satisfying] no UnityPlayer.so to check"); return; }
+
+                byte[] header = new byte[20];
+                using (FileStream stream = File.OpenRead(soPath)) stream.Read(header, 0, header.Length);
+
+                if (header[0] != 0x7F || header[1] != (byte)'E' || header[2] != (byte)'L' || header[3] != (byte)'F')
+                {
+                    Debug.LogWarning("[satisfying] " + soPath + " is not an ELF binary");
+                    return;
+                }
+
+                int machine = header[18] | (header[19] << 8);
+                string name = machine == 0x3E ? "x86-64" : machine == 0xB7 ? "AArch64 (ARM64)" : "unknown";
+                Debug.Log("[satisfying] server binary is for " + name + " (ELF machine 0x"
+                          + machine.ToString("X2") + ")");
+            }
+            catch (Exception e) { Debug.LogWarning("[satisfying] could not read the ELF header: " + e.Message); }
+        }
+
         [MenuItem("Satisfying/Build/Linux dedicated server", priority = 23)]
         public static void BuildLinuxServer()
         {
-            Build(BuildTarget.StandaloneLinux64, "LinuxServer/SatisfyingServer", false, StandaloneBuildSubtarget.Server);
+            string built = Build(BuildTarget.StandaloneLinux64, "LinuxServer/SatisfyingServer", false,
+                                 StandaloneBuildSubtarget.Server);
+            if (built != null) ReportElfMachine(Path.Combine(Path.GetDirectoryName(built), "UnityPlayer.so"));
         }
 
         [MenuItem("Satisfying/Playtest/Build a duel client", priority = 40)]
