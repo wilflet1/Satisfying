@@ -1067,6 +1067,18 @@ namespace Satisfying.Game
         {
             int port;
             if (!int.TryParse(_port, out port)) port = Protocol.DefaultPort;
+
+            // Changing the port is the first thing worth trying when one particular player cannot get
+            // in, so it is worth refusing a number that cannot work with a straight answer rather than
+            // letting Bind throw and reporting "the specified argument was out of the range of valid
+            // values", which tells nobody anything. Under 1024 needs privileges on most systems and is
+            // where every well known service lives.
+            if (port < 1024 || port > 65535)
+            {
+                Game.Status = "port " + port + " will not work - pick something between 1024 and 65535";
+                return;
+            }
+
             SavePrefs();
             StopBrowsing();
             string error;
