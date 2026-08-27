@@ -114,7 +114,10 @@ Europe, which is the difference between a duel and a slideshow.
 If the free AMD shapes are out of capacity in Johannesburg, keep trying — capacity is released
 constantly — or take the cheapest paid shape there, which is a few dollars a month.
 
-1. Create an **Ubuntu 22.04** instance on an **AMD (x86-64)** shape and add your SSH key.
+1. Create an instance on an **AMD (x86-64)** shape and add your SSH key. Any of the images work -
+   the deploy script runs as whatever user you log in as and tries ufw, firewall-cmd and iptables in
+   turn - but **the login name differs**: `opc` on Oracle Linux, which is the console's default, and
+   `ubuntu` on Ubuntu. Use that name in both commands below.
 2. Build the server: **Satisfying → Build → Linux dedicated server**.
 3. Copy it up and run the deploy script:
 

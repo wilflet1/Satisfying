@@ -6,6 +6,11 @@
 #     scp -r Builds/LinuxServer ubuntu@YOUR.SERVER.IP:~/satisfying
 #     scp tools/deploy-server.sh  ubuntu@YOUR.SERVER.IP:~/
 #
+# The user name is whatever the image ships with and it is not the same everywhere:
+# "ubuntu" on Ubuntu, "opc" on Oracle Linux, which is what Oracle Cloud gives you by
+# default. Nothing else in here cares which distribution it is - the unit runs as
+# $USER and the firewall step tries ufw, firewall-cmd and iptables in turn.
+#
 # On the server:
 #     bash deploy-server.sh
 #
