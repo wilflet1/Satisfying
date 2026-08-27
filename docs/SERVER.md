@@ -111,8 +111,26 @@ your home region, and it cannot be changed afterwards — choosing the default a
 means making a new account. From most of South Africa that is a 5–30 ms ping, against 150 ms+ to
 Europe, which is the difference between a duel and a slideshow.
 
-If the free AMD shapes are out of capacity in Johannesburg, keep trying — capacity is released
-constantly — or take the cheapest paid shape there, which is a few dollars a month.
+### "Out of capacity for shape VM.Standard.E2.1.Micro"
+
+Expected, and not something you did wrong. The free x86 shape is the most contended thing Oracle
+owns and the smaller regions run out of it regularly. Johannesburg has a single availability domain,
+so the error's advice to try a different one does not apply there.
+
+What actually works:
+
+- **Retry.** Capacity is released constantly as other free instances are destroyed. Clear the fault
+  domain if you set one, and try again periodically.
+- **Spend the trial credit while you wait.** A new account comes with 30 days of credit, so a small
+  PAID shape costs nothing today and is available immediately. Move to Always Free when a micro
+  frees up. This is the fastest way to be playing this evening.
+- **Not the ARM shape,** tempting as it is. Oracle's other Always Free shape is a four core, 24 GB
+  Ampere in a different capacity pool - but this project cannot currently build for it. The
+  linuxarm64 dedicated server player ships with Unity and is installed, and neither
+  `PlayerSettings.SetArchitecture` on the Server target nor the IL2CPP backend those variations
+  exclusively require will make the build use it: the settings persist and the output stays x86-64.
+  If you set Target Architecture by hand in Build Profiles, the build prints which architecture it
+  produced - believe that line rather than the folder name.
 
 1. Create an instance on an **AMD (x86-64)** shape and add your SSH key. Any of the images work -
    the deploy script runs as whatever user you log in as and tries ufw, firewall-cmd and iptables in
