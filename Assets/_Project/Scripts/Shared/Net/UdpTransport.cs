@@ -34,6 +34,19 @@ namespace Satisfying.Shared
         public string LastError { get; private set; }
         public int LocalPort { get; private set; }
 
+        /// <summary>
+        /// Datagrams turned away because every peer slot was taken, and how long ago the last one was.
+        ///
+        /// This exists because the failure it counts is completely silent at both ends: the newcomer
+        /// sits on "no reply yet" and blames their port forward, and the host sees nothing at all,
+        /// because a packet dropped here never reaches the server to be counted as a connection
+        /// attempt. A number on the host screen is the difference between a five minute answer and an
+        /// evening of re-reading router settings that were right all along.
+        /// </summary>
+        public int TurnedAwayNoSlot { get; private set; }
+        public double LastTurnedAwayAt { get; private set; }
+        public int StrangersIgnored { get; private set; }
+
         /// <summary>Null until hosting starts. See <see cref="BeginReachabilityProbe"/>.</summary>
         public ReachabilityProbe Reachability { get { return _probe; } }
 
@@ -202,7 +215,7 @@ namespace Satisfying.Shared
                     // which is the only proof of reachability that exists.
                     if (_probe != null) _probe.NoteInbound(endPoint.Address.ToString());
 
-                    peerId = ResolvePeer(endPoint);
+                    peerId = ResolvePeer(endPoint, _receiveBuffer[0]);
                     if (peerId < 0) continue;
                 }
                 else
@@ -234,7 +247,7 @@ namespace Satisfying.Shared
             }
         }
 
-        int ResolvePeer(IPEndPoint endPoint)
+        int ResolvePeer(IPEndPoint endPoint, byte firstByte)
         {
             string key = endPoint.Address + ":" + endPoint.Port;
             int id;
@@ -242,6 +255,26 @@ namespace Satisfying.Shared
             {
                 _peerLastSeen[id] = _now;
                 return id;
+            }
+
+            // A STRANGER ONLY GETS A SLOT BY ASKING TO JOIN.
+            //
+            // There are six peer ids in the whole protocol, because an id travels in three bits. Any
+            // source address that sent a byte used to be given one of them on the spot, before anybody
+            // had looked at what the byte was - so on a host with its port forwarded to the open
+            // internet, where unsolicited UDP arrives all day, three stray datagrams inside the ten
+            // second idle window were enough to fill the table with nothing. From then on every real
+            // player was dropped by the line below without the server ever hearing about it: they saw
+            // "nothing is coming back - check the port forward and the firewall", and the port forward
+            // and the firewall were fine.
+            //
+            // A player's first packet is always a ConnectRequest, so that is the only thing worth
+            // spending a slot on. Ping and Pong exist in the enum but nothing sends them, and no other
+            // message means anything from an address we have never heard of.
+            if (firstByte != (byte)MessageType.ConnectRequest)
+            {
+                StrangersIgnored++;
+                return -1;
             }
 
             // Lowest free id, never a wrap: reusing a live peer's id would hand them someone else's player.
@@ -253,12 +286,14 @@ namespace Satisfying.Shared
                 break;
             }
 
-            // Every source address that ever sent us a byte used to take a slot and keep it forever -
-            // a port scan, a stray reply, a client that retried from a new port. Six of those and the
-            // table was full, after which every real connection was silently dropped until restart.
             // A slot nobody has used in ten seconds is not in use.
             if (id < 0) id = ReclaimIdlePeer();
-            if (id < 0) return -1;
+            if (id < 0)
+            {
+                TurnedAwayNoSlot++;
+                LastTurnedAwayAt = _now;
+                return -1;
+            }
 
             _idByPeer[key] = id;
             _peerById[id] = new IPEndPoint(endPoint.Address, endPoint.Port);

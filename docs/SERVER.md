@@ -119,10 +119,32 @@ nc -u -z -v YOUR.SERVER.IP 7777
 UDP has no handshake, so a "succeeded" there only means nothing rejected the packet. The server's
 own log is the real answer: a join prints a line.
 
+## "Nothing is coming back" when earlier players got in fine
+
+A peer id travels in three bits, so **six players is the hard ceiling** - and the host is one of
+them, as it connects to its own server like anybody else. Past that the server answers with a
+rejection and the joiner is told the server is full, which is a clear enough answer.
+
+The confusing case is when nobody is told anything. The transport used to hand one of those six
+slots to any address that sent it a byte, before anything had looked at what the byte was. A port
+forwarded to the open internet receives unsolicited UDP all day, so a few stray datagrams inside the
+ten second idle window would fill the table with nothing, and every real player after that was
+dropped before the server ever heard about it. They see
+
+> nothing is coming back from ... - check the address, the port forward, and their firewall
+
+and the address, the port forward and the firewall are all fine. A slot is now only spent on a
+datagram that is actually asking to join, so noise cannot do this any more.
+
+If it still happens, the host's own screen says so: the hosting panel prints how many players were
+turned away for want of a slot. If that line is there, somebody has to leave. If it is not, the
+problem really is the network, and the same panel's probe line will say whether the outside world
+can reach the port at all.
+
 ## What it costs to run
 
 A 1v1 duel is about **10 KB/s up and 5 KB/s down per player**, and the simulation is a fixed 64 Hz
-tick that does not care how fast the machine is. Eight players is well under a megabit. Any free
+tick that does not care how fast the machine is. A full server is well under a megabit. Any free
 tier will carry it; bandwidth allowances are the only thing worth checking, and a month of solid
 play is a few gigabytes.
 

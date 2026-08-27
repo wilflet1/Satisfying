@@ -684,6 +684,21 @@ namespace Satisfying.Game
                     _skin.Small);
             }
 
+            // The one failure neither of the lines above can see. A request turned away for want of a
+            // peer slot is dropped by the transport and never reaches the server, so it is not a
+            // connection attempt as far as the line above is concerned - the host reads "no attempts
+            // have reached this machine" while somebody is staring at a loading screen. Say it plainly
+            // and say what to do, because the answer is not the port forward.
+            UdpTransport socket = Game.ServerSocket;
+            if (socket != null && socket.TurnedAwayNoSlot > 0)
+            {
+                GUI.color = UiSkin.Bad;
+                GUILayout.Label(socket.TurnedAwayNoSlot + " player(s) turned away: all " + Protocol.MaxPeerId +
+                                " slots were taken. Someone has to leave before anyone else can join.",
+                                _skin.Small);
+                GUI.color = previous;
+            }
+
             // The address to hand out. STUN knows it even when UPnP failed, which is exactly the case
             // where the host most needs to be told what to type into the chat window.
             string external = null;

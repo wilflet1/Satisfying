@@ -76,6 +76,9 @@ namespace Satisfying.Game
         public PortMapper Mapper;
         /// <summary>Whether the outside world can actually reach us. Null unless hosting.</summary>
         public ReachabilityProbe Reachability { get { return _serverSocket != null ? _serverSocket.Reachability : null; } }
+
+        /// <summary>The host's own socket, for the parts of "can anyone get in" only it can answer.</summary>
+        public UdpTransport ServerSocket { get { return _serverSocket; } }
         public bool OpenPortAutomatically = true;
 
         public Mode CurrentMode = Mode.Offline;

@@ -100,6 +100,56 @@ namespace Satisfying.Tests
                 player.Dispose();
             });
 
+            TestRunner.Add("udp/internet noise cannot lock a player out of a forwarded port", () =>
+            {
+                // The case the test above does not cover, and the one that actually happens: the noise
+                // arrives WITHIN the ten second idle window, so there is nothing stale to reclaim. A
+                // host with its port forwarded to the open internet receives unsolicited UDP all day,
+                // there are only six peer ids in the protocol, and slots used to be handed out before
+                // anyone looked at what had arrived. Three scans and the seventh player - or the third,
+                // once real players hold the rest - was dropped without the server ever hearing about
+                // it. They see "nothing is coming back, check the port forward and the firewall", and
+                // the port forward is fine.
+                string error;
+                int port = FreePort();
+                UdpTransport server = UdpTransport.CreateServer(port, out error);
+                Assert.True(server != null, "server bound: " + error);
+
+                double now = 0.0;
+                server.Update(now);
+
+                // Twice as much noise as there are slots, all of it inside the idle window, none of it
+                // a request to join.
+                for (int i = 0; i < Protocol.MaxPeerId * 2; i++)
+                {
+                    using (Socket stray = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp))
+                    {
+                        stray.Bind(new IPEndPoint(IPAddress.Loopback, 0));
+                        stray.SendTo(new byte[] { (byte)MessageType.Input, 0, 0, 0 },
+                                     new IPEndPoint(IPAddress.Loopback, port));
+                    }
+                    int id; byte[] d; int len;
+                    Spin(server, out id, out d, out len);
+                }
+
+                now += 0.5;                     // no idle window to hide behind
+                server.Update(now);
+
+                UdpTransport player = UdpTransport.CreateClient("127.0.0.1", port, out error);
+                Assert.True(player != null, "player made: " + error);
+                player.Send(0, new byte[] { (byte)MessageType.ConnectRequest }, 1);
+
+                int peerId; byte[] data; int length;
+                Assert.True(Spin(server, out peerId, out data, out length),
+                    "the player's request arrived despite the noise");
+                Assert.True(peerId > 0, "and was given a slot");
+                Assert.Equal(server.TurnedAwayNoSlot, 0, "nothing was turned away for want of a slot");
+                Assert.True(server.StrangersIgnored > 0, "the noise was ignored rather than housed");
+
+                server.Dispose();
+                player.Dispose();
+            });
+
             TestRunner.Add("udp/the client accepts a reply from an address it did not write to", () =>
             {
                 // Joining a host on your own LAN through its public address: the router hands the packet
