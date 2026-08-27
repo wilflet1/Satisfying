@@ -152,7 +152,20 @@ ssh ubuntu@YOUR.SERVER.IP 'bash deploy-server.sh'
 It writes a systemd unit, opens UDP 7777 in the host firewall, starts the server, sets it to come
 back after a reboot, and prints the address to give out. Re-running it upgrades in place.
 
-**Do not skip the cloud provider's own firewall.** It is separate from the one on the machine and
+**There are TWO firewalls on a cloud box and both are silent when wrong.**
+
+The machine's own, and the provider's. On Oracle Cloud's Ubuntu images the machine's is iptables,
+with a REJECT-all that only TCP 22 gets past - and `ufw` is installed but INACTIVE, so `ufw allow`
+reports success and changes nothing. The deploy script checks whether ufw is actually enabled now,
+falls through to iptables when it is not, inserts the rule ahead of that REJECT rather than after
+it, saves it so a reboot does not undo it, and then says whether the port is really open instead of
+trusting a command that returned 0.
+
+The symptom when this is wrong is the worst one: `tcpdump` on the server shows the packets arriving,
+because tcpdump taps the device before any filtering, while the server never receives a byte and
+the player sees "nothing is coming back".
+
+**Do not skip the cloud provider's own firewall either.** It is separate from the one on the machine and
 it is where this usually goes wrong:
 
 - Oracle Cloud — VCN → Security Lists → Add Ingress Rule, UDP 7777, source `0.0.0.0/0`

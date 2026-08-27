@@ -106,16 +106,47 @@ sudo systemctl restart satisfying
 
 # ---------------------------------------------------------------- firewall
 say "Opening UDP $PORT"
-if command -v ufw >/dev/null 2>&1; then
+
+# WHICH firewall is a question with three answers and the wrong one is silent.
+#
+# Oracle Cloud's Ubuntu images have ufw INSTALLED AND INACTIVE, and carry their own iptables rules
+# instead - ending in a REJECT-all that only TCP 22 gets past. Testing for ufw with `command -v`
+# therefore found it, ran `ufw allow 7777/udp`, was told "Rules updated", exited 0, and changed
+# nothing whatsoever. The port stayed shut, tcpdump showed the packets arriving - it taps the device
+# before any filtering - and the server sat listening to traffic it was never handed. The player
+# just sees nothing coming back, which is where this whole evening started.
+#
+# So: ufw only if ENABLED, firewalld only if RUNNING, iptables otherwise.
+# "inactive" contains "active", so this match is anchored. Getting that wrong sent the whole thing
+# down the ufw branch on a machine whose ufw is switched off, which is how the port stayed shut.
+if command -v ufw >/dev/null 2>&1    && sudo ufw status 2>/dev/null | head -1 | grep -qiE '^Status:[[:space:]]*active$'; then
     sudo ufw allow "$PORT"/udp || warn "ufw refused - open UDP $PORT yourself"
-elif command -v firewall-cmd >/dev/null 2>&1; then
+elif command -v firewall-cmd >/dev/null 2>&1 && sudo firewall-cmd --state >/dev/null 2>&1; then
     sudo firewall-cmd --permanent --add-port="$PORT"/udp && sudo firewall-cmd --reload
 else
-    # Oracle Cloud and friends ship a locked-down iptables and no ufw.
-    sudo iptables -I INPUT -p udp --dport "$PORT" -j ACCEPT || warn "could not add an iptables rule"
-    if command -v netfilter-persistent >/dev/null 2>&1; then
-        sudo netfilter-persistent save || true
+    # Oracle Cloud and friends ship a locked-down iptables and an inactive ufw. INSERT rather than
+    # append: their chain ends in a REJECT, and a rule added after a REJECT is a comment.
+    if ! sudo iptables -C INPUT -p udp --dport "$PORT" -j ACCEPT >/dev/null 2>&1; then
+        sudo iptables -I INPUT -p udp --dport "$PORT" -j ACCEPT || warn "could not add an iptables rule"
     fi
+    # And keep it. An iptables rule lives in memory; without this the server is reachable until the
+    # first reboot and then quietly is not, which is a horrible thing to debug weeks later.
+    if command -v netfilter-persistent >/dev/null 2>&1; then
+        sudo netfilter-persistent save >/dev/null 2>&1 || warn "could not persist the rule"
+    elif [[ -d /etc/iptables ]]; then
+        sudo sh -c "iptables-save > /etc/iptables/rules.v4" || warn "could not persist the rule"
+    else
+        warn "rule added but NOT saved - it will be lost on reboot"
+    fi
+fi
+
+# Say whether it actually worked, rather than trusting a command that returned 0.
+if sudo iptables -C INPUT -p udp --dport "$PORT" -j ACCEPT >/dev/null 2>&1; then
+    say "UDP $PORT is open on this machine"
+elif command -v ufw >/dev/null 2>&1 && sudo ufw status 2>/dev/null | grep -q "$PORT"; then
+    say "UDP $PORT is open in ufw"
+else
+    warn "Could NOT confirm UDP $PORT is open here. Check: sudo iptables -L INPUT -n --line-numbers"
 fi
 
 warn "Cloud providers also have their own firewall. Allow inbound UDP $PORT there:"
