@@ -491,6 +491,20 @@ namespace Satisfying.Tests
                 Assert.Less(h.ConvergenceError(h.Clients[0]), 0.06f, "and the client predicted the same traversal");
             });
 
+
+            TestRunner.Add("net/a server fills every seat it says it has", () =>
+            {
+                // Bots were allocated ids counting down from MaxPlayers - 1, so id 6 was never handed
+                // out and a server that advertised six players could only ever hold five. Found by
+                // asking the Playground for five bots and getting four.
+                NetHarness h = Duel(0f, 0f, 0f);
+                int seats = Protocol.MaxPlayers - h.Server.ActiveCount;
+                for (int i = 0; i < seats; i++)
+                    Assert.True(h.Server.AddBot("bot " + i) != null, "seat " + i + " was free and was taken");
+
+                Assert.Equal(h.Server.ActiveCount, Protocol.MaxPlayers, "every seat is full");
+                Assert.True(h.Server.AddBot("one too many") == null, "and there is not another one");
+            });
         }
     }
 }

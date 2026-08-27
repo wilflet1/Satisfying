@@ -267,8 +267,11 @@ namespace Satisfying.Shared
         /// </summary>
         public ServerPlayer AddBot(string name, float skill = 0.55f, int seed = 0)
         {
+            // MaxPeerId, not MaxPlayers - 1. Peer ids run 1..6 and this counted down from 5, so id 6
+            // could never be given to a bot and a server topped out one player short of its own limit.
+            // Counting DOWN is deliberate: bots take the high ids and leave the low ones for people.
             int peerId = -1;
-            for (int candidate = Protocol.MaxPlayers - 1; candidate >= 1; candidate--)
+            for (int candidate = Protocol.MaxPeerId; candidate >= 1; candidate--)
             {
                 if (Find(candidate) != null) continue;
                 peerId = candidate;
