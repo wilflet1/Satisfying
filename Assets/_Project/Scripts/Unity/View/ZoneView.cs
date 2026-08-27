@@ -39,6 +39,7 @@ namespace Satisfying.Game
             // One material, tinted per frame. Every piece shares it, so the whole marker changes
             // colour in one assignment when the room changes hands.
             _material = Palette.Make("hill", new Color(1f, 1f, 1f, 0.16f), 0.4f, 0f, true);
+            if (_material == null) return;
             Transparent(_material);
 
             _plate = Piece("plate", layer);

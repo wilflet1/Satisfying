@@ -55,6 +55,7 @@ namespace Satisfying.Game
             // Transparent and additive, so overlapping capsules read as overlapping rather than as one
             // solid lump, and so the body underneath stays visible through them.
             Material m = Palette.Make("hitbox", new Color(colour.r, colour.g, colour.b, 0.22f), 0.1f, 0f, true);
+            if (m == null) return null;                 // headless: nothing is being drawn over anything
             if (m.HasProperty("_Mode")) m.SetFloat("_Mode", 3f);
             if (m.HasProperty("_SrcBlend")) m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
             if (m.HasProperty("_DstBlend")) m.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.One);

@@ -27,6 +27,17 @@ namespace Satisfying.Game
         public Material Plaster;
         public Material Smoke;
 
+        /// <summary>
+        /// Any shader at all, in order of preference.
+        ///
+        /// The last two are not there to look like anything. A DEDICATED SERVER BUILD SHIPS NO
+        /// SHADERS - it strips the renderer, which is the point of it - so every name above returns
+        /// null, and `new Material(null)` throws ArgumentNullException out of Awake before a single
+        /// packet is served. The server still has to build the arena, because that is where its
+        /// collision geometry comes from, and building the arena makes materials for it.
+        /// Unity's internal error shader survives stripping, and a magenta material nobody will
+        /// ever see is exactly what a server wants.
+        /// </summary>
         static Shader FindShader()
         {
             Shader s = Shader.Find("Standard");
@@ -35,12 +46,23 @@ namespace Satisfying.Game
             if (s != null) return s;
             s = Shader.Find("Legacy Shaders/Diffuse");
             if (s != null) return s;
-            return Shader.Find("Unlit/Color");
+            s = Shader.Find("Unlit/Color");
+            if (s != null) return s;
+            return Shader.Find("Hidden/InternalErrorShader");
         }
 
+        /// <summary>
+        /// A material, or null when this build has no shaders to make one from - which is a headless
+        /// server, and is not an error there. Callers that use the result immediately have to say
+        /// what they do about null; the ones that just hand it to a renderer need not care, because
+        /// a renderer with no material on a machine that never draws is a renderer doing its job.
+        /// </summary>
         public static Material Make(string name, Color color, float smoothness, float metallic, bool emissive = false)
         {
-            Material m = new Material(FindShader());
+            Shader shader = FindShader();
+            if (shader == null) return null;
+
+            Material m = new Material(shader);
             m.name = name;
             if (m.HasProperty("_Color")) m.SetColor("_Color", color);
             if (m.HasProperty("_BaseColor")) m.SetColor("_BaseColor", color);

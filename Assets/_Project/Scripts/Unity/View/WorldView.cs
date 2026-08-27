@@ -119,6 +119,7 @@ namespace Satisfying.Game
             // solid panel however low the alpha underneath it is. 0.5 still gives it a glint at a
             // glancing angle without ever filling the frame.
             Material m = Palette.Make("glass", new Color(0.74f, 0.86f, 0.90f, 0.07f), 0.5f, 0f);
+            if (m == null) return null;
             // The Standard shader needs telling that it is transparent; it is opaque by default.
             if (m.HasProperty("_Mode")) m.SetFloat("_Mode", 3f);
             if (m.HasProperty("_SrcBlend")) m.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
