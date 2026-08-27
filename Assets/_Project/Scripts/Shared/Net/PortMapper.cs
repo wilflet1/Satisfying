@@ -403,6 +403,15 @@ namespace Satisfying.Shared
         public void Dispose()
         {
             _stop = true;
+
+            // Stop the renewal loop BEFORE taking the mapping down. Deleting first left a window -
+            // small, but it is once an hour against a shutdown, and it lasts forever when it happens -
+            // where the worker was midway through renewing and put the forward back immediately after
+            // it had been removed. The lease means a stray mapping expires on its own eventually;
+            // this means it usually never exists.
+            if (_worker != null && _worker.IsAlive) _worker.Join(800);
+            _worker = null;
+
             try
             {
                 if (_mappedUpnp && _controlUrl != null)
@@ -426,9 +435,6 @@ namespace Satisfying.Shared
                 }
             }
             catch (Exception) { }
-
-            if (_worker != null && _worker.IsAlive) _worker.Join(200);
-            _worker = null;
         }
 
         // ================================================================== small helpers
