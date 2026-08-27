@@ -132,6 +132,8 @@ namespace UnityEditor
         public static void SetArchitecture(BuildTargetGroup group, int architecture) { }
         public static void SetArchitecture(NamedBuildTarget target, int architecture) { }
         public static int GetArchitecture(NamedBuildTarget target) { return 0; }
+        public static void SetScriptingBackend(NamedBuildTarget target, ScriptingImplementation backend) { }
+        public static ScriptingImplementation GetScriptingBackend(NamedBuildTarget target) { return ScriptingImplementation.IL2CPP; }
 
         public static class Android
         {

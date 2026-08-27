@@ -80,8 +80,15 @@ namespace Satisfying.Editor
         /// a machine you are talking to over SSH. It also settles the question this project cannot
         /// otherwise answer from a Windows editor - Unity ships linuxarm64 server variations, but
         /// PlayerSettings.SetArchitecture accepts any index and quietly changes nothing, so what comes
-        /// out of here is x86-64 whatever you ask for. If you want the ARM build, set Target
-        /// Architecture in Build Settings by hand and check this line says AArch64.
+        /// out of here is x86-64 whatever you ask for.
+        ///
+        /// I tried. The linuxarm64 server player IS installed (64 MB of it), and both settings that
+        /// are supposed to select it - PlayerSettings.SetArchitecture on the Server target, and the
+        /// IL2CPP backend that the ARM variations exclusively ship with - can be set, persist into
+        /// ProjectSettings.asset, and change nothing: the build log still says Lib_Linux_x64_Clang and
+        /// this line still says x86-64. Indices 1 and 2 both do it. Whatever selects that player in
+        /// Unity 6 is not reachable from here, so there is no ARM menu item rather than one that
+        /// quietly lies. Set Target Architecture by hand in Build Profiles and watch this line.
         /// </summary>
         static void ReportElfMachine(string soPath)
         {
