@@ -81,6 +81,22 @@ namespace Satisfying.Tests
                             == "203.0.113.7", "read the address");
             });
 
+            TestRunner.Add("net/the mapping is renewed before the lease it asked for runs out", () =>
+            {
+                // A mapping carries a lease so it disappears by itself if the game crashes. It was
+                // never renewed, so after two hours of hosting the router took the forward away and
+                // nothing said so: the host went on reporting the success it had had at startup, and
+                // everyone who tried to join after that got no answer at all and was told to check a
+                // port forward that no longer existed.
+                Assert.True(PortMapper.RenewSeconds < PortMapper.LeaseSeconds,
+                    "renewing after the lease has expired is not renewing");
+
+                // And with room to lose one. A router may hand out a shorter lease than it was asked
+                // for, so cutting this fine is asking for the same silence back.
+                Assert.True(PortMapper.RenewSeconds <= PortMapper.LeaseSeconds / 2,
+                    "renew at half the lease so one lost renewal is survivable");
+            });
+
             TestRunner.Add("net/a NAT-PMP map request is laid out as the RFC says", () =>
             {
                 byte[] map = PortMapper.BuildNatPmpRequest(7777, 7200);

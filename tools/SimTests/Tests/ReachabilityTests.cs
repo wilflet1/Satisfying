@@ -134,6 +134,49 @@ namespace Satisfying.Tests
                 Assert.True(p.State == ReachabilityProbe.Verdict.Probing, "CGNAT is not the internet");
             });
 
+            TestRunner.Add("reach/an answer goes stale and gets asked again", () =>
+            {
+                // A verdict used to be permanent, which is right for the first ten seconds of hosting
+                // and wrong for the next four hours. A UPnP lease expires, a router reboots, an ISP
+                // hands out a new address - and the menu went on saying "anyone can join at" an
+                // address that had stopped working, while the player who could not get in was told to
+                // check their own firewall.
+                ReachabilityProbe p = Probe(7777);
+                string host; int port; byte[] payload;
+                Assert.True(p.NextRequest(0.0, out host, out port, out payload), "asked once");
+
+                // A remapped port is a real, settled verdict - the kind that used to be permanent.
+                byte[] reply = BindingResponse(payload, "165.0.84.175", 51413, true);
+                p.HandleDatagram(reply, reply.Length, "74.125.0.1");
+                Assert.True(p.State == ReachabilityProbe.Verdict.PortRemapped, "an answer, got " + p.State);
+
+                // A minute later it is still the same answer and there is nothing to do.
+                p.Revalidate(60.0);
+                Assert.True(p.Settled, "a fresh answer is not re-asked");
+
+                // Ten minutes later it is an old answer, and an old answer is not an answer.
+                p.Revalidate(700.0);
+                Assert.True(p.State == ReachabilityProbe.Verdict.Probing, "asking again, got " + p.State);
+                Assert.True(p.NextRequest(700.0, out host, out port, out payload), "and a request went out");
+            });
+
+            TestRunner.Add("reach/proof from a real player survives revalidation when they are still there", () =>
+            {
+                // The confirmation latch has to be released by a revalidation, or a host that ever had
+                // one player reach it could never be told the door had since shut. But a player who is
+                // still connected must put it straight back.
+                ReachabilityProbe p = Probe(7777);
+                p.NoteInbound("81.2.69.142");
+                Assert.True(p.State == ReachabilityProbe.Verdict.Confirmed, "confirmed by real traffic");
+
+                p.Revalidate(0.0);          // first sight of the verdict starts its clock
+                p.Revalidate(700.0);
+                Assert.True(p.State == ReachabilityProbe.Verdict.Probing, "and it is willing to ask again");
+
+                p.NoteInbound("81.2.69.142");
+                Assert.True(p.State == ReachabilityProbe.Verdict.Confirmed, "the player is still there, got " + p.State);
+            });
+
             TestRunner.Add("reach/once confirmed it never talks itself back down", () =>
             {
                 ReachabilityProbe p = Probe(7777);

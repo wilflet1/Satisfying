@@ -99,6 +99,55 @@ namespace Satisfying.Shared
         }
 
         /// <summary>
+        /// How long an answer is worth believing before asking again.
+        ///
+        /// A verdict used to be permanent. That is fine for the first ten seconds of hosting and wrong
+        /// for the next four hours: a port forward can go away underneath you - a lease expires, the
+        /// router reboots, the ISP hands out a new address - and the menu carried on saying "anyone can
+        /// join at" an address nobody could reach. An answer that is an hour old is not an answer.
+        /// </summary>
+        const double VerdictSeconds = 300.0;
+
+        double _verdictAt = -1.0;
+
+        /// <summary>
+        /// Puts the probe back to work if its answer has gone stale. Cheap - one datagram every few
+        /// minutes - and it is the only thing that can notice the door closing while the host sits in
+        /// the menu believing it is open.
+        /// </summary>
+        public void Revalidate(double now)
+        {
+            // Settled, or out of attempts. PortPreserved is deliberately never "settled" - it is an
+            // inference rather than proof, so it keeps asking - but it stops sending once the attempts
+            // are spent, and a stopped probe is exactly as stale as a settled one.
+            if (!Settled && _attempts < MaxAttempts) return;
+
+            // First sight of this verdict starts its clock. HandleDatagram and NoteInbound are given
+            // no notion of time - they answer whenever a datagram turns up - so the moment the answer
+            // becomes visible here is the closest thing to when it arrived, and since this runs every
+            // frame that is the same instant for any practical purpose.
+            if (_verdictAt < 0.0) { _verdictAt = now; return; }
+            if (now - _verdictAt < VerdictSeconds) return;
+
+            _verdictAt = now;
+            _attempts = 0;
+            _nextSendAt = now;
+            _random.NextBytes(_transactionId);      // a fresh transaction, so old replies cannot answer it
+
+            // Including the proof from real traffic. That latch is what makes inbound proof outrank
+            // anything STUN infers, and leaving it set through a revalidation would mean a host that
+            // had ONE player reach it at any point could never be told the door had shut since. A
+            // player who is still connected re-arms it on their next packet, which is a fraction of a
+            // second away.
+            _sawInboundFromPublic = false;
+
+            // Everything is up for revision except the external ADDRESS, which is worth keeping to
+            // show until something better arrives rather than blanking the one line the host is
+            // reading out to their friends.
+            State = Verdict.Probing;
+        }
+
+        /// <summary>
         /// A datagram arrived from a public address we never wrote to first. That cannot happen unless
         /// the port is genuinely open, so it outranks anything STUN inferred and is never revised.
         /// </summary>
@@ -120,12 +169,13 @@ namespace Satisfying.Shared
             port = 0;
             payload = null;
 
-            if (Settled) return false;
+            if (Settled) { if (_verdictAt < 0.0) _verdictAt = now; return false; }
             if (Servers == null || Servers.Length == 0) { State = Verdict.NoAnswer; return false; }
             if (now < _nextSendAt) return false;
 
             if (_attempts >= MaxAttempts)
             {
+                if (_verdictAt < 0.0) _verdictAt = now;
                 // Nothing answered. Say so rather than guessing - a wrong "closed" is what got us here.
                 if (State == Verdict.Probing) State = Verdict.NoAnswer;
                 return false;

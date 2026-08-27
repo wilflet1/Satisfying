@@ -128,6 +128,11 @@ namespace Satisfying.Shared
             _now = now;
             if (_probe == null) return;
 
+            // Ask again every few minutes. A port forward can go away underneath a running host - a
+            // UPnP lease expires, the router reboots, the address changes - and a verdict from
+            // startup would otherwise be repeated for the rest of the session.
+            _probe.Revalidate(now);
+
             string host;
             int port;
             byte[] payload;

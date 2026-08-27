@@ -35,7 +35,7 @@ namespace Satisfying.Shared
         /// <summary>Where it got to before giving up. Far more useful than "did not work".</summary>
         public string Stage { get; private set; }
 
-        const int LeaseSeconds = 7200;
+        public const int LeaseSeconds = 7200;
         const int SsdpPort = 1900;
         const int NatPmpPort = 5351;
         static readonly IPAddress SsdpMulticast = IPAddress.Parse("239.255.255.250");
@@ -70,20 +70,73 @@ namespace Satisfying.Shared
             _worker.Start();
         }
 
+        /// <summary>
+        /// How long to hold a mapping before asking for it again.
+        ///
+        /// Comfortably inside the lease, because the lease is a deadline and not a promise: a router
+        /// is free to shorten it, and some hand out minutes where they were asked for hours. Renewing
+        /// at half of it means a mapping survives one lost renewal.
+        /// </summary>
+        public const int RenewSeconds = LeaseSeconds / 2;
+
+        /// <summary>How many times the mapping has been renewed, and when it last was.</summary>
+        public int Renewals { get; private set; }
+
         void Run()
         {
             try
             {
-                if (TryUpnp()) { Method = "UPnP"; Finish(true, "router is forwarding UDP " + _port + " (UPnP)"); return; }
-                if (_stop) return;
-                if (TryNatPmp()) { Method = "NAT-PMP"; Finish(true, "router is forwarding UDP " + _port + " (NAT-PMP)"); return; }
-                Finish(false, (Stage ?? "the router did not answer") +
-                    " - forward UDP " + _port + " by hand to play over the internet");
+                while (!_stop)
+                {
+                    if (!MapOnce()) return;         // it failed and said why; retrying will not help
+
+                    // AND THEN KEEP IT. A mapping carries a lease so that it disappears by itself if
+                    // the game crashes, and this one asked for two hours - after which the router
+                    // silently took the forward away and nothing said so. The host went on reporting
+                    // the success it had had at startup while every new player got no answer at all
+                    // and was told to check a port forward that no longer existed. It matched the
+                    // symptom exactly: the people who joined in the first two hours were fine.
+                    if (!Sleep(RenewSeconds)) return;
+
+                    Renewals++;
+                }
             }
             catch (Exception e)
             {
                 Finish(false, "port forwarding failed: " + e.Message);
             }
+        }
+
+        /// <summary>One attempt at both protocols. True if the port is mapped and worth renewing.</summary>
+        bool MapOnce()
+        {
+            if (TryUpnp())
+            {
+                Method = "UPnP";
+                Finish(true, "router is forwarding UDP " + _port + " (UPnP)"
+                             + (Renewals > 0 ? ", renewed " + Renewals + "x" : ""));
+                return true;
+            }
+            if (_stop) return false;
+
+            if (TryNatPmp())
+            {
+                Method = "NAT-PMP";
+                Finish(true, "router is forwarding UDP " + _port + " (NAT-PMP)"
+                             + (Renewals > 0 ? ", renewed " + Renewals + "x" : ""));
+                return true;
+            }
+
+            Finish(false, (Stage ?? "the router did not answer") +
+                " - forward UDP " + _port + " by hand to play over the internet");
+            return false;
+        }
+
+        /// <summary>Waits, but wakes up promptly when the game is shutting down.</summary>
+        bool Sleep(int seconds)
+        {
+            for (int i = 0; i < seconds * 10 && !_stop; i++) Thread.Sleep(100);
+            return !_stop;
         }
 
         void Finish(bool ok, string message)

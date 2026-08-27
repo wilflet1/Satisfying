@@ -141,6 +141,24 @@ turned away for want of a slot. If that line is there, somebody has to leave. If
 problem really is the network, and the same panel's probe line will say whether the outside world
 can reach the port at all.
 
+## It worked for the first couple of hours and then stopped
+
+This one had nothing to do with who was in the match - it happened to a host sitting alone.
+
+When the game opens the port for you it asks the router for a **lease**, so that the forward
+disappears by itself if the game crashes rather than being left open forever. That lease was two
+hours and nothing renewed it, so after two hours the router quietly took the forward away. The game
+kept displaying the success it had had at startup, because the reachability verdict was decided once
+and never revisited, so the host had every reason to believe the door was open while nobody could
+get in.
+
+The mapping is now renewed at half the lease, and the probe re-checks every five minutes, so a
+forward that goes away - a lease expiring, a router rebooting, an ISP handing out a new address -
+turns the hosting panel's verdict rather than being reported as a success indefinitely.
+
+**Your public address can change.** If the panel's address is not the one your friend is typing,
+that alone explains everything: hand out the new one, or use a dedicated server.
+
 ## What it costs to run
 
 A 1v1 duel is about **10 KB/s up and 5 KB/s down per player**, and the simulation is a fixed 64 Hz
