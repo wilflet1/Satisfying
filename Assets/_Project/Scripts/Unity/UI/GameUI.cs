@@ -717,7 +717,14 @@ namespace Satisfying.Game
             if (external != null)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(confirmed ? "anyone can join at" : "try giving out", _skin.Small, GUILayout.Width(130f));
+                // Three states, not two. This used to read "try giving out" unless a player had
+                // actually arrived, which meant a host whose router had confirmed the forward - the
+                // case where everything really is set up - was told the same tentative thing as a host
+                // with nothing working at all, and had no way to tell which they were. `proven` is the
+                // same test that decides whether to print the "forward UDP ... by hand" advice below,
+                // so the two lines now agree instead of contradicting each other.
+                GUILayout.Label(confirmed ? "anyone can join at" : proven ? "give this out" : "try giving out",
+                                _skin.Small, GUILayout.Width(130f));
                 GUILayout.Label(external, _skin.Value);
                 if (GUILayout.Button("copy", _skin.ButtonSmall, GUILayout.Width(52f)))
                     GUIUtility.systemCopyBuffer = external;
