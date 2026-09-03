@@ -102,6 +102,35 @@ about a real person's first thirty seconds. `sim-test` now models a *novice* —
 slow to react, wandering, firing badly, never fleeing — and gates on their
 survival. That test is the one that would have caught this.
 
+## Reading the fight at a glance
+
+Everything in the arena is the same fluid, which is what makes it beautiful and
+also what made it illegible: spilled mass carries its owner's hue, so colour was
+already spoken for and could not also be the thing separating loot from rivals.
+The separation is **material**, not colour:
+
+- **Players** are polished metal reflecting a studio environment.
+- **Loose goo** is lit from within, with currents drifting through it, a wet
+  bright rim, and a coloured glow spilling onto the floor around it.
+- **Shots** are goo turned up — the same substance moving fast, with a hot core
+  and a wake of droplets so a one-point shot still reads as something thrown
+  rather than a dot teleporting across the arena.
+
+Kind is blended between neighbouring bodies rather than switched, so a pellet
+being swallowed crossfades from goo into metal across the neck.
+
+A hit sprays in the **victim's** colour, not the attacker's. Colouring it after
+the shooter hid the single clearest signal in the game: who just lost size.
+
+**The ring deletes what it passes over.** Without that, the arena had an exploit
+shaped like a strategy — step outside, hoover up everything the shrinking
+boundary left behind where nobody dares follow, and walk back in enormous.
+
+**Field of view scales with size**, with a floor at what the smallest blob sees.
+A big blob is slow and can be converged on from anywhere, so it needs to see
+further; the floor guarantees that growing never costs you visibility you
+already had.
+
 ## Art direction
 
 Liquid chrome and iridescent oil-slick against a near-black tunnel. Everything is one raymarched 2D SDF field: blobs union with a polynomial smooth-min so merging is literally the renderer's native operation, shaded with a procedural studio env-map, Fresnel iridescence, and screen-space refraction of the parallax background. Obstacles are matte obsidian with emissive danger edges (cyan = slit, amber = door, red = saw).

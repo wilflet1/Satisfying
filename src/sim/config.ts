@@ -47,6 +47,14 @@ export const ARENA = {
     holdFraction: 0.25,
     /** Mass drained per second while outside the ring. */
     drainPerSecond: 26,
+    /**
+     * Loose goo outside the boundary dissolves. Without this the arena has an
+     * exploit shaped like a strategy: step out, hoover up everything the
+     * shrinking ring left behind where nobody dares follow, and walk back in
+     * enormous. The ring has to delete what it passes over, not just hurt
+     * whoever stands there.
+     */
+    dissolveMargin: 2,
   },
 
   blob: {
@@ -101,6 +109,15 @@ export const ARENA = {
     bigCost: MASS_UNIT * 2,
     /** Size at which shots become the bigger, harder-hitting kind. */
     bigAtSize: 60,
+    /**
+     * Floor on a chunk's radius. A one-point shot is only 1.7 units across by
+     * area — a speck you cannot see leave your body, let alone track across the
+     * arena. Sized up again after the field of view widened, since a wider view
+     * shrinks everything on screen and quietly undid the first correction.
+     * The floor applies to the real radius, not just the drawn one, so what you
+     * see is exactly what collides.
+     */
+    minRadius: 5,
     speed: 300,
     /** Backward recoil applied to the shooter. */
     recoil: 62,

@@ -153,6 +153,7 @@ let pulse = 0;
 let pulseX = 0;
 let pulseY = 0;
 let time = 0;
+let trailTimer = 0;
 let aimGuide: [number, number, number, number] = [0, 0, 0, 0];
 let shield: [number, number, number, number] = [0, 0, 0, 0];
 
@@ -192,7 +193,12 @@ function deform(id: string, x: number, y: number, dt: number): [number, number] 
 
 let n = 0;
 let maxR = 0;
-function put(b: ViewBlob, dt: number) {
+/** Material kind, matching the scene shader: player, loose goo, shot. */
+const KIND_PLAYER = 0;
+const KIND_GOO = 1;
+const KIND_SHOT = 2;
+
+function put(b: ViewBlob, dt: number, kind: number) {
   if (n >= MAX_BLOBS) return;
   const o = n * 4;
   blobBuf[o] = b.x;
@@ -204,7 +210,7 @@ function put(b: ViewBlob, dt: number) {
   defBuf[o] = mag;
   defBuf[o + 1] = mag > 1e-4 ? dx / mag : 1;
   defBuf[o + 2] = mag > 1e-4 ? dy / mag : 0;
-  defBuf[o + 3] = 0;
+  defBuf[o + 3] = kind;
   maxR = Math.max(maxR, b.r);
   n++;
 }
@@ -217,19 +223,19 @@ function buildFrame(view: View | null, dt: number): RenderFrame {
 
   if (view) {
     // Own blob first so it is never the one culled by the uniform budget.
-    if (view.me) put(view.me, dt);
-    for (const p of view.players) put(p, dt);
-    for (const c of view.chunks) put(c, dt);
+    if (view.me) put(view.me, dt, KIND_PLAYER);
+    for (const p of view.players) put(p, dt, KIND_PLAYER);
+    for (const c of view.chunks) put(c, dt, KIND_SHOT);
 
     // Pellets are the most numerous and least important: sort by distance to
     // the camera so the ones the player can actually see survive the cull.
     const pellets = view.pellets
       .map((g) => ({ g, d: (g.x - camX) ** 2 + (g.y - camY) ** 2 }))
       .sort((a, b) => a.d - b.d);
-    for (const { g } of pellets) put(g, dt);
+    for (const { g } of pellets) put(g, dt, KIND_GOO);
     for (const d of splash.drops) {
       if (d.r < 0.05) continue;
-      put({ id: `s${d.r}${d.x | 0}`, x: d.x, y: d.y, r: d.r, hue: d.tint }, dt);
+      put({ id: `s${d.r}${d.x | 0}`, x: d.x, y: d.y, r: d.r, hue: d.tint }, dt, KIND_GOO);
     }
   }
 
@@ -367,26 +373,59 @@ function frame(now: number) {
     const k = 1 - Math.exp(-6 * dt);
     camX += (target.x - camX) * k;
     camY += (target.y - camY) * k;
-    const want = 190 + (view.me ? view.me.r * 6 : 40);
+    // Field of view: a floor at what the smallest blob sees today, then opening
+    // up steeply with size. A big blob is slow and can be converged on from
+    // anywhere, so it needs to see further; the floor guarantees growing never
+    // costs you visibility you already had.
+    const minR = 3.4;
+    const want = 212 + Math.max(0, (view.me ? view.me.r : minR) - minR) * 12;
     viewW += (want - viewW) * (1 - Math.exp(-1.5 * dt));
 
-    for (const e of view.dashes) splash.burst(e.x, e.y, 3, e.hue);
+    // Muzzle spray: a puff of your own goo at the moment the shot leaves you.
+    for (const e of view.dashes) {
+      splash.burst(e.x, e.y, 7, e.hue, 0, Math.PI, { size: 0.8, force: 0.7, life: 0.6 });
+      trauma = Math.min(1, trauma + 0.07);
+    }
+
+    // The hit is the moment the whole game is about, so it gets the loudest
+    // response available: a wide spray in the *victim's* colour, a shockwave,
+    // aberration and a shove of the camera.
     for (const e of view.hits) {
-      splash.burst(e.x, e.y, CFG.goo.splash.onHit, e.hue);
-      trauma = Math.min(1, trauma + 0.3 + e.power * 0.5);
-      chroma = Math.max(chroma, 1);
+      splash.burst(e.x, e.y, CFG.goo.splash.onHit + 10, e.hue, 0, Math.PI, {
+        size: 1.3,
+        force: 1.5,
+      });
+      // A slower, fatter set that hangs around: this is the mass visibly
+      // leaking out of them rather than a one-frame sparkle.
+      splash.burst(e.x, e.y, 8, e.hue, 0, Math.PI, { size: 1.8, force: 0.35, life: 2.1 });
+      trauma = Math.min(1, trauma + 0.4 + e.power * 0.6);
+      chroma = Math.max(chroma, 1.4);
+      flash = Math.max(flash, 0.22);
+      flashCol = [1, 0.92, 0.8];
       pulse = 1;
       pulseX = e.x;
       pulseY = e.y;
     }
     for (const e of view.deaths) {
-      splash.burst(e.x, e.y, 14, e.hue);
+      splash.burst(e.x, e.y, 26, e.hue, 0, Math.PI, { size: 1.6, force: 1.4, life: 1.5 });
       trauma = Math.min(1, trauma + 0.7);
       flash = 0.5;
       flashCol = [1, 0.85, 0.6];
       pulse = 1;
       pulseX = e.x;
       pulseY = e.y;
+    }
+  }
+
+  // Shots leave a wake of their own goo, so a small chunk still reads as
+  // something thrown rather than a dot teleporting across the arena.
+  if (view) {
+    trailTimer -= dt;
+    if (trailTimer <= 0) {
+      trailTimer = 0.028;
+      for (const c of view.chunks) {
+        splash.burst(c.x, c.y, 1, c.hue, 0, Math.PI, { size: 0.85, force: 0.08, life: 0.45 });
+      }
     }
   }
 

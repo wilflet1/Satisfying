@@ -31,15 +31,29 @@ export class Splash {
   }
 
   /**
-   * @param spread  Half-angle of the spray, radians. π/2 is a full fan.
    * @param dir     Centre direction of the spray, radians.
+   * @param spread  Half-angle of the spray, radians. π is a full fan.
+   * @param opts.size  Multiplier on droplet radius.
+   * @param opts.force Multiplier on how hard they are thrown.
+   * @param opts.life  Multiplier on how long they last.
    */
-  burst(x: number, y: number, count: number, tint = 0, dir = 0, spread = Math.PI) {
+  burst(
+    x: number,
+    y: number,
+    count: number,
+    tint = 0,
+    dir = 0,
+    spread = Math.PI,
+    opts: { size?: number; force?: number; life?: number } = {},
+  ) {
     const { speed, radius, life } = CFG.goo.splash;
+    const sizeK = opts.size ?? 1;
+    const forceK = opts.force ?? 1;
+    const lifeK = opts.life ?? 1;
     for (let i = 0; i < count; i++) {
       const a = dir + (Math.random() * 2 - 1) * spread;
-      const v = speed * (0.45 + Math.random() * 0.85);
-      const r = radius * (0.5 + Math.random() * 0.8);
+      const v = speed * (0.45 + Math.random() * 0.85) * forceK;
+      const r = radius * (0.5 + Math.random() * 0.8) * sizeK;
       this.drops.push({
         x,
         y,
@@ -47,8 +61,8 @@ export class Splash {
         vy: Math.sin(a) * v,
         r0: r,
         r,
-        life: life * (0.6 + Math.random() * 0.7),
-        maxLife: life,
+        life: life * (0.6 + Math.random() * 0.7) * lifeK,
+        maxLife: life * lifeK,
         tint,
       });
     }

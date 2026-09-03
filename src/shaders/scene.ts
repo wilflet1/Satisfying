@@ -27,7 +27,7 @@ uniform vec4  uAim;        // xy = origin, zw = direction (zero = hidden)
 uniform vec4  uShield;     // xyz = centre + radius, w = strength (0 = hidden)
 uniform int   uBlobCount;
 uniform vec4  uBlobs[${MAX_BLOBS}];    // xy = centre, z = radius, w = hue index (-1 = neutral)
-uniform vec4  uBlobDef[${MAX_BLOBS}];  // x = stretch, yz = axis (cos,sin), w = unused
+uniform vec4  uBlobDef[${MAX_BLOBS}];  // x = stretch, yz = axis (cos,sin), w = kind
 
 /**
  * Screen to world. vUv.y is 0 at the *bottom* of the framebuffer and 1 at the
@@ -102,9 +102,16 @@ float blobDist(vec2 p){
   return d;
 }
 
-/** Influence-weighted hue plus the nearest blob's radius, for shading. */
-vec2 blobHueRadius(vec2 p){
-  float wsum = 1e-5, hsum = 0.0;
+/**
+ * Influence-weighted hue, plus the nearest body's radius and its kind
+ * (0 player, 1 loose goo, 2 shot in flight).
+ *
+ * Kind is blended rather than read off the nearest body alone, so where a
+ * pellet is being swallowed the material crossfades from goo into metal across
+ * the neck instead of switching at a hard line.
+ */
+vec3 blobHueRadiusKind(vec2 p){
+  float wsum = 1e-5, hsum = 0.0, ksum = 0.0;
   float best = 1e9, rNear = 4.0;
   for (int i = 0; i < ${MAX_BLOBS}; i++){
     if (i >= uBlobCount) break;
@@ -113,9 +120,34 @@ vec2 blobHueRadius(vec2 p){
     float w = exp(-max(di, 0.0) * 0.30);
     wsum += w;
     hsum += w * B.w;
+    ksum += w * uBlobDef[i].w;
     if (di < best){ best = di; rNear = B.z; }
   }
-  return vec2(hsum / wsum, rNear);
+  return vec3(hsum / wsum, rNear, ksum / wsum);
+}
+
+/**
+ * Loose goo, and shots — which are goo travelling fast.
+ *
+ * Deliberately not the players' material. Where a blob is polished metal
+ * reflecting a studio, goo is lit from within, with currents moving through it
+ * and a wet, bright rim. Colour alone could never separate them: spilled mass
+ * carries its owner's hue, so tint was the one axis already spoken for. Making
+ * it a different *substance* is what lets a glance tell loot from a rival.
+ */
+vec3 gooLook(vec3 tint, float z, float fres, vec2 p){
+  float a = sin(p.x * 0.31 + p.y * 0.19 + uTime * 2.1);
+  float b = sin(p.y * 0.37 - p.x * 0.14 - uTime * 1.5);
+  float flow = 0.5 + 0.5 * a * b;
+
+  // Everything below is deliberately tinted rather than white. An earlier pass
+  // pushed the output so hard that goo clipped to white and lost its hue — and
+  // hue is exactly what says whose mass is on the floor.
+  vec3 c = tint * (0.42 + 0.95 * z * z);            // thick middle glows hardest
+  c += tint * flow * (0.22 + 0.34 * z) * 0.8;       // internal currents drifting
+  c += vec3(1.0, 0.96, 0.88) * pow(z, 9.0) * 0.30;  // small hot core, not a flare
+  c += tint * fres * 1.15;                          // wet, bright edge
+  return c;
 }
 
 /**
@@ -181,11 +213,12 @@ void main(){
     float glen = max(length(gRaw), 1e-3);
     vec2 g = gRaw / glen;
 
-    vec2 hr = blobHueRadius(p);
-    float hue = hr.x;
+    vec3 hrk = blobHueRadiusKind(p);
+    float hue = hrk.x;
+    float kind = hrk.z;
     // Bevel is a fraction of the blob's own radius so a pellet and a bloated
     // player both curve across their full width.
-    float bevel = max(0.6, hr.y * uBevel);
+    float bevel = max(0.6, hrk.y * uBevel);
 
     // The warp, the anisotropic squash and a wide smooth-union all break the
     // metric, so the field value is no longer a distance — it grows far faster
@@ -196,21 +229,31 @@ void main(){
     vec3 N = normalize(vec3(-g * (1.0 - z * 0.90), max(z, 0.03)));
 
     vec3 R = reflect(vec3(0.0, 0.0, -1.0), N);
-    vec3 metal = envMap(R) * hueColor(hue);
+    vec3 tint = hueColor(hue);
+    vec3 metal = envMap(R) * tint;
 
     // Iridescence hugs the rim rather than washing the whole surface.
     float fres = pow(1.0 - clamp(N.z, 0.0, 1.0), 5.0);
     metal += pal(fres * 0.8 + hue * 0.12 + uTime * 0.05) * fres * 0.8;
 
     vec2 roff = N.xy * 0.05 * (1.0 - z);
-    metal = mix(background(worldFromUv(uv + roff), 0.0) * 1.35, metal, 0.70 + 0.30 * fres);
+    vec3 behind = background(worldFromUv(uv + roff), 0.0);
+    metal = mix(behind * 1.35, metal, 0.70 + 0.30 * fres);
 
     // Depth-driven internal light: thick parts glow, thin necks stay
     // translucent — the read that separates a body of liquid from a flat disc.
-    metal += hueColor(hue) * 0.34 * smoothstep(0.35, 1.0, z);
+    metal += tint * 0.34 * smoothstep(0.35, 1.0, z);
     metal += vec3(1.0) * pow(smoothstep(0.90, 1.0, z), 2.0) * 0.30;
 
-    col = mix(col, metal, mask);
+    // Shots are the same substance as goo, turned up: a hot core and far more
+    // output, so even a one-point shot is a bright travelling blob.
+    vec3 goo = gooLook(tint, z, fres, p);
+    goo = mix(behind * 0.9, goo, 0.78 + 0.22 * fres);
+    float shot = smoothstep(1.5, 2.0, kind);
+    goo *= 1.0 + shot * 1.1;
+    goo += vec3(1.0, 0.93, 0.82) * shot * pow(z, 4.0) * 0.55;
+
+    col = mix(col, mix(metal, goo, smoothstep(0.15, 0.85, kind)), mask);
   }
 
   // ---- Aim trajectory ---------------------------------------------------
@@ -242,8 +285,15 @@ void main(){
     col += vec3(0.55, 0.9, 1.0) * ring * shimmer * uShield.w * 0.9;
   }
 
-  // Contact glow, so every body lights the floor around it.
+  // Contact glow, so every body lights the floor around it, plus goo casting
+  // its own colour outward — most of what makes a fresh spill catch the eye
+  // from across the arena.
   col += vec3(0.22, 0.42, 0.85) * exp(-max(d, 0.0) * 0.30) * 0.13;
+  if (mask < 0.999){
+    vec3 near = blobHueRadiusKind(p);
+    col += hueColor(near.x) * smoothstep(0.25, 1.0, near.z)
+         * exp(-max(d, 0.0) * 0.13) * 0.20;
+  }
 
   if (uPulse > 0.0){
     float rd = length(p - uPulsePos);

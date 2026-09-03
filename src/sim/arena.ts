@@ -512,7 +512,9 @@ export class Arena {
     p.r = massToRadius(p.mass);
     p.cooldown = ARENA.dash.cooldown;
 
-    const r = massToRadius(spend);
+    // Visible shots: never smaller than the floor, so a cheap shot still reads
+    // as a thrown body of liquid rather than a dot.
+    const r = Math.max(massToRadius(spend), ARENA.dash.minRadius);
     this.chunks.push({
       id: this.nextId++,
       owner: p.id,
@@ -553,6 +555,7 @@ export class Arena {
 
   private movePellets(dt: number) {
     const k = Math.exp(-ARENA.goo.drag * dt);
+    const dissolveAt = this.ringRadius + ARENA.ring.dissolveMargin;
     const pullers = [...this.players.values()].filter((p) => p.alive && p.pullTimer > 0);
     for (const g of this.pellets) {
       if (g.lock > 0) g.lock -= dt;
@@ -570,6 +573,12 @@ export class Arena {
       g.vy *= k;
       g.x += g.vx * dt;
       g.y += g.vy * dt;
+    }
+
+    // Anything the boundary has passed over is gone.
+    for (let i = this.pellets.length - 1; i >= 0; i--) {
+      const g = this.pellets[i];
+      if (Math.hypot(g.x, g.y) > dissolveAt) this.pellets.splice(i, 1);
     }
   }
 
@@ -619,7 +628,10 @@ export class Arena {
           this.events.hits.push({
             x: c.x,
             y: c.y,
-            hue: c.hue,
+            // The victim's colour, not the shooter's: the spray is *their* mass
+            // coming out, and colouring it after the attacker hid the single
+            // clearest signal of who just lost size.
+            hue: p.hue,
             power: Math.min(1, stolen / ARENA.blob.startMass),
           });
 
