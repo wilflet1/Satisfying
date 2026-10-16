@@ -37,9 +37,9 @@ Turn off auto-rotate on the phone so the page doesn't flip while you swing.
 
 | Where    | Action                                |
 |----------|---------------------------------------|
-| Phone    | Rotate: paddle rotates 1:1 around its grip |
-| Phone    | Curved slider (thumb): move the paddle left/right |
-| Phone    | Swing: swing speed (from the accelerometer) sets hit power |
+| Phone    | Rotate: paddle rotates 1:1 around its grip (rotation never moves it) |
+| Phone    | Move your hand: paddle moves 1:1 left/right/up/down/forward |
+| Phone    | Curved slider (thumb): walk left/right, camera and paddle move together |
 | Phone    | DROP BALL / RE-CENTER buttons         |
 | Computer | `Space`: drop a ball, `C`: re-center, `H`: hide help |
 | Computer | Mouse moves the paddle when no phone is connected |
@@ -52,7 +52,9 @@ Click the 3D page once to turn on sound. Browsers block audio until you click.
 - Each reading goes out right away over a LAN WebSocket. Nagle and compression are off, and a frame is dropped rather than queued if the socket is busy, so the screen always shows the newest pose.
 - The screen draws the latest pose on the next frame with no smoothing or buffering. Physics runs 16 sub-steps per frame against the interpolated paddle, so fast swings don't pass through the ball.
 
-Phones can't measure their own position accurately (accelerometer drift makes positions useless within a second), so:
-- **rotation** is exact and 1:1, pivoting around the grip like the phone in your hand,
-- **left/right position** comes from the curved slider under your thumb,
-- **swing speed** is estimated from the accelerometer over a short window and only affects how hard you hit the ball.
+### Hand movement tracking
+
+- **AR camera tracking (Android Chrome):** when you tap Start, the phone asks for camera access and starts a WebXR AR session (needs *Google Play Services for AR*, which Chrome installs if missing). The camera tracks the phone's real position, so moving your hand 10 cm moves the paddle 10 cm. The phone reports the position of its *bottom edge* (the grip), so turning the phone in your hand doesn't move the paddle. Keep the back camera uncovered and point it at a room with some visible detail.
+- **Fallback (no AR, e.g. iPhone):** the movement is estimated from the accelerometer. Quick movements come through, but accelerometers drift, so the paddle eases back to its home position when you hold still.
+
+Tap **RE-CENTER** with your hand in a comfortable spot. That spot becomes the paddle's home position.

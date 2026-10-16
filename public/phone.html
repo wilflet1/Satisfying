@@ -27,6 +27,8 @@
   #start { background: #19a35b; }
   .hint { font-size: 13px; opacity: .75; text-align: center; line-height: 1.4; }
   .hidden { display: none !important; }
+  body.xr, body.xr #app { background: transparent; }
+  body.xr button { opacity: .85; }
 </style>
 </head>
 <body>
@@ -45,7 +47,7 @@
       <circle id="knob" r="7.5"></circle>
     </svg>
   </div>
-  <div class="hint" id="hint">Hold the phone like a paddle handle (bottom of the phone = grip, screen = paddle face). Point it at your monitor and tap RE-CENTER. Slide your thumb along the curve to move left/right.</div>
+  <div class="hint" id="hint">Hold the phone like a paddle handle (bottom of the phone = grip, screen = paddle face). Point it at your monitor and tap RE-CENTER. Slide your thumb along the curve to walk left/right. On Android, allow camera access: the camera tracks your hand 1:1.</div>
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -67,17 +69,17 @@ connect();
 
 // Only send when the socket is idle: a queued pose is a late pose.
 function send(obj) {
-  if (ws && ws.readyState === 1 && ws.bufferedAmount < 256) ws.send(JSON.stringify(obj));
+  if (ws && ws.readyState === 1 && ws.bufferedAmount < 512) ws.send(JSON.stringify(obj));
 }
 
 // Quaternion (x, y, z, w) mapping device frame -> earth frame (X east, Y north, Z up).
 // Also carries the current swing velocity (earth frame) so hits get the real swing speed.
 let lastQ = [0, 0, 0, 1];
-const vel = [0, 0, 0];
+const vel = [0, 0, 0], pos = [0, 0, 0];
+const r4 = (a) => a.map((v) => +v.toFixed(4));
 function sendQuat(x, y, z, w) {
   lastQ = [x, y, z, w];
-  send({ t: 'o', q: [+x.toFixed(5), +y.toFixed(5), +z.toFixed(5), +w.toFixed(5)],
-    v: [+vel[0].toFixed(3), +vel[1].toFixed(3), +vel[2].toFixed(3)] });
+  send({ t: 'o', q: r4([x, y, z, w]), p: r4(pos) });
 }
 
 // Rotate vector v by quaternion q.
@@ -87,16 +89,62 @@ function rotate(q, v) {
   return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
 }
 
-// Swing speed: integrate gravity-free acceleration with a short leak so it can't drift.
-// Used only for hit power; the paddle's on-screen position comes from the slider.
-let lastAccAt = 0;
+// Fallback hand movement when AR tracking isn't running: integrate gravity-free
+// acceleration (earth frame) twice. It is 1:1 for quick moves, but accelerometers drift,
+// so velocity and position leak back to zero and the paddle settles home when you hold still.
+let lastAccAt = 0, quiet = 0;
 function onAccel(ax, ay, az) {
   const now = performance.now();
   const dt = lastAccAt ? Math.min(0.05, (now - lastAccAt) / 1000) : 0;
   lastAccAt = now;
+  if (xrActive || !dt) return;
   const a = rotate(lastQ, [ax || 0, ay || 0, az || 0]);
-  const decay = Math.exp(-dt / 0.15);
-  for (let i = 0; i < 3; i++) vel[i] = vel[i] * decay + (Math.abs(a[i]) < 0.4 ? 0 : a[i]) * dt;
+  const mag = Math.hypot(a[0], a[1], a[2]);
+  quiet = mag < 0.35 ? quiet + dt : 0;
+  const vDecay = Math.exp(-dt / 0.35), pDecay = Math.exp(-dt / 1.2);
+  for (let i = 0; i < 3; i++) {
+    vel[i] = quiet > 0.08 ? 0 : vel[i] * vDecay + (mag < 0.35 ? 0 : a[i]) * dt; // still -> stop
+    pos[i] = pos[i] * pDecay + vel[i] * dt;
+  }
+}
+function resetHand() { vel.fill(0); pos.fill(0); }
+
+// ---- AR tracking (Android Chrome + ARCore): the phone camera gives true 1:1 position ----
+const CAM_TO_GRIP = 0.13; // back camera sits near the top; the grip is the bottom of the phone
+let xrSupported = false, xrActive = false;
+if (navigator.xr) navigator.xr.isSessionSupported('immersive-ar').then((ok) => { xrSupported = ok; }).catch(() => {});
+
+async function startXR() {
+  const session = await navigator.xr.requestSession('immersive-ar', {
+    requiredFeatures: ['local'],
+    optionalFeatures: ['dom-overlay'],
+    domOverlay: { root: $('app') },
+  });
+  const gl = document.createElement('canvas').getContext('webgl', { xrCompatible: true, alpha: true });
+  await gl.makeXRCompatible();
+  session.updateRenderState({ baseLayer: new XRWebGLLayer(session, gl) });
+  const ref = await session.requestReferenceSpace('local');
+  xrActive = true;
+  document.body.classList.add('xr');
+  session.addEventListener('end', () => {
+    xrActive = false;
+    document.body.classList.remove('xr');
+    setStatus(`Connected · ${sensorMode} (AR ended)`, 'ok');
+  });
+  const onFrame = (t, frame) => {
+    session.requestAnimationFrame(onFrame);
+    const layer = session.renderState.baseLayer;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, layer.framebuffer);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    const pose = frame.getViewerPose(ref);
+    if (!pose || pose.emulatedPosition) return; // tracking lost: don't send guesses
+    const o = pose.transform.orientation, p = pose.transform.position;
+    const q = [o.x, o.y, o.z, o.w];
+    const g = rotate(q, [0, -CAM_TO_GRIP, 0]); // report the grip, so rotating in your hand doesn't move it
+    send({ t: 'x', q: r4(q), p: r4([p.x + g[0], p.y + g[1], p.z + g[2]]) });
+  };
+  session.requestAnimationFrame(onFrame);
 }
 
 function startAccel() {
@@ -252,24 +300,37 @@ $('start').addEventListener('click', async () => {
     isAndroid ? androidHelp() : iosHelp();
     return;
   }
+  // AR first: it needs the tap's user activation, which later awaits would use up.
+  if (xrSupported) {
+    try { await startXR(); } catch (err) { console.warn('AR unavailable', err); }
+  }
   try {
     await startSensors();
   } catch (err) {
-    setStatus('Sensor error: ' + err.message, 'bad');
-    isAndroid ? androidHelp() : iosHelp();
-    return;
+    if (!xrActive) {
+      setStatus('Sensor error: ' + err.message, 'bad');
+      isAndroid ? androidHelp() : iosHelp();
+      return;
+    }
+    sensorMode = 'AR pose only';
   }
   startAccel();
-  keepAwake();
+  if (!xrActive) keepAwake();
   $('start').classList.add('hidden');
   $('controls').classList.remove('hidden');
-  setStatus(`Connected · ${sensorMode}`, 'ok');
-  send({ t: 'center' });
+  setStatus(`Connected · ${xrActive ? 'AR 1:1 tracking + ' : 'no AR (estimated movement) + '}${sensorMode}`, 'ok');
+  send({ t: 's', x: 0 });
+  center();
 });
+
+function center() {
+  resetHand();
+  send({ t: 'center' });
+}
 
 // pointerdown instead of click: fires immediately, no 300ms tap delay.
 $('drop').addEventListener('pointerdown', () => { send({ t: 'drop' }); navigator.vibrate && navigator.vibrate(10); });
-$('center').addEventListener('pointerdown', () => { send({ t: 'center' }); navigator.vibrate && navigator.vibrate(10); });
+$('center').addEventListener('pointerdown', () => { center(); navigator.vibrate && navigator.vibrate(10); });
 </script>
 </body>
 </html>

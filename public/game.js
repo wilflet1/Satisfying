@@ -11,8 +11,10 @@ const GRAVITY = -9.81;
 // Rotation happens around the grip, exactly like the phone turning in your hand.
 const GRIP_Y = 0.98;
 const GRIP_Z = 1.3;
-const SLIDE_RANGE = 0.75;                       // slider end -> paddle X in metres
-const MAX_SWING = 10;                           // clamp accelerometer swing speed (m/s)
+const SLIDE_RANGE = 0.9;                        // slider end -> player X in metres
+const CAM_OFFSET = new THREE.Vector3(0, 0.47, 1.0);   // camera relative to the player's grip home
+const CAM_LOOK = new THREE.Vector3(0, -0.03, -0.5);
+const MAX_HAND_OFFSET = 1.2;                    // clamp tracked hand movement (m)
 const BLADE_R = 0.095;
 const BLADE_OFFSET = 0.12;                      // grip -> blade centre along handle
 const BLADE_HALF_T = 0.007;
@@ -139,18 +141,28 @@ const EARTH_TO_THREE = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3
 const calib = new THREE.Quaternion();
 const rawQ = new THREE.Quaternion();     // latest phone orientation in three.js frame (pre-calibration)
 const targetQ = new THREE.Quaternion();  // calibrated paddle orientation
-const phoneVel = new THREE.Vector3();  // swing velocity from the phone accelerometer (three.js frame)
-const _pv = new THREE.Vector3();
+const imuOffset = new THREE.Vector3();  // hand movement estimated from the accelerometer (three.js frame)
 let slideX = 0;                          // -1..1 from the phone slider
 let haveSample = false;
 let lastSampleAt = -1e9;
 let wantCenter = true;
 
-function center() {
-  const dir = new THREE.Vector3(0, 1, 0).applyQuaternion(rawQ);
-  if (Math.hypot(dir.x, dir.z) < 0.3) dir.set(0, 0, -1).applyQuaternion(rawQ); // phone pointing straight up/down
+// AR (WebXR) tracking from the phone camera: real position in metres, Y up.
+const xrQ = new THREE.Quaternion(), xrP = new THREE.Vector3();
+const xrCalib = new THREE.Quaternion(), xrOrigin = new THREE.Vector3();
+let lastXrAt = -1e9, wantXrCenter = true;
+
+// Yaw that turns the phone's current heading to "toward the monitor" (-Z).
+function yawAlign(q, out) {
+  const dir = new THREE.Vector3(0, 1, 0).applyQuaternion(q);
+  if (Math.hypot(dir.x, dir.z) < 0.3) dir.set(0, 0, -1).applyQuaternion(q); // phone pointing straight up/down
   const heading = Math.atan2(dir.x, dir.z);
-  calib.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI - heading);
+  return out.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI - heading);
+}
+
+function center() {
+  if (haveSample) yawAlign(rawQ, calib);
+  if (performance.now() - lastXrAt < 1000) { yawAlign(xrQ, xrCalib); xrOrigin.copy(xrP); }
 }
 
 // Mouse fallback so the scene is usable before a phone connects.
@@ -184,20 +196,25 @@ function connect() {
       haveSample = true;
       lastSampleAt = performance.now();
       sampleCount++;
-      if (wantCenter) { center(); wantCenter = false; }
-      if (m.v) _pv.set(m.v[0], m.v[1], m.v[2]).applyQuaternion(EARTH_TO_THREE).applyQuaternion(calib);
-      else _pv.set(0, 0, 0);
-      phoneVel.copy(_pv).clampLength(0, MAX_SWING);
+      if (wantCenter) { yawAlign(rawQ, calib); wantCenter = false; }
+      if (m.p) imuOffset.set(m.p[0], m.p[1], m.p[2]).applyQuaternion(EARTH_TO_THREE).applyQuaternion(calib);
+      else imuOffset.set(0, 0, 0);
+    } else if (m.t === 'x') {
+      xrQ.set(m.q[0], m.q[1], m.q[2], m.q[3]);
+      xrP.set(m.p[0], m.p[1], m.p[2]);
+      lastXrAt = performance.now();
+      if (wantXrCenter) { yawAlign(xrQ, xrCalib); xrOrigin.copy(xrP); wantXrCenter = false; }
     } else if (m.t === 's') {
       slideX = THREE.MathUtils.clamp(m.x, -1, 1);
     } else if (m.t === 'center') {
-      if (haveSample) center(); else wantCenter = true;
+      if (haveSample) yawAlign(rawQ, calib); else wantCenter = true;
+      if (performance.now() - lastXrAt < 1000) { yawAlign(xrQ, xrCalib); xrOrigin.copy(xrP); } else wantXrCenter = true;
     } else if (m.t === 'drop') {
       dropBall();
     } else if (m.t === 'status') {
       connEl.textContent = m.phones ? 'connected' : 'not connected';
       connEl.className = m.phones ? 'ok' : 'bad';
-      if (!m.phones) { haveSample = false; wantCenter = true; phoneVel.set(0, 0, 0); }
+      if (!m.phones) { haveSample = false; wantCenter = wantXrCenter = true; imuOffset.set(0, 0, 0); }
     }
   };
   ws.onclose = () => setTimeout(connect, 800);
@@ -242,7 +259,9 @@ function dropBall() {
   // Above the line the paddle slides along, so the slider can always reach it.
   const b = {
     mesh: new THREE.Mesh(ballGeo, ballMat),
-    pos: new THREE.Vector3(THREE.MathUtils.randFloat(-0.55, 0.55) * SLIDE_RANGE / 0.75, 1.8, GRIP_Z - BLADE_OFFSET * 0.8),
+    pos: new THREE.Vector3(
+      THREE.MathUtils.clamp(playerX + THREE.MathUtils.randFloat(-0.25, 0.25), -TABLE.w / 2 + 0.05, TABLE.w / 2 - 0.05),
+      1.8, GRIP_Z - BLADE_OFFSET * 0.8),
     vel: new THREE.Vector3(0, 0, 0),
     still: 0,
     cooldown: 0,
@@ -278,20 +297,42 @@ const vGrip = new THREE.Vector3();   // smoothed linear velocity of grip
 const omega = new THREE.Vector3();   // smoothed angular velocity
 let firstFrame = true;
 
-function phoneActive() {
-  return haveSample && performance.now() - lastSampleAt < 1000;
-}
+let playerX = 0;
+let trackMode = 'mouse';
+const handOffset = new THREE.Vector3();
+const _cam = new THREE.Vector3();
 
 const _dq = new THREE.Quaternion(), _qp = new THREE.Quaternion(), _v = new THREE.Vector3(), _w = new THREE.Vector3();
 function updatePaddle(dt) {
-  const live = phoneActive();
-  if (live) targetQ.copy(rawQ).premultiply(calib);
-  else { mouseQuat(targetQ); phoneVel.set(0, 0, 0); }
+  const now = performance.now();
+  const sensorLive = haveSample && now - lastSampleAt < 250;
+  const xrLive = now - lastXrAt < 500;
+  const live = sensorLive || xrLive;
+
+  // Rotation: orientation sensor (fastest), else AR pose, else mouse.
+  if (sensorLive) targetQ.copy(rawQ).premultiply(calib);
+  else if (xrLive) targetQ.copy(xrQ).premultiply(xrCalib);
+  else mouseQuat(targetQ);
+
+  // Hand movement, 1:1 in metres. AR tracking is exact; the accelerometer is a
+  // short-lived estimate. Rotation alone never moves the grip.
+  if (xrLive) handOffset.subVectors(xrP, xrOrigin).applyQuaternion(xrCalib);
+  else if (sensorLive) handOffset.copy(imuOffset);
+  else handOffset.set(0, 0, 0);
+  handOffset.clampLength(0, MAX_HAND_OFFSET);
+  trackMode = xrLive ? 'AR camera tracking' : sensorLive ? 'motion sensors' : 'mouse mode';
+
+  // Slider moves the player: camera and paddle together.
+  playerX = (live ? slideX : mouse.x) * SLIDE_RANGE;
+  _cam.set(playerX, GRIP_Y, GRIP_Z);
+  camera.position.copy(_cam).add(CAM_OFFSET);
+  camera.lookAt(_cam.add(CAM_LOOK));
 
   qPrev.copy(qCur);
   gripPrev.copy(gripCur);
   qCur.copy(targetQ); // no smoothing on pose: show exactly the latest sample
-  gripCur.set((live ? slideX : mouse.x) * SLIDE_RANGE, GRIP_Y, GRIP_Z);
+  gripCur.set(playerX, GRIP_Y, GRIP_Z).add(handOffset);
+  gripCur.y = Math.max(gripCur.y, 0.05);
   if (firstFrame) { qPrev.copy(qCur); gripPrev.copy(gripCur); firstFrame = false; }
 
   // Velocities (smoothed a little, since phone samples arrive unevenly vs frames)
@@ -332,7 +373,7 @@ function collidePaddle(b, alpha) {
   // Velocity of the paddle surface at the contact point.
   _cp.set(_local.x, _local.y, 0).applyQuaternion(_q).add(_grip);
   _r.subVectors(_cp, _grip);
-  _vp.crossVectors(omega, _r).add(vGrip).add(phoneVel);
+  _vp.crossVectors(omega, _r).add(vGrip);
   _rel.subVectors(b.vel, _vp);
   const vn = _rel.dot(_n);
   if (vn < 0) {
@@ -406,7 +447,7 @@ renderer.setAnimationLoop((now) => {
     if (b.still > 3) removeBall(b);
   }
 
-  statsEl.innerHTML = `hits: ${hits}<br>${haveSample ? `phone: ${rate} Hz` : 'mouse mode'}`;
+  statsEl.innerHTML = `hits: ${hits}<br>${trackMode}${haveSample ? ` · ${rate} Hz` : ''}`;
   renderer.render(scene, camera);
 });
 
