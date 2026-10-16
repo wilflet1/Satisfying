@@ -54,7 +54,13 @@ Click the 3D page once to turn on sound. Browsers block audio until you click.
 
 ### Hand movement tracking
 
-- **AR camera tracking (Android Chrome):** when you tap Start, the phone asks for camera access and starts a WebXR AR session (needs *Google Play Services for AR*, which Chrome installs if missing). The camera tracks the phone's real position, so moving your hand 10 cm moves the paddle 10 cm. The phone reports the position of its *bottom edge* (the grip), so turning the phone in your hand doesn't move the paddle. Keep the back camera uncovered and point it at a room with some visible detail.
-- **Fallback (no AR, e.g. iPhone):** the movement is estimated from the accelerometer. Quick movements come through, but accelerometers drift, so the paddle eases back to its home position when you hold still.
+The phone combines two sensors, because neither is good enough alone:
+
+- **Accelerometer (~120 Hz):** follows a fast swing with no lag, but drifts away within a second.
+- **AR camera (Android Chrome, WebXR, ~30 Hz):** doesn't drift, but it lags and loses tracking when the image blurs mid-swing.
+
+The accelerometer drives the paddle from moment to moment. Whenever the camera has a clean fix, it pulls the position back to the truth, allowing for the camera's delay. In a simulated fast swing (±30 cm at 2 swings/s, with the camera dropping out during the fast part), the paddle stayed within about 2 cm of the true position. The position is the phone's *bottom edge* (the grip), so turning the phone in your hand doesn't move the paddle.
+
+Without AR (e.g. iPhone, or camera access refused), only the accelerometer is used. Quick movements still come through, but the paddle eases back home when you hold still.
 
 Tap **RE-CENTER** with your hand in a comfortable spot. That spot becomes the paddle's home position.

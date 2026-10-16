@@ -73,44 +73,121 @@ function send(obj) {
 }
 
 // Quaternion (x, y, z, w) mapping device frame -> earth frame (X east, Y north, Z up).
-// Also carries the current swing velocity (earth frame) so hits get the real swing speed.
+// Each message also carries the fused grip position (earth frame, metres, relative to RE-CENTER).
 let lastQ = [0, 0, 0, 1];
-const vel = [0, 0, 0], pos = [0, 0, 0];
 const r4 = (a) => a.map((v) => +v.toFixed(4));
 function sendQuat(x, y, z, w) {
   lastQ = [x, y, z, w];
-  send({ t: 'o', q: r4([x, y, z, w]), p: r4(pos) });
+  send({ t: 'o', q: r4([x, y, z, w]), p: r4(gripOffset()), ar: arFresh() ? 1 : 0 });
 }
 
-// Rotate vector v by quaternion q.
+// ---- small vector / quaternion helpers ([x, y, z, w]) ----
 function rotate(q, v) {
   const [x, y, z, w] = q;
   const tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]);
   return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
 }
+const qmul = (a, b) => [
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
+  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
+  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2],
+];
+const qconj = (q) => [-q[0], -q[1], -q[2], q[3]];
+const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const H = Math.SQRT1_2;
+const EARTH_TO_YUP = [-H, 0, 0, H]; // earth (Z up) -> Y-up frame used by WebXR
 
-// Fallback hand movement when AR tracking isn't running: integrate gravity-free
-// acceleration (earth frame) twice. It is 1:1 for quick moves, but accelerometers drift,
-// so velocity and position leak back to zero and the paddle settles home when you hold still.
-let lastAccAt = 0, quiet = 0;
+// ---- Hand tracking: accelerometer at full rate, corrected by the AR camera ----
+// The accelerometer follows a fast swing with no lag but drifts within a second.
+// The AR camera is slow (~30 Hz, delayed, blurs during swings) but doesn't drift.
+// So: integrate acceleration for the motion, and pull towards the camera's answer
+// whenever it has a good fix (a complementary filter, delay-compensated).
+const IMU_TO_GRIP = 0.075;  // accelerometer ~ phone centre; grip = bottom edge
+const CAM_TO_IMU = 0.06;    // back camera near the top
+const AR_DELAY = 0.066;     // camera pose lags the accelerometer by ~2 frames
+const OMEGA = 5;            // correction bandwidth (rad/s): how quickly drift is removed
+const imuPos = [0, 0, 0], vel = [0, 0, 0];   // accelerometer point, earth frame
+let origin = [0, 0, 0];
+const history = [];         // recent { t, p } for delay compensation
+let lastAccAt = 0, quiet = 0, lastArAt = -1e9, yawXr = null;
+const accPrev = [0, 0, 0];
+
+const gripAbs = () => add(imuPos, rotate(lastQ, [0, -IMU_TO_GRIP, 0]));
+// No accelerometer readings (unsupported or blocked): keep the paddle at home rather than guess.
+const gripOffset = () => (performance.now() - lastAccAt < 300 ? sub(gripAbs(), origin) : [0, 0, 0]);
+const arFresh = () => xrActive && performance.now() - lastArAt < 400;
+
 function onAccel(ax, ay, az) {
   const now = performance.now();
   const dt = lastAccAt ? Math.min(0.05, (now - lastAccAt) / 1000) : 0;
   lastAccAt = now;
-  if (xrActive || !dt) return;
+  if (!dt) return;
   const a = rotate(lastQ, [ax || 0, ay || 0, az || 0]);
   const mag = Math.hypot(a[0], a[1], a[2]);
   quiet = mag < 0.35 ? quiet + dt : 0;
-  const vDecay = Math.exp(-dt / 0.35), pDecay = Math.exp(-dt / 1.2);
+  const anchored = arFresh();
+  // Dead-zone and "phone is still" only matter when nothing else stops drift.
+  const still = !anchored && quiet > 0.08;
+  // Without the camera there's nothing to stop drift, so ease back to home when idle.
+  const vDecay = anchored ? 1 : Math.exp(-dt / 0.35);
+  const pDecay = anchored ? 0 : 1 - Math.exp(-dt / 1.2);
+  const home = add(origin, rotate(lastQ, [0, IMU_TO_GRIP, 0])); // IMU point when grip is at home
+  const ac = !anchored && mag < 0.35 ? [0, 0, 0] : a;
   for (let i = 0; i < 3; i++) {
-    vel[i] = quiet > 0.08 ? 0 : vel[i] * vDecay + (mag < 0.35 ? 0 : a[i]) * dt; // still -> stop
-    pos[i] = pos[i] * pDecay + vel[i] * dt;
+    // Trapezoid integration: half the error of plain Euler at swing speeds.
+    const v0 = vel[i];
+    vel[i] = still ? 0 : v0 * vDecay + 0.5 * (ac[i] + accPrev[i]) * dt;
+    imuPos[i] += 0.5 * (v0 + vel[i]) * dt + (home[i] - imuPos[i]) * pDecay;
+    accPrev[i] = ac[i];
   }
+  history.push({ t: now, p: imuPos.slice() });
+  while (history.length && now - history[0].t > 500) history.shift();
 }
-function resetHand() { vel.fill(0); pos.fill(0); }
 
-// ---- AR tracking (Android Chrome + ARCore): the phone camera gives true 1:1 position ----
-const CAM_TO_GRIP = 0.13; // back camera sits near the top; the grip is the bottom of the phone
+function onArPose(qX, camPos) {
+  const now = performance.now();
+  // Yaw between the AR world and the orientation sensor's world (both gravity-aligned).
+  const d = qmul(qX, qconj(qmul(EARTH_TO_YUP, lastQ)));
+  const yaw = 2 * Math.atan2(d[1], d[3]);
+  if (yawXr === null) yawXr = yaw;
+  else yawXr += Math.atan2(Math.sin(yaw - yawXr), Math.cos(yaw - yawXr)) * 0.05;
+  const toEarth = qmul(qconj(EARTH_TO_YUP), [0, -Math.sin(yawXr / 2), 0, Math.cos(yawXr / 2)]);
+  // Camera position -> accelerometer point, then into the earth frame.
+  const measured = rotate(toEarth, add(camPos, rotate(qX, [0, -CAM_TO_IMU, 0])));
+
+  const gap = (now - lastArAt) / 1000;
+  const wasFresh = gap < 0.4;
+  lastArAt = now;
+  // Compare with where the accelerometer said we were when the frame was captured.
+  const then = now - AR_DELAY * 1000;
+  let past = history.length ? history[0].p : imuPos;
+  for (let i = history.length - 1; i >= 0; i--) if (history[i].t <= then) { past = history[i].p; break; }
+  const err = sub(measured, past);
+  const shiftAll = (v, moveOrigin) => {
+    for (let i = 0; i < 3; i++) { imuPos[i] += v[i]; if (moveOrigin) origin[i] += v[i]; }
+    history.forEach((h) => { for (let i = 0; i < 3; i++) h.p[i] += v[i]; });
+  };
+  if (!wasFresh) {
+    // First fix after a gap: line the AR world up with ours, keeping the hand where it was.
+    shiftAll(err, true);
+    return;
+  }
+  if (Math.hypot(err[0], err[1], err[2]) > 0.25) {
+    // Accelerometer drifted a lot since the last fix (camera dropped out mid-swing):
+    // trust the camera, and fix the velocity error that caused the drift.
+    shiftAll(err, false);
+    for (let i = 0; i < 3; i++) vel[i] += err[i] / Math.max(gap, 0.033);
+    return;
+  }
+  const k1 = Math.min(1, 2 * 0.8 * OMEGA * gap), k2 = OMEGA * OMEGA * gap;
+  for (let i = 0; i < 3; i++) { imuPos[i] += err[i] * k1; vel[i] += err[i] * k2; }
+}
+
+function resetHand() { vel.fill(0); origin = gripAbs(); }
+
+// ---- AR session (Android Chrome + ARCore) ----
 let xrSupported = false, xrActive = false;
 if (navigator.xr) navigator.xr.isSessionSupported('immersive-ar').then((ok) => { xrSupported = ok; }).catch(() => {});
 
@@ -138,11 +215,9 @@ async function startXR() {
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
     const pose = frame.getViewerPose(ref);
-    if (!pose || pose.emulatedPosition) return; // tracking lost: don't send guesses
+    if (!pose || pose.emulatedPosition) return; // tracking lost (e.g. mid-swing blur): accelerometer carries on
     const o = pose.transform.orientation, p = pose.transform.position;
-    const q = [o.x, o.y, o.z, o.w];
-    const g = rotate(q, [0, -CAM_TO_GRIP, 0]); // report the grip, so rotating in your hand doesn't move it
-    send({ t: 'x', q: r4(q), p: r4([p.x + g[0], p.y + g[1], p.z + g[2]]) });
+    onArPose([o.x, o.y, o.z, o.w], [p.x, p.y, p.z]);
   };
   session.requestAnimationFrame(onFrame);
 }
@@ -318,7 +393,7 @@ $('start').addEventListener('click', async () => {
   if (!xrActive) keepAwake();
   $('start').classList.add('hidden');
   $('controls').classList.remove('hidden');
-  setStatus(`Connected · ${xrActive ? 'AR 1:1 tracking + ' : 'no AR (estimated movement) + '}${sensorMode}`, 'ok');
+  setStatus(`Connected · ${xrActive ? 'camera + motion fusion' : 'no AR: movement estimated'} · ${sensorMode}`, 'ok');
   send({ t: 's', x: 0 });
   center();
 });

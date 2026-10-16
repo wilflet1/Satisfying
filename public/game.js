@@ -141,16 +141,12 @@ const EARTH_TO_THREE = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3
 const calib = new THREE.Quaternion();
 const rawQ = new THREE.Quaternion();     // latest phone orientation in three.js frame (pre-calibration)
 const targetQ = new THREE.Quaternion();  // calibrated paddle orientation
-const imuOffset = new THREE.Vector3();  // hand movement estimated from the accelerometer (three.js frame)
+const handPos = new THREE.Vector3();    // grip movement from the phone (three.js frame, metres)
+let arFused = false;                     // phone camera is correcting the accelerometer
 let slideX = 0;                          // -1..1 from the phone slider
 let haveSample = false;
 let lastSampleAt = -1e9;
 let wantCenter = true;
-
-// AR (WebXR) tracking from the phone camera: real position in metres, Y up.
-const xrQ = new THREE.Quaternion(), xrP = new THREE.Vector3();
-const xrCalib = new THREE.Quaternion(), xrOrigin = new THREE.Vector3();
-let lastXrAt = -1e9, wantXrCenter = true;
 
 // Yaw that turns the phone's current heading to "toward the monitor" (-Z).
 function yawAlign(q, out) {
@@ -162,7 +158,6 @@ function yawAlign(q, out) {
 
 function center() {
   if (haveSample) yawAlign(rawQ, calib);
-  if (performance.now() - lastXrAt < 1000) { yawAlign(xrQ, xrCalib); xrOrigin.copy(xrP); }
 }
 
 // Mouse fallback so the scene is usable before a phone connects.
@@ -197,24 +192,19 @@ function connect() {
       lastSampleAt = performance.now();
       sampleCount++;
       if (wantCenter) { yawAlign(rawQ, calib); wantCenter = false; }
-      if (m.p) imuOffset.set(m.p[0], m.p[1], m.p[2]).applyQuaternion(EARTH_TO_THREE).applyQuaternion(calib);
-      else imuOffset.set(0, 0, 0);
-    } else if (m.t === 'x') {
-      xrQ.set(m.q[0], m.q[1], m.q[2], m.q[3]);
-      xrP.set(m.p[0], m.p[1], m.p[2]);
-      lastXrAt = performance.now();
-      if (wantXrCenter) { yawAlign(xrQ, xrCalib); xrOrigin.copy(xrP); wantXrCenter = false; }
+      if (m.p) handPos.set(m.p[0], m.p[1], m.p[2]).applyQuaternion(EARTH_TO_THREE).applyQuaternion(calib);
+      else handPos.set(0, 0, 0);
+      arFused = !!m.ar;
     } else if (m.t === 's') {
       slideX = THREE.MathUtils.clamp(m.x, -1, 1);
     } else if (m.t === 'center') {
       if (haveSample) yawAlign(rawQ, calib); else wantCenter = true;
-      if (performance.now() - lastXrAt < 1000) { yawAlign(xrQ, xrCalib); xrOrigin.copy(xrP); } else wantXrCenter = true;
     } else if (m.t === 'drop') {
       dropBall();
     } else if (m.t === 'status') {
       connEl.textContent = m.phones ? 'connected' : 'not connected';
       connEl.className = m.phones ? 'ok' : 'bad';
-      if (!m.phones) { haveSample = false; wantCenter = wantXrCenter = true; imuOffset.set(0, 0, 0); }
+      if (!m.phones) { haveSample = false; wantCenter = true; handPos.set(0, 0, 0); }
     }
   };
   ws.onclose = () => setTimeout(connect, 800);
@@ -305,22 +295,16 @@ const _cam = new THREE.Vector3();
 const _dq = new THREE.Quaternion(), _qp = new THREE.Quaternion(), _v = new THREE.Vector3(), _w = new THREE.Vector3();
 function updatePaddle(dt) {
   const now = performance.now();
-  const sensorLive = haveSample && now - lastSampleAt < 250;
-  const xrLive = now - lastXrAt < 500;
-  const live = sensorLive || xrLive;
+  const live = haveSample && now - lastSampleAt < 1000;
 
-  // Rotation: orientation sensor (fastest), else AR pose, else mouse.
-  if (sensorLive) targetQ.copy(rawQ).premultiply(calib);
-  else if (xrLive) targetQ.copy(xrQ).premultiply(xrCalib);
+  if (live) targetQ.copy(rawQ).premultiply(calib);
   else mouseQuat(targetQ);
 
-  // Hand movement, 1:1 in metres. AR tracking is exact; the accelerometer is a
-  // short-lived estimate. Rotation alone never moves the grip.
-  if (xrLive) handOffset.subVectors(xrP, xrOrigin).applyQuaternion(xrCalib);
-  else if (sensorLive) handOffset.copy(imuOffset);
+  // Hand movement, 1:1 in metres, fused on the phone (accelerometer + camera).
+  // It is the grip's position, so rotating the phone in your hand doesn't move it.
+  if (live) handOffset.copy(handPos).clampLength(0, MAX_HAND_OFFSET);
   else handOffset.set(0, 0, 0);
-  handOffset.clampLength(0, MAX_HAND_OFFSET);
-  trackMode = xrLive ? 'AR camera tracking' : sensorLive ? 'motion sensors' : 'mouse mode';
+  trackMode = !live ? 'mouse mode' : arFused ? 'motion + camera' : 'motion only';
 
   // Slider moves the player: camera and paddle together.
   playerX = (live ? slideX : mouse.x) * SLIDE_RANGE;
