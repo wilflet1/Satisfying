@@ -1,0 +1,26 @@
+{
+  "name": "phone-paddle",
+  "version": "1.0.0",
+  "description": "3D ping pong demo using your phone as the paddle",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wilflet1/Satisfying.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/wilflet1/Satisfying/issues"
+  },
+  "homepage": "https://github.com/wilflet1/Satisfying#readme",
+  "dependencies": {
+    "qrcode": "^1.5.4",
+    "selfsigned": "^5.5.0",
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
+  }
+}

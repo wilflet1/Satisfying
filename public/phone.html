@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Paddle Controller</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #eee;
+    font-family: system-ui, -apple-system, sans-serif; touch-action: none; overscroll-behavior: none; }
+  #app { display: flex; flex-direction: column; height: 100%; padding: 16px; gap: 14px; }
+  #status { text-align: center; font-size: 14px; opacity: .8; min-height: 1.2em; }
+  #status.ok { color: #6f6; }
+  #status.bad { color: #f77; }
+  button { flex: 1; border: 0; border-radius: 22px; font-size: 30px; font-weight: 800;
+    color: #fff; letter-spacing: .5px; }
+  button:active { transform: scale(.97); filter: brightness(1.2); }
+  #drop { background: #e8562a; flex: 3; }
+  #center { background: #2a6fe8; }
+  #start { background: #19a35b; }
+  .hint { font-size: 13px; opacity: .6; text-align: center; line-height: 1.4; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="status">Connecting…</div>
+  <button id="start">TAP TO START</button>
+  <button id="drop" class="hidden">DROP BALL</button>
+  <button id="center" class="hidden">RE-CENTER</button>
+  <div class="hint" id="hint">Hold the phone like a paddle handle (bottom of the phone = grip, screen = paddle face). Point it at your monitor and tap RE-CENTER.</div>
+</div>
+<script>
+const $ = (id) => document.getElementById(id);
+const statusEl = $('status');
+let ws, sensorMode = '';
+
+function setStatus(text, cls) { statusEl.textContent = text; statusEl.className = cls || ''; }
+
+function connect() {
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/?role=phone`);
+  ws.onopen = () => setStatus(sensorMode ? `Connected · ${sensorMode}` : 'Connected — tap start', 'ok');
+  ws.onclose = () => { setStatus('Disconnected — retrying…', 'bad'); setTimeout(connect, 800); };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'hit' && navigator.vibrate) navigator.vibrate(Math.min(60, 12 + m.power * 8));
+  };
+}
+connect();
+
+// Only send when the socket is idle: a queued pose is a late pose.
+function send(obj) {
+  if (ws && ws.readyState === 1 && ws.bufferedAmount < 256) ws.send(JSON.stringify(obj));
+}
+
+// Quaternion (x, y, z, w) mapping device frame -> earth frame (X east, Y north, Z up).
+function sendQuat(x, y, z, w) {
+  send({ t: 'o', q: [+x.toFixed(5), +y.toFixed(5), +z.toFixed(5), +w.toFixed(5)] });
+}
+
+// W3C deviceorientation (Z-X'-Y'' intrinsic) -> quaternion.
+function eulerToQuat(alpha, beta, gamma) {
+  const d = Math.PI / 360; // degrees -> half-angle radians
+  const cz = Math.cos(alpha * d), sz = Math.sin(alpha * d);
+  const cx = Math.cos(beta * d),  sx = Math.sin(beta * d);
+  const cy = Math.cos(gamma * d), sy = Math.sin(gamma * d);
+  // q = qz * qx * qy
+  return [
+    cz * sx * cy - sz * cx * sy,
+    cz * cx * sy + sz * sx * cy,
+    cz * sx * sy + sz * cx * cy,
+    cz * cx * cy - sz * sx * sy,
+  ];
+}
+
+function startDeviceOrientation() {
+  sensorMode = 'orientation events';
+  window.addEventListener('deviceorientation', (e) => {
+    if (e.alpha == null) return;
+    const q = eulerToQuat(e.alpha, e.beta, e.gamma);
+    sendQuat(q[0], q[1], q[2], q[3]);
+  });
+}
+
+async function startSensors() {
+  // iOS needs an explicit permission prompt from a user gesture.
+  if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
+    const res = await DeviceOrientationEvent.requestPermission();
+    if (res !== 'granted') throw new Error('Motion permission denied');
+  }
+  // Prefer the Generic Sensor API (Chrome/Android): direct quaternion, higher rate.
+  if ('RelativeOrientationSensor' in window) {
+    try {
+      const s = new RelativeOrientationSensor({ frequency: 120, referenceFrame: 'device' });
+      await new Promise((resolve, reject) => {
+        s.addEventListener('reading', function first() {
+          s.removeEventListener('reading', first);
+          resolve();
+        });
+        s.addEventListener('error', (e) => reject(e.error));
+        s.start();
+        setTimeout(() => reject(new Error('sensor timeout')), 1500);
+      });
+      s.addEventListener('reading', () => { const q = s.quaternion; sendQuat(q[0], q[1], q[2], q[3]); });
+      sensorMode = 'orientation sensor';
+      return;
+    } catch (err) {
+      console.warn('RelativeOrientationSensor unavailable, falling back', err);
+    }
+  }
+  startDeviceOrientation();
+}
+
+async function keepAwake() {
+  try {
+    if ('wakeLock' in navigator) {
+      await navigator.wakeLock.request('screen');
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') navigator.wakeLock.request('screen').catch(() => {});
+      });
+    }
+  } catch (_) {}
+}
+
+$('start').addEventListener('click', async () => {
+  if (!window.isSecureContext) {
+    setStatus('Open this page over https:// for motion sensors', 'bad');
+    return;
+  }
+  try {
+    await startSensors();
+  } catch (err) {
+    setStatus('Sensor error: ' + err.message, 'bad');
+    return;
+  }
+  keepAwake();
+  $('start').classList.add('hidden');
+  $('drop').classList.remove('hidden');
+  $('center').classList.remove('hidden');
+  setStatus(`Connected · ${sensorMode}`, 'ok');
+  send({ t: 'center' });
+});
+
+// pointerdown instead of click: fires immediately, no 300ms tap delay.
+$('drop').addEventListener('pointerdown', () => { send({ t: 'drop' }); navigator.vibrate && navigator.vibrate(10); });
+$('center').addEventListener('pointerdown', () => { send({ t: 'center' }); navigator.vibrate && navigator.vibrate(10); });
+</script>
+</body>
+</html>

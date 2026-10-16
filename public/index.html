@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Phone Paddle</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1117; font-family: system-ui, sans-serif; }
+  canvas { display: block; }
+  #hud { position: fixed; top: 16px; left: 16px; color: #fff; background: rgba(0,0,0,.55);
+    padding: 14px 16px; border-radius: 12px; max-width: 280px; font-size: 14px; line-height: 1.45; }
+  #hud h1 { font-size: 18px; margin: 0 0 6px; }
+  #qr { width: 180px; height: 180px; background: #fff; border-radius: 8px; display: block; margin: 8px 0; }
+  #url { font-family: ui-monospace, monospace; font-size: 12px; word-break: break-all; opacity: .85; }
+  #conn { font-weight: 700; }
+  #conn.ok { color: #6f6; }
+  #conn.bad { color: #f88; }
+  #buttons { position: fixed; bottom: 16px; left: 16px; display: flex; gap: 8px; }
+  #buttons button { font-size: 16px; font-weight: 700; padding: 12px 18px; border: 0; border-radius: 10px; cursor: pointer; color: #fff; }
+  #dropBtn { background: #e8562a; }
+  #hideBtn { background: #444; }
+  #stats { position: fixed; top: 16px; right: 16px; color: #fff; background: rgba(0,0,0,.55);
+    padding: 8px 12px; border-radius: 10px; font: 13px ui-monospace, monospace; text-align: right; }
+</style>
+<script type="importmap">
+  { "imports": { "three": "/vendor/three/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="hud">
+  <h1>🏓 Phone Paddle</h1>
+  <div>Phone: <span id="conn" class="bad">not connected</span></div>
+  <img id="qr" src="/qr.svg" alt="QR code for phone URL">
+  <div>Scan with your phone (same Wi-Fi), accept the certificate warning, tap <b>Start</b>.</div>
+  <div id="url"></div>
+</div>
+<div id="stats">hits: 0<br>rate: – Hz</div>
+<div id="buttons">
+  <button id="dropBtn">Drop ball (Space)</button>
+  <button id="hideBtn">Hide help (H)</button>
+</div>
+<script type="module" src="/game.js"></script>
+</body>
+</html>
