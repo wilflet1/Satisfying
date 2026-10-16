@@ -433,3 +433,282 @@ fn open_loopback(
     stream.play()?;
     Ok((stream, fmt))
 }
+
+// ---------------------------------------------------------------------------
+// Desktop control for Claude's PC tools: screenshots, monitors, windows,
+// cursor and app launching. Coordinates are physical virtual-desktop pixels
+// (the process is made per-monitor DPI aware first).
+
+use super::{Monitor, WindowInfo};
+use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+
+/// Makes coordinates and screenshots use real pixels on scaled displays.
+pub fn dpi_aware() {
+    use windows::Win32::UI::HiDpi::{SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2};
+    let _ = unsafe { SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2) };
+}
+
+pub fn monitors() -> Vec<Monitor> {
+    use windows::core::BOOL;
+    use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO};
+    unsafe extern "system" fn cb(m: HMONITOR, _: HDC, _: *mut RECT, data: LPARAM) -> BOOL {
+        let out = unsafe { &mut *(data.0 as *mut Vec<Monitor>) };
+        let mut info = MONITORINFO { cbSize: std::mem::size_of::<MONITORINFO>() as u32, ..Default::default() };
+        if unsafe { GetMonitorInfoW(m, &mut info) }.as_bool() {
+            let r = info.rcMonitor;
+            out.push(Monitor {
+                index: out.len(),
+                primary: info.dwFlags & 1 != 0, // MONITORINFOF_PRIMARY
+                x: r.left,
+                y: r.top,
+                width: r.right - r.left,
+                height: r.bottom - r.top,
+            });
+        }
+        true.into()
+    }
+    let mut out: Vec<Monitor> = Vec::new();
+    unsafe {
+        let _ = EnumDisplayMonitors(None, None, Some(cb), LPARAM(&mut out as *mut _ as isize));
+    }
+    // Primary first, so "monitor 0" is the main screen.
+    out.sort_by_key(|m| (!m.primary, m.x, m.y));
+    for (i, m) in out.iter_mut().enumerate() {
+        m.index = i;
+    }
+    out
+}
+
+/// Captures a rectangle of the desktop.
+pub fn capture(x: i32, y: i32, w: i32, h: i32) -> Result<image::RgbaImage> {
+    use windows::Win32::Graphics::Gdi::*;
+    if w <= 0 || h <= 0 {
+        bail!("empty capture area");
+    }
+    unsafe {
+        let screen = GetDC(None);
+        let mem = CreateCompatibleDC(Some(screen));
+        let bmp = CreateCompatibleBitmap(screen, w, h);
+        let old = SelectObject(mem, bmp.into());
+        let blit = BitBlt(mem, 0, 0, w, h, Some(screen), x, y, SRCCOPY | CAPTUREBLT);
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: w,
+                biHeight: -h, // top-down
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut buf = vec![0u8; (w * h * 4) as usize];
+        let lines = GetDIBits(mem, bmp, 0, h as u32, Some(buf.as_mut_ptr() as *mut _), &mut info, DIB_RGB_COLORS);
+        SelectObject(mem, old);
+        let _ = DeleteObject(bmp.into());
+        let _ = DeleteDC(mem);
+        ReleaseDC(None, screen);
+        blit.context("capturing the screen")?;
+        if lines == 0 {
+            bail!("could not read the screen pixels");
+        }
+        // BGRA -> RGBA, opaque.
+        for px in buf.chunks_exact_mut(4) {
+            px.swap(0, 2);
+            px[3] = 255;
+        }
+        image::RgbaImage::from_raw(w as u32, h as u32, buf).ok_or_else(|| anyhow!("bad capture buffer"))
+    }
+}
+
+fn hwnd(id: u64) -> HWND {
+    HWND(id as usize as *mut core::ffi::c_void)
+}
+
+fn window_title(h: HWND) -> String {
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowTextW;
+    let mut buf = [0u16; 512];
+    let n = unsafe { GetWindowTextW(h, &mut buf) };
+    String::from_utf16_lossy(&buf[..n.max(0) as usize])
+}
+
+fn process_name(h: HWND) -> String {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowThreadProcessId;
+    unsafe {
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(h, Some(&mut pid));
+        let Ok(proc_handle) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return String::new() };
+        let mut buf = [0u16; 1024];
+        let mut len = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(proc_handle, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut len).is_ok();
+        let _ = CloseHandle(proc_handle);
+        if !ok {
+            return String::new();
+        }
+        let full = String::from_utf16_lossy(&buf[..len as usize]);
+        full.rsplit('\\').next().unwrap_or(&full).to_string()
+    }
+}
+
+fn is_cloaked(h: HWND) -> bool {
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    let mut cloaked = 0u32;
+    unsafe { DwmGetWindowAttribute(h, DWMWA_CLOAKED, &mut cloaked as *mut _ as *mut _, 4).is_ok() && cloaked != 0 }
+}
+
+fn monitor_index(r: &RECT, mons: &[Monitor]) -> usize {
+    let cx = (r.left + r.right) / 2;
+    let cy = (r.top + r.bottom) / 2;
+    mons.iter()
+        .find(|m| cx >= m.x && cx < m.x + m.width && cy >= m.y && cy < m.y + m.height)
+        .map(|m| m.index)
+        .unwrap_or(0)
+}
+
+/// Visible top-level application windows, front to back.
+pub fn list_windows() -> Vec<WindowInfo> {
+    use windows::core::BOOL;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    unsafe extern "system" fn cb(h: HWND, data: LPARAM) -> BOOL {
+        let out = unsafe { &mut *(data.0 as *mut Vec<HWND>) };
+        out.push(h);
+        true.into()
+    }
+    let mut handles: Vec<HWND> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(Some(cb), LPARAM(&mut handles as *mut _ as isize));
+    }
+    let mons = monitors();
+    let mut out = Vec::new();
+    for h in handles {
+        unsafe {
+            if !IsWindowVisible(h).as_bool() || is_cloaked(h) {
+                continue;
+            }
+            // Skip owned windows (dialogs, tooltips) and tool windows.
+            if GetWindow(h, GW_OWNER).map(|o| !o.0.is_null()).unwrap_or(false) {
+                continue;
+            }
+            let ex = GetWindowLongW(h, GWL_EXSTYLE) as u32;
+            if ex & WS_EX_TOOLWINDOW.0 != 0 {
+                continue;
+            }
+            let title = window_title(h);
+            if title.is_empty() {
+                continue;
+            }
+            let mut r = RECT::default();
+            let _ = GetWindowRect(h, &mut r);
+            let state = if IsIconic(h).as_bool() {
+                "minimized"
+            } else if IsZoomed(h).as_bool() {
+                "maximized"
+            } else {
+                "normal"
+            };
+            out.push(WindowInfo {
+                id: h.0 as usize as u64,
+                title,
+                process: process_name(h),
+                x: r.left,
+                y: r.top,
+                width: r.right - r.left,
+                height: r.bottom - r.top,
+                monitor: monitor_index(&r, &mons),
+                state: state.into(),
+            });
+        }
+    }
+    out
+}
+
+/// Brings a window to the front. Windows only lets the foreground app do
+/// that, so first tap Alt (the standard workaround).
+fn focus(h: HWND) {
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    unsafe {
+        if IsIconic(h).as_bool() {
+            let _ = ShowWindow(h, SW_RESTORE);
+        }
+        let _ = input_blocking(InputCmd::Key { key: "alt".into(), modifiers: vec![] });
+        let _ = SetForegroundWindow(h);
+        let _ = BringWindowToTop(h);
+    }
+}
+
+/// `action`: focus, maximize, minimize, restore, close, or move (to `monitor`, maximized).
+pub fn window_action(id: u64, action: &str, monitor: Option<usize>) -> Result<()> {
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    let h = hwnd(id);
+    if !list_windows().iter().any(|w| w.id == id) {
+        bail!("no window with id {id}; call list_windows again");
+    }
+    unsafe {
+        match action {
+            "focus" => focus(h),
+            "maximize" => {
+                let _ = ShowWindow(h, SW_MAXIMIZE);
+                focus(h);
+            }
+            "minimize" => {
+                let _ = ShowWindow(h, SW_MINIMIZE);
+            }
+            "restore" => {
+                let _ = ShowWindow(h, SW_RESTORE);
+                focus(h);
+            }
+            "close" => PostMessageW(Some(h), WM_CLOSE, Default::default(), Default::default())?,
+            "move" => {
+                let mons = monitors();
+                let target = monitor.unwrap_or(0);
+                let m = mons.get(target).ok_or_else(|| anyhow!("no monitor {target}; there are {}", mons.len()))?;
+                // A maximized window must be restored before it can move.
+                let _ = ShowWindow(h, SW_RESTORE);
+                SetWindowPos(h, None, m.x + 40, m.y + 40, m.width * 3 / 4, m.height * 3 / 4, SWP_NOZORDER | SWP_NOACTIVATE)?;
+                let _ = ShowWindow(h, SW_MAXIMIZE);
+                focus(h);
+            }
+            other => bail!("unknown window action {other}"),
+        }
+    }
+    Ok(())
+}
+
+pub fn set_cursor(x: i32, y: i32) -> Result<()> {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::SetCursorPos(x, y).context("moving the cursor") }
+}
+
+/// Runs an input event and waits for it to finish.
+pub fn input_blocking(cmd: InputCmd) -> Result<()> {
+    let (tx, rx) = mpsc::channel();
+    input_thread()
+        .lock()
+        .unwrap()
+        .send((cmd, tx))
+        .map_err(|_| anyhow!("input thread stopped"))?;
+    rx.recv().map_err(|_| anyhow!("input thread stopped"))?
+}
+
+/// Opens an app, file, folder or URL, with optional arguments.
+pub fn launch(target: &str, args: Option<&str>) -> Result<()> {
+    use windows::core::{w, HSTRING};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    com_init();
+    let file = HSTRING::from(target);
+    let params = args.map(HSTRING::from);
+    let result = unsafe {
+        match &params {
+            Some(p) => ShellExecuteW(None, w!("open"), &file, p, None, SW_SHOWNORMAL),
+            None => ShellExecuteW(None, w!("open"), &file, None, None, SW_SHOWNORMAL),
+        }
+    };
+    if result.0 as usize > 32 {
+        Ok(())
+    } else {
+        bail!("could not open {target} (error {})", result.0 as usize)
+    }
+}

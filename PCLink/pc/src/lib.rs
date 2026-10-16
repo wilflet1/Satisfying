@@ -14,3 +14,4 @@ pub mod claude;
 pub mod client;
 pub mod mcp;
 pub mod update;
+pub mod tasks;

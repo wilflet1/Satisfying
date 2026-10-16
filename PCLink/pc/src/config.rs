@@ -90,6 +90,13 @@ pub struct ClaudeConfig {
     /// How long a permission prompt waits for an answer on the phone before
     /// falling back to the normal prompt on the PC.
     pub ask_timeout_secs: u64,
+    /// Tasks sent from the phone ("Claude, do X on my PC"):
+    /// model alias or full model name.
+    pub task_model: String,
+    /// Folder tasks run in (default: your home folder).
+    pub task_dir: Option<PathBuf>,
+    /// Path to the `claude` CLI if it isn't found automatically.
+    pub cli: Option<PathBuf>,
 }
 
 impl Default for ClaudeConfig {
@@ -99,6 +106,9 @@ impl Default for ClaudeConfig {
             notify: "away".into(),
             away_after_secs: 60,
             ask_timeout_secs: 300,
+            task_model: "opus".into(),
+            task_dir: None,
+            cli: None,
         }
     }
 }

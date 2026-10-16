@@ -43,6 +43,10 @@ pub fn router(agent: Arc<Agent>) -> Router {
         .route("/activity", get(activity))
         .route("/open_inbox", post(open_inbox))
         .route("/update", post(update))
+        .route("/tasks", get(tasks_list).post(tasks_start))
+        .route("/tasks/get", get(tasks_get))
+        .route("/tasks/stop", post(tasks_stop))
+        .route("/tasks/approve", post(tasks_approve))
         .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(agent.clone(), auth));
     Router::new()
@@ -399,4 +403,57 @@ async fn update(State(a): State<AppState>, Json(b): Json<UpdateBody>) -> ApiResu
             .map_err(anyhow::Error::from)??,
     };
     Ok(Json(json!({"message": msg})))
+}
+
+async fn tasks_list(State(a): State<AppState>) -> Json<Value> {
+    Json(json!(a.tasks.summaries()))
+}
+
+#[derive(Deserialize)]
+struct TaskStart {
+    prompt: String,
+    #[serde(default)]
+    resume: Option<u64>,
+    #[serde(default = "yes")]
+    ask: bool,
+}
+
+fn yes() -> bool {
+    true
+}
+
+async fn tasks_start(State(a): State<AppState>, Json(b): Json<TaskStart>) -> ApiResult {
+    let id = a.start_task(&b.prompt, b.resume, b.ask)?;
+    Ok(Json(json!({"id": id})))
+}
+
+async fn tasks_get(State(a): State<AppState>, Query(q): Query<HashMap<String, String>>) -> ApiResult {
+    let id = q.get("id").and_then(|v| v.parse().ok()).ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "missing id".into()))?;
+    let since = q.get("since").and_then(|v| v.parse().ok()).unwrap_or(0);
+    a.tasks
+        .get(id, since)
+        .map(Json)
+        .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, format!("no task {id}")))
+}
+
+#[derive(Deserialize)]
+struct IdNum {
+    id: u64,
+}
+
+async fn tasks_stop(State(a): State<AppState>, Json(b): Json<IdNum>) -> ApiResult {
+    Ok(Json(json!({"stopped": a.tasks.stop(b.id)})))
+}
+
+#[derive(Deserialize)]
+struct Approve {
+    task: u64,
+    tool_name: String,
+    #[serde(default)]
+    tool_input: Value,
+}
+
+/// Called by the task's PermissionRequest hook; answers with the hook output.
+async fn tasks_approve(State(a): State<AppState>, Json(b): Json<Approve>) -> Json<Value> {
+    Json(a.approve_task_tool(b.task, &b.tool_name, &b.tool_input).await)
 }

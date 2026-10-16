@@ -79,6 +79,7 @@ pub struct Agent {
     pub clip_last: Mutex<String>,
     pub mac: Option<String>,
     job_counter: AtomicU64,
+    pub tasks: crate::tasks::Tasks,
     /// Called whenever something the tray cares about changes.
     pub on_change: Mutex<Option<Box<dyn Fn() + Send + Sync>>>,
 }
@@ -105,6 +106,7 @@ impl Agent {
             clip_last: Mutex::new(String::new()),
             mac,
             job_counter: AtomicU64::new(1),
+            tasks: Default::default(),
             on_change: Mutex::new(None),
         })
     }
@@ -503,6 +505,24 @@ impl Agent {
                 let on = args["on"].as_bool().unwrap_or(true);
                 self.set_speaker(on).await.map(|on| json!({"on": on}))
             }
+            "tasks.list" => Ok(json!(self.tasks.summaries())),
+            "tasks.get" => {
+                let id = args["id"].as_u64().ok_or_else(|| anyhow!("missing id"))?;
+                let since = args["since"].as_u64().unwrap_or(0) as usize;
+                self.tasks.get(id, since).ok_or_else(|| anyhow!("no task {id}"))
+            }
+            "tasks.start" => {
+                let id = self.start_task(
+                    &req_str(&args, "prompt")?,
+                    args["resume"].as_u64(),
+                    args["ask"].as_bool().unwrap_or(true),
+                )?;
+                Ok(json!({"id": id}))
+            }
+            "tasks.stop" => {
+                let id = args["id"].as_u64().ok_or_else(|| anyhow!("missing id"))?;
+                Ok(json!({"stopped": self.tasks.stop(id)}))
+            }
             "notify" => {
                 platform::notify(
                     args["title"].as_str().unwrap_or("Phone"),
@@ -829,6 +849,18 @@ pub fn tail(text: &str, max: usize) -> String {
         start += 1;
     }
     format!("…{}", &text[start..])
+}
+
+/// The first `max` bytes of `text` (on a char boundary), with "…" if cut.
+pub fn head(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
 }
 
 pub fn url_encode(s: &str) -> String {

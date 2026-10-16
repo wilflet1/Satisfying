@@ -44,7 +44,24 @@ fn project_name(input: &Value) -> String {
 
 pub fn run_hook(event: &str) -> Result<()> {
     let input = read_stdin_json();
+    let task = std::env::var(crate::tasks::TASK_ENV).ok().and_then(|v| v.parse::<u64>().ok());
     let Ok(client) = Client::new() else { return Ok(()) };
+    if event == "task-permission" {
+        let Some(task) = task else { return Ok(()) };
+        let res = client.post(
+            "/api/tasks/approve",
+            json!({"task": task, "tool_name": input["tool_name"], "tool_input": input["tool_input"]}),
+            Duration::from_secs(3600),
+        );
+        if let Ok(out) = res {
+            println!("{out}");
+        }
+        return Ok(());
+    }
+    // Inside a phone task, the task's own hook and feed handle everything.
+    if task.is_some() {
+        return Ok(());
+    }
     let Ok(status) = client.get("/api/status") else { return Ok(()) };
     let cfg = Config::load_or_create().unwrap_or_default();
     let c = &cfg.claude;

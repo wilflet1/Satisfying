@@ -27,6 +27,33 @@ pub enum InputCmd {
     Key { key: String, modifiers: Vec<String> },
 }
 
+/// A display, in virtual-desktop pixels.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Monitor {
+    pub index: usize,
+    pub primary: bool,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+}
+
+/// A top-level window on the desktop.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WindowInfo {
+    /// Opaque id to pass back to window actions.
+    pub id: u64,
+    pub title: String,
+    pub process: String,
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub monitor: usize,
+    /// "normal", "maximized" or "minimized".
+    pub state: String,
+}
+
 pub fn clipboard_get_text() -> Option<String> {
     arboard::Clipboard::new().ok()?.get_text().ok()
 }

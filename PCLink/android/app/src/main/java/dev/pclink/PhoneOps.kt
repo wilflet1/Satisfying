@@ -77,7 +77,9 @@ class PhoneOps(private val ctx: Context) {
             JSONObject()
         }
         "notify" -> {
-            notifyUser(args.optString("title", "PC"), args.optString("text"), App.channelFor(args.str("channel")), args.str("url"))
+            // Task results open that task in the Claude screen.
+            val task = if (args.has("task")) ClaudeActivity.intent(ctx, args.optLong("task")) else null
+            notifyUser(args.optString("title", "PC"), args.optString("text"), App.channelFor(args.str("channel")), args.str("url"), task)
             JSONObject()
         }
         "ask" -> ask(args)
@@ -120,6 +122,7 @@ class PhoneOps(private val ctx: Context) {
     fun onEvent(ev: String, data: JSONObject) {
         when (ev) {
             "clip.changed" -> if (prefs.syncClipboard) setClipboard(data.optString("text"))
+            "task.event" -> ClaudeActivity.dispatch(data)
             "action.done" -> {
                 val ok = data.optBoolean("ok")
                 val title = "${if (ok) "✅" else "❌"} ${data.optString("name")} (exit ${data.optInt("code")})"

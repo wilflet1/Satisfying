@@ -48,6 +48,13 @@
         </activity>
 
         <activity
+            android:name=".ClaudeActivity"
+            android:exported="false"
+            android:label="Claude"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".PcFilesActivity"
             android:exported="false"
             android:label="PC files" />

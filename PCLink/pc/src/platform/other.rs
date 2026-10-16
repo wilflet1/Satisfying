@@ -70,3 +70,42 @@ pub fn start_capture(
 pub fn idle_secs() -> Option<u64> {
     None
 }
+
+// ---------------------------------------------------------------------------
+// Desktop control (Claude's PC tools) is Windows-only.
+
+use super::{Monitor, WindowInfo};
+
+fn windows_only<T>() -> Result<T> {
+    bail!("controlling the desktop is only supported on Windows")
+}
+
+pub fn dpi_aware() {}
+
+pub fn monitors() -> Vec<Monitor> {
+    vec![]
+}
+
+pub fn capture(_x: i32, _y: i32, _w: i32, _h: i32) -> Result<image::RgbaImage> {
+    windows_only()
+}
+
+pub fn list_windows() -> Vec<WindowInfo> {
+    vec![]
+}
+
+pub fn window_action(_id: u64, _action: &str, _monitor: Option<usize>) -> Result<()> {
+    windows_only()
+}
+
+pub fn set_cursor(_x: i32, _y: i32) -> Result<()> {
+    windows_only()
+}
+
+pub fn input_blocking(_cmd: InputCmd) -> Result<()> {
+    windows_only()
+}
+
+pub fn launch(_target: &str, _args: Option<&str>) -> Result<()> {
+    windows_only()
+}

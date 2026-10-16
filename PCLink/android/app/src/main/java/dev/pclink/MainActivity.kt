@@ -196,6 +196,13 @@ class MainActivity : Activity() {
         speaker.addView(Ui.text(this, "Also on the PC (Ctrl+Alt+P), in Quick Settings and in the PCLink notification.", 13f, muted = true))
         root.addView(speaker)
 
+        val claude = Ui.card(this)
+        claude.addView(Ui.button(this, "🤖  Ask Claude to do something on your PC", primary = true) {
+            startActivity(ClaudeActivity.intent(this))
+        })
+        claude.addView(Ui.text(this, "Claude Code runs on the PC and can use its screen, apps and command line.", 13f, muted = true))
+        root.addView(claude)
+
         val quick = Ui.card(this, "Quick actions")
         quick.addView(
             Ui.grid(this, listOf(

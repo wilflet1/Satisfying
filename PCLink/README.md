@@ -57,6 +57,27 @@ your existing ones, with a backup) and registers the MCP server.
 - **Dictate prompts:** open *Touchpad & keys* on the phone, tap the keyboard's mic, then
   *Send + Enter*; the text is typed into whatever window has focus (e.g. Claude Code).
 
+### Claude on your PC (tasks from the phone)
+Tap **🤖 Ask Claude to do something on your PC** on the phone (or use the dashboard's
+*Claude* tab), type or dictate a request, and Claude Code runs it on the PC with Opus:
+
+- "Move my browser to the main screen and fullscreen the YouTube video"
+- "Open Blender, set up the Blender MCP server and start making models with my model-factory skill"
+
+Claude gets PC tools through PCLink's MCP server: `screenshot`, `list_monitors`,
+`list_windows`, `window_action` (focus, maximize, move to a monitor…), `click`,
+`move_mouse`, `drag`, `scroll`, `type_text`, `key`, `launch` and `wait`, alongside its
+usual shell and file tools and your own skills and MCP servers. You watch progress live
+on the phone, stop it, or send a follow-up that continues the same conversation; a
+notification arrives when it's done.
+
+Safety: with *Ask me before…* on (the default), every command or file change Claude Code
+would normally ask about goes to your phone as **Allow / Allow all for this task / Deny**;
+no answer means deny. Screen and phone tools run without asking. Turn *Ask* off for a
+task only when you're happy for Claude to act on its own. Needs Claude Code installed and
+signed in on the PC (`claude` on PATH, or `claude.cli` in config.toml); choose the model
+with `claude.task_model` (default `opus`) and the starting folder with `claude.task_dir`.
+
 ### Dev control panel
 - Define buttons in `config.toml` under `[[actions]]`; they show on the phone and the
   dashboard. Output comes back as a phone notification.

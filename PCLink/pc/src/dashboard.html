@@ -57,6 +57,20 @@ td.size { color: var(--muted); text-align: right; white-space: nowrap; }
 #toast.show { opacity: 1; }
 #drop.over { outline: 2px dashed var(--accent); }
 ol { padding-left: 20px; }
+[hidden] { display: none !important; }
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .grid2 { grid-template-columns: minmax(0, 1fr); } }
+label.check { display: flex; gap: 8px; align-items: flex-start; }
+label.check input { margin-top: 3px; }
+textarea { font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); width: 100%; resize: vertical; }
+.feed { display: flex; flex-direction: column; gap: 6px; max-height: 560px; overflow: auto; }
+.bubble { padding: 10px 12px; border-radius: 12px; background: var(--chip); white-space: pre-wrap; }
+.bubble.you { background: var(--accent); color: var(--accent-text); margin-left: 40px; }
+.evline { font-size: 13px; color: var(--muted); }
+.evline.tool { font-family: ui-monospace, Consolas, monospace; }
+.evline.error { color: var(--bad); }
+.task-row { padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
+.task-row:hover b { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -66,6 +80,7 @@ ol { padding-left: 20px; }
   <span id="phoneLine">Loading…</span>
   <nav>
     <a href="#home" data-page="home">Home</a>
+    <a href="#claude" data-page="claude">Claude</a>
     <a href="#files" data-page="files">Phone files</a>
     <a href="#notifs" data-page="notifs">Notifications</a>
     <a href="#pair" data-page="pair">Pair</a>
@@ -108,6 +123,34 @@ ol { padding-left: 20px; }
     <div class="card" style="margin-top:16px">
       <h2>Activity</h2>
       <div class="log" id="activity"></div>
+    </div>
+  </section>
+
+  <section id="claude">
+    <div class="grid2">
+      <div class="stack">
+        <div class="card stack">
+          <h2>Ask Claude to do something on this PC</h2>
+          <div class="muted">Runs Claude Code here. It can use the screen, apps and command line. Approvals go to your phone.</div>
+          <textarea id="taskPrompt" rows="5" placeholder="e.g. Move my browser to the main screen and fullscreen the YouTube video"></textarea>
+          <label class="check muted"><input type="checkbox" id="taskAsk" checked><span>Ask on my phone before it runs commands or changes files</span></label>
+          <button class="primary" id="taskRun">Run</button>
+        </div>
+        <div class="card stack">
+          <h2>Recent tasks</h2>
+          <div id="taskList" class="muted">No tasks yet.</div>
+        </div>
+      </div>
+      <div class="card stack" id="taskView">
+        <h2 id="taskTitle">Task</h2>
+        <div id="taskStatus" class="muted">Pick a task, or run a new one.</div>
+        <div id="taskEvents" class="feed"></div>
+        <div class="row" id="taskActions" hidden>
+          <input type="text" id="taskFollow" placeholder="Follow up…" style="flex:1">
+          <button id="taskSend">Send</button>
+          <button id="taskStop">Stop</button>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -216,6 +259,7 @@ function show(page) {
   document.querySelectorAll("nav a").forEach(a => a.classList.toggle("active", a.dataset.page === page));
   if (page === "files" && phonePath === null) listPhone(null);
   if (page === "notifs") loadNotifs();
+  if (page === "claude") loadTasks();
   if (page === "pair" && !status.connected && $("pairOut").hidden) newCode();
 }
 function route() { show((location.hash.slice(1).split("&")[0]) || "home"); }
@@ -324,11 +368,63 @@ $("updateBtn").onclick = async () => {
   if (r && r.message.startsWith("Installing")) setTimeout(() => location.reload(), 9000);
 };
 
+// ---- Claude tasks
+let taskId = null, taskSeq = 0;
+const statusLabel = (s) => ({ running: "⏳ Working", done: "✅ Done", stopped: "⏹ Stopped", failed: "❌ Failed" }[s] || s);
+async function loadTasks() {
+  const list = await api("/tasks").catch(() => []);
+  $("taskList").innerHTML = list.map((t) => `<div class="task-row" data-task="${t.id}"><b>${esc(t.prompt.slice(0, 120))}</b><div class="muted">${statusLabel(t.status)} · ${new Date(t.created).toLocaleTimeString()}${t.cost_usd ? ` · $${t.cost_usd.toFixed(2)}` : ""}</div></div>`).join("") || "No tasks yet.";
+  document.querySelectorAll("[data-task]").forEach((r) => (r.onclick = () => openTask(Number(r.dataset.task))));
+}
+function openTask(id) {
+  taskId = id; taskSeq = 0;
+  $("taskEvents").innerHTML = "";
+  refreshTask();
+}
+async function refreshTask() {
+  if (taskId == null) return;
+  const r = await api(`/tasks/get?id=${taskId}&since=${taskSeq}`).catch(() => null);
+  if (!r) return;
+  const t = r.task;
+  if (taskSeq === 0) {
+    $("taskTitle").textContent = `Task ${t.id}`;
+    $("taskEvents").innerHTML = `<div class="bubble you">${esc(t.prompt)}</div>`;
+  }
+  for (const e of r.events) {
+    taskSeq = e.seq + 1;
+    const html = e.kind === "text" || e.kind === "result"
+      ? `<div class="bubble">${esc(e.text)}</div>`
+      : `<div class="evline ${e.kind}">${e.kind === "tool" ? "▸ " : e.kind === "approval" ? "🔐 " : e.kind === "error" ? "⚠ " : ""}${esc(e.text)}</div>`;
+    $("taskEvents").insertAdjacentHTML("beforeend", html);
+  }
+  if (r.events.length) $("taskEvents").scrollTop = $("taskEvents").scrollHeight;
+  $("taskStatus").textContent = statusLabel(t.status) + (t.cost_usd ? ` · $${t.cost_usd.toFixed(2)}` : "");
+  $("taskActions").hidden = false;
+  $("taskStop").hidden = t.status !== "running";
+  $("taskSend").disabled = t.status === "running";
+}
+async function runTask(prompt, resume) {
+  const r = await run(() => api("/tasks", { prompt, resume, ask: $("taskAsk").checked }));
+  if (r) { openTask(r.id); loadTasks(); }
+  return r;
+}
+$("taskRun").onclick = async () => {
+  const p = $("taskPrompt").value.trim();
+  if (!p) return toast("Type what Claude should do");
+  if (await runTask(p, null)) $("taskPrompt").value = "";
+};
+$("taskSend").onclick = async () => {
+  const p = $("taskFollow").value.trim();
+  if (p && taskId != null && (await runTask(p, taskId))) $("taskFollow").value = "";
+};
+$("taskStop").onclick = () => run(() => api("/tasks/stop", { id: taskId }), "Stopping");
+
 if (!TOKEN) {
   document.querySelector("main").innerHTML = `<div class="card">Open the dashboard from the PCLink tray icon (or run <code>pclink dashboard</code>).</div>`;
 } else {
   route(); refresh(); setInterval(refresh, 3000);
   setInterval(() => { if ($("notifs").classList.contains("active")) loadNotifs(true); }, 5000);
+  setInterval(() => { if ($("claude").classList.contains("active")) { refreshTask(); loadTasks(); } }, 2000);
 }
 </script>
 </body>

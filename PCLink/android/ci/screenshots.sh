@@ -58,7 +58,14 @@ tap "PC files"
 shot 07-pc-files-offline
 adb shell input keyevent KEYCODE_BACK
 
-# 5. Large text and dark mode.
+# 5. The Claude screen.
+start
+tap "Ask Claude"
+sleep 9
+shot 12-claude
+adb shell input keyevent KEYCODE_BACK
+
+# 6. Large text and dark mode.
 adb shell settings put system font_scale 1.3
 adb shell am force-stop $PKG
 start
