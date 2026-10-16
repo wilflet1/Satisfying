@@ -208,7 +208,7 @@ class MainActivity : Activity() {
                 Ui.button(this, "⬆ Send files") { pickFiles() },
                 Ui.button(this, "🔒 Lock PC") { sys("lock") },
                 Ui.button(this, "🌙 Sleep PC") { confirm("Put the PC to sleep?") { sys("sleep") } },
-                Ui.button(this, "⏻ Shut down") { confirm("Shut the PC down?") { sys("shutdown") } },
+                Ui.button(this, "🔌 Shut down") { confirm("Shut the PC down?") { sys("shutdown") } },
                 Ui.button(this, "⏰ Wake PC") { wakeOnLan() },
             )),
         )
@@ -219,7 +219,7 @@ class MainActivity : Activity() {
                 Ui.button(this, "⏭") { media("next") },
                 Ui.button(this, "🔉") { media("vol_down") },
                 Ui.button(this, "🔊") { media("vol_up") },
-            ), perRow = 5),
+            ).onEach { (it as android.widget.Button).textSize = 20f }, perRow = 5),
         )
         root.addView(quick)
 

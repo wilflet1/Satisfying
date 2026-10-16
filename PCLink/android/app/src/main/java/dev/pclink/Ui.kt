@@ -62,7 +62,8 @@ object Ui {
         val scroll = ScrollView(activity).apply {
             setBackgroundColor(bgColor(activity))
             isFillViewport = true
-            clipToPadding = false
+            // Clip at the padding so scrolled content doesn't slide under the status bar.
+            clipToPadding = true
             addView(col)
         }
         fitSystemBars(scroll)

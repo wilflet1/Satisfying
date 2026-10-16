@@ -10,7 +10,8 @@ adb install -r -g app/build/outputs/apk/debug/app-debug.apk
 shot() { sleep 2; adb exec-out screencap -p > "shots/$1.png"; echo "shot $1"; }
 ui() { adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml ui.xml > /dev/null; }
 tap() { ui; python3 ci/tap.py "$1"; }
-start() { adb shell am start -W -n "$PKG/.MainActivity" > /dev/null; sleep 3; }
+# Force-stop first so every screen starts from the top.
+start() { adb shell am force-stop $PKG; adb shell am start -W -n "$PKG/.MainActivity" > /dev/null; sleep 3; }
 scroll_down() { adb shell input swipe 540 1900 540 500 400; }
 
 # 1. First launch: the pairing screen.
