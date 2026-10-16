@@ -42,7 +42,20 @@ pub struct TaskSummary {
     pub cost_usd: f64,
     pub session_id: Option<String>,
     pub last: Option<String>,
+    /// Permission the task is waiting for (the oldest, if several).
+    pub pending: Option<Pending>,
 }
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Pending {
+    pub approval: u64,
+    pub tool: String,
+    pub question: String,
+    pub detail: String,
+    pub options: Vec<String>,
+}
+
+pub const APPROVAL_OPTIONS: [&str; 3] = ["Allow", "Allow all for this task", "Deny"];
 
 struct Task {
     summary: TaskSummary,
@@ -50,12 +63,15 @@ struct Task {
     /// Tools the user allowed for the rest of this task.
     allow_all: bool,
     kill: Option<tokio::sync::oneshot::Sender<()>>,
+    /// Open approvals (Claude can ask several at once), oldest first.
+    approvals: Vec<(Pending, tokio::sync::oneshot::Sender<String>)>,
 }
 
 #[derive(Default)]
 pub struct Tasks {
     list: Mutex<Vec<Task>>,
     next: AtomicU64,
+    next_approval: AtomicU64,
 }
 
 impl Tasks {
@@ -77,6 +93,38 @@ impl Tasks {
     pub fn stop(&self, id: u64) -> bool {
         self.with(id, |t| t.kill.take().map(|k| k.send(()).is_ok()).unwrap_or(false))
             .unwrap_or(false)
+    }
+
+    /// Answers one of the task's approvals (the oldest if `approval` is
+    /// None), from the dashboard or the phone's chat. False if none matched.
+    pub fn answer(&self, id: u64, approval: Option<u64>, option: &str) -> bool {
+        self.with(id, |t| {
+            let i = t.approvals.iter().position(|(p, _)| approval.is_none_or(|a| a == p.approval))?;
+            let (_, tx) = t.approvals.remove(i);
+            t.summary.pending = t.approvals.first().map(|(p, _)| p.clone());
+            Some(tx.send(option.to_string()).is_ok())
+        })
+        .flatten()
+        .unwrap_or(false)
+    }
+
+    /// Allows every open approval of the task (after "Allow all").
+    fn allow_open(&self, id: u64) {
+        let open = self.with(id, |t| {
+            t.summary.pending = None;
+            std::mem::take(&mut t.approvals)
+        });
+        for (_, tx) in open.unwrap_or_default() {
+            let _ = tx.send("Allow".into());
+        }
+    }
+
+    /// Drops an approval that was answered some other way.
+    fn close_approval(&self, id: u64, approval: u64) {
+        self.with(id, |t| {
+            t.approvals.retain(|(p, _)| p.approval != approval);
+            t.summary.pending = t.approvals.first().map(|(p, _)| p.clone());
+        });
     }
 
     pub fn allow_all(&self, id: u64) -> bool {
@@ -201,10 +249,12 @@ impl Agent {
                     cost_usd: 0.0,
                     session_id: resume_session.clone(),
                     last: None,
+                    pending: None,
                 },
                 events: vec![],
                 allow_all: !ask,
                 kill: Some(kill_tx),
+                approvals: vec![],
             });
             let excess = list.len().saturating_sub(MAX_TASKS);
             list.drain(..excess);
@@ -238,7 +288,8 @@ impl Agent {
         tokio::spawn(async move {
             let mut lines = BufReader::new(stdout).lines();
             let mut finished = false;
-            let mut kill_rx = kill_rx;
+            // Polled only until it resolves: polling a finished oneshot panics.
+            let mut kill_rx = Some(kill_rx);
             loop {
                 tokio::select! {
                     line = lines.next_line() => match line {
@@ -249,9 +300,12 @@ impl Agent {
                         }
                         _ => break,
                     },
-                    // Only a real stop request; the sender being dropped when
-                    // the task finishes disables this branch.
-                    Ok(()) = &mut kill_rx => {
+                    stop = async { kill_rx.as_mut().expect("guarded").await }, if kill_rx.is_some() => {
+                        kill_rx = None;
+                        // The sender is dropped (not used) when the task finishes.
+                        if stop.is_err() {
+                            continue;
+                        }
                         let _ = child.start_kill();
                         me.finish_task(id, "stopped", "Stopped from the phone.".into());
                         let _ = child.wait().await;
@@ -342,6 +396,8 @@ impl Agent {
             .with(id, |t| {
                 t.summary.status = status.to_string();
                 t.kill = None;
+                t.approvals.clear();
+                t.summary.pending = None;
                 t.summary.prompt.clone()
             })
             .unwrap_or_default();
@@ -402,28 +458,79 @@ impl Agent {
         if self.tasks.allow_all(id) {
             return crate::claude::permission_output(Some("Allow")).unwrap_or_default();
         }
-        let Some(link) = self.current_link() else {
-            self.task_event(id, "error", &format!("Couldn't ask you about {tool}: phone not connected"));
-            return deny("The user's phone isn't connected, so this action couldn't be approved. Find another way or finish without it.");
-        };
-        self.task_event(id, "approval", &format!("Waiting for your OK: {tool}"));
+        let question = format!("Allow {tool}?");
+        let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+        let approval = self.tasks.next_approval.fetch_add(1, Ordering::Relaxed) + 1;
+        let running = self
+            .tasks
+            .with(id, |t| {
+                let pending = Pending {
+                    approval,
+                    tool: tool.to_string(),
+                    question: question.clone(),
+                    detail: detail.clone(),
+                    options: APPROVAL_OPTIONS.iter().map(|s| s.to_string()).collect(),
+                };
+                t.approvals.push((pending, tx));
+                t.summary.pending = t.approvals.first().map(|(p, _)| p.clone());
+                t.summary.status == "running"
+            })
+            .unwrap_or(false);
+        if !running {
+            return deny("The task is no longer running.");
+        }
+        let link = self.current_link();
+        self.task_event(
+            id,
+            "approval",
+            &if link.is_some() {
+                format!("Waiting for your OK: {tool}")
+            } else {
+                format!("Waiting for your OK on the PC dashboard: {tool} (phone not connected)")
+            },
+        );
         let prompt = self.tasks.with(id, |t| t.summary.prompt.clone()).unwrap_or_default();
         let timeout = self.cfg.claude.ask_timeout_secs.max(30);
-        let res = link
-            .request(
-                "ask",
-                json!({
-                    "title": format!("Claude task: {}", crate::agent::head(&prompt, 60)),
-                    "question": format!("Allow {tool}?"),
-                    "detail": detail,
-                    "options": ["Allow", "Allow all for this task", "Deny"],
-                    "timeout_ms": timeout * 1000,
-                    "channel": "claude",
-                }),
-                Duration::from_secs(timeout + 5),
-            )
-            .await;
-        let answer = res.ok().and_then(|v| v["answer"].as_str().map(str::to_string));
+        // Asked on the phone (notification + the task's chat) and on the
+        // dashboard at once; whichever answers first wins.
+        let phone = async {
+            let Some(link) = &link else { return std::future::pending().await };
+            let res = link
+                .request(
+                    "ask",
+                    json!({
+                        "title": format!("Claude task: {}", crate::agent::head(&prompt, 60)),
+                        "question": question,
+                        "detail": detail,
+                        "options": APPROVAL_OPTIONS,
+                        "timeout_ms": timeout * 1000,
+                        "channel": "claude",
+                        "task": id,
+                        "approval": approval,
+                    }),
+                    Duration::from_secs(timeout + 5),
+                )
+                .await;
+            res.ok().and_then(|v| v["answer"].as_str().map(str::to_string))
+        };
+        let (answer, from_phone) = tokio::select! {
+            a = phone => (a, true),
+            a = rx => (a.ok(), false),
+            _ = tokio::time::sleep(Duration::from_secs(timeout + 5)) => (None, false),
+        };
+        self.tasks.close_approval(id, approval);
+        if !from_phone {
+            // Take the question off the phone.
+            if let Some(l) = link {
+                tokio::spawn(async move {
+                    let _ = l.event("ask.cancel", json!({"task": id, "approval": approval})).await;
+                });
+            }
+        }
+        let still_running = self.tasks.with(id, |t| t.summary.status == "running").unwrap_or(false);
+        if !still_running {
+            return deny("The task was stopped.");
+        }
         match answer.as_deref() {
             Some("Allow") => {
                 self.task_event(id, "approval", &format!("You allowed {tool}"));
@@ -431,6 +538,7 @@ impl Agent {
             }
             Some("Allow all for this task") => {
                 self.tasks.set_allow_all(id);
+                self.tasks.allow_open(id);
                 self.task_event(id, "approval", "You allowed everything for this task");
                 crate::claude::permission_output(Some("Allow")).unwrap_or_default()
             }

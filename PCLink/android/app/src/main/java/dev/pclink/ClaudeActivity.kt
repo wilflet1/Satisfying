@@ -35,6 +35,9 @@ class ClaudeActivity : Activity() {
     private var statusText: TextView? = null
     private var stopButton: View? = null
     private var followUp: LinearLayout? = null
+    private var approvalBox: LinearLayout? = null
+    /** Approval currently shown, so polling doesn't rebuild it. */
+    private var shownApproval: String? = null
     private var draft = ""
     private var ask = true
     private val poll = object : Runnable {
@@ -86,6 +89,8 @@ class ClaudeActivity : Activity() {
         statusText = null
         stopButton = null
         followUp = null
+        approvalBox = null
+        shownApproval = null
         val id = taskId
         if (id == null) renderCompose() else renderTask(id)
     }
@@ -163,7 +168,8 @@ class ClaudeActivity : Activity() {
                 val fmt = DateFormat.getTimeInstance(DateFormat.SHORT)
                 for (i in 0 until list.length()) {
                     val t = list.getJSONObject(i)
-                    val detail = "${statusLabel(t.optString("status"))} · ${fmt.format(Date(t.optLong("created")))}" +
+                    val label = if (t.has("pending") && !t.isNull("pending")) "🔐 Needs your OK" else statusLabel(t.optString("status"))
+                    val detail = "$label · ${fmt.format(Date(t.optLong("created")))}" +
                         (t.optDouble("cost_usd", 0.0).takeIf { it > 0 }?.let { " · $%.2f".format(it) } ?: "")
                     box.addView(Ui.listRow(this, t.optString("prompt"), detail) { open(t.getLong("id")) })
                 }
@@ -203,6 +209,9 @@ class ClaudeActivity : Activity() {
         val box = Ui.column(this).apply { setPadding(0, Ui.dp(this@ClaudeActivity, 8), 0, 0) }
         eventsBox = box
         root.addView(box)
+        val approval = Ui.column(this)
+        approvalBox = approval
+        root.addView(approval)
         val stop = Ui.button(this, "■  Stop") {
             Ui.background(applicationContext) {
                 LinkService.require().request("tasks.stop", jsonOf("id" to id))
@@ -244,6 +253,7 @@ class ClaudeActivity : Activity() {
                 if (since == 0) showPrompt(task.optString("prompt"))
                 showEvents(res.optJSONArray("events") ?: JSONArray())
                 showStatus(task.optString("status"), task.optDouble("cost_usd", 0.0))
+                showApproval(id, task.optJSONObject("pending"))
             }
         }.start()
     }
@@ -283,6 +293,58 @@ class ClaudeActivity : Activity() {
         if (added) (root.parent as? ScrollView)?.let { s -> s.post { s.fullScroll(View.FOCUS_DOWN) } }
     }
 
+    /** "Allow Bash?" with the answer buttons, right in the chat. */
+    private fun showApproval(id: Long, pending: JSONObject?) {
+        val box = approvalBox ?: return
+        val key = pending?.toString()
+        if (key == shownApproval) return
+        shownApproval = key
+        box.removeAllViews()
+        if (pending == null) return
+        val card = Ui.card(this)
+        card.background = GradientDrawable().apply {
+            cornerRadius = Ui.dp(this@ClaudeActivity, 14).toFloat()
+            setColor(Ui.cardColor(this@ClaudeActivity))
+            setStroke(Ui.dp(this@ClaudeActivity, 2), Ui.accent(this@ClaudeActivity))
+        }
+        card.addView(Ui.text(this, "🔐 " + pending.optString("question", "Allow this?"), 17f, bold = true))
+        pending.optString("detail").takeIf { it.isNotBlank() }?.let { detail ->
+            card.addView(Ui.text(this, detail, 13f, muted = true).apply {
+                typeface = Typeface.MONOSPACE
+                maxLines = 12
+                ellipsize = android.text.TextUtils.TruncateAt.END
+                setTextIsSelectable(true)
+                setPadding(0, Ui.dp(this@ClaudeActivity, 6), 0, Ui.dp(this@ClaudeActivity, 6))
+            })
+        }
+        val options = pending.optJSONArray("options") ?: JSONArray()
+        val buttons = (0 until options.length()).map { i ->
+            val opt = options.getString(i)
+            Ui.button(this, opt, primary = i == 0) { answer(id, pending.optLong("approval"), opt) }
+        }
+        // "Allow all for this task" is long: Allow + Deny on a row, it on its own.
+        val short = buttons.filterIndexed { i, _ -> options.getString(i).length <= 10 }
+        val long = buttons - short.toSet()
+        if (short.isNotEmpty()) card.addView(Ui.grid(this, short, short.size))
+        long.forEach { card.addView(Ui.grid(this, listOf(it), 1)) }
+        box.addView(card)
+        (root.parent as? ScrollView)?.let { s -> s.post { s.fullScroll(View.FOCUS_DOWN) } }
+    }
+
+    private fun answer(id: Long, approval: Long, option: String) {
+        approvalBox?.removeAllViews()
+        shownApproval = null
+        Thread {
+            try {
+                val res = LinkService.await(applicationContext).request("tasks.answer", jsonOf("id" to id, "approval" to approval, "option" to option))
+                if (!res.optBoolean("answered")) Ui.toast(this, "That question was already answered")
+            } catch (e: Exception) {
+                Ui.toast(this, e.message ?: "Couldn't send your answer")
+            }
+            runOnUiThread { if (taskId == id) refreshTask(id) }
+        }.start()
+    }
+
     private fun bubble(text: String, you: Boolean) = TextView(this).apply {
         this.text = text
         textSize = 15f
@@ -315,8 +377,11 @@ class ClaudeActivity : Activity() {
     private fun onTaskEvent(data: JSONObject) {
         val id = data.optLong("id")
         if (id != taskId) return
-        showEvents(JSONArray().put(data.getJSONObject("event")))
+        val event = data.getJSONObject("event")
+        showEvents(JSONArray().put(event))
         showStatus(data.optString("status"), 0.0)
+        // Fetch the pending question (or clear the answered one) right away.
+        if (event.optString("kind") == "approval" || data.optString("status") != "running") refreshTask(id)
     }
 
     companion object {

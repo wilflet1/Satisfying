@@ -71,6 +71,9 @@ textarea { font: inherit; padding: 10px; border: 1px solid var(--line); border-r
 .evline.error { color: var(--bad); }
 .task-row { padding: 8px 0; border-bottom: 1px solid var(--line); cursor: pointer; }
 .task-row:hover b { color: var(--accent); }
+.approve-card { border: 2px solid var(--accent); border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.approve-card pre { margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-word; max-height: 240px; overflow: auto; color: var(--muted); }
+.approve-card .row { flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -137,9 +140,9 @@ textarea { font: inherit; padding: 10px; border: 1px solid var(--line); border-r
       <div class="stack">
         <div class="card stack">
           <h2>Ask Claude to do something on this PC</h2>
-          <div class="muted">Runs Claude Code here. It can use the screen, apps and command line. Approvals go to your phone.</div>
+          <div class="muted">Runs Claude Code here. It can use the screen, apps and command line. Permission requests pop up here and on your phone.</div>
           <textarea id="taskPrompt" rows="5" placeholder="e.g. Move my browser to the main screen and fullscreen the YouTube video"></textarea>
-          <label class="check muted"><input type="checkbox" id="taskAsk" checked><span>Ask on my phone before it runs commands or changes files</span></label>
+          <label class="check muted"><input type="checkbox" id="taskAsk" checked><span>Ask me (here and on my phone) before it runs commands or changes files</span></label>
           <button class="primary" id="taskRun">Run</button>
         </div>
         <div class="card stack">
@@ -151,6 +154,7 @@ textarea { font: inherit; padding: 10px; border: 1px solid var(--line); border-r
         <h2 id="taskTitle">Task</h2>
         <div id="taskStatus" class="muted">Pick a task, or run a new one.</div>
         <div id="taskEvents" class="feed"></div>
+        <div id="taskApproval" class="approve-card" hidden></div>
         <div class="row" id="taskActions" hidden>
           <input type="text" id="taskFollow" placeholder="Follow up…" style="flex:1">
           <button id="taskSend">Send</button>
@@ -387,16 +391,17 @@ $("updateBtn").onclick = async () => {
 };
 
 // ---- Claude tasks
-let taskId = null, taskSeq = 0;
+let taskId = null, taskSeq = 0, shownApproval = null;
 const statusLabel = (s) => ({ running: "⏳ Working", done: "✅ Done", stopped: "⏹ Stopped", failed: "❌ Failed" }[s] || s);
 async function loadTasks() {
   const list = await api("/tasks").catch(() => []);
-  $("taskList").innerHTML = list.map((t) => `<div class="task-row" data-task="${t.id}"><b>${esc(t.prompt.slice(0, 120))}</b><div class="muted">${statusLabel(t.status)} · ${new Date(t.created).toLocaleTimeString()}${t.cost_usd ? ` · $${t.cost_usd.toFixed(2)}` : ""}</div></div>`).join("") || "No tasks yet.";
+  $("taskList").innerHTML = list.map((t) => `<div class="task-row" data-task="${t.id}"><b>${esc(t.prompt.slice(0, 120))}</b><div class="muted">${t.pending ? "🔐 Needs your OK" : statusLabel(t.status)} · ${new Date(t.created).toLocaleTimeString()}${t.cost_usd ? ` · $${t.cost_usd.toFixed(2)}` : ""}</div></div>`).join("") || "No tasks yet.";
   document.querySelectorAll("[data-task]").forEach((r) => (r.onclick = () => openTask(Number(r.dataset.task))));
 }
 function openTask(id) {
-  taskId = id; taskSeq = 0;
+  taskId = id; taskSeq = 0; shownApproval = null;
   $("taskEvents").innerHTML = "";
+  $("taskApproval").hidden = true;
   refreshTask();
 }
 async function refreshTask() {
@@ -416,10 +421,30 @@ async function refreshTask() {
     $("taskEvents").insertAdjacentHTML("beforeend", html);
   }
   if (r.events.length) $("taskEvents").scrollTop = $("taskEvents").scrollHeight;
+  showApproval(t);
   $("taskStatus").textContent = statusLabel(t.status) + (t.cost_usd ? ` · $${t.cost_usd.toFixed(2)}` : "");
   $("taskActions").hidden = false;
   $("taskStop").hidden = t.status !== "running";
   $("taskSend").disabled = t.status === "running";
+}
+// The permission Claude is waiting for, with the answer buttons, in the chat.
+function showApproval(t) {
+  const key = t.pending ? JSON.stringify(t.pending) : null;
+  if (key === shownApproval) return;
+  shownApproval = key;
+  const box = $("taskApproval");
+  box.hidden = !t.pending;
+  if (!t.pending) { box.innerHTML = ""; return; }
+  const p = t.pending;
+  box.innerHTML = `<b>🔐 ${esc(p.question)}</b>${p.detail ? `<pre>${esc(p.detail)}</pre>` : ""}<div class="row">${p.options.map((o, i) => `<button data-answer="${esc(o)}"${i === 0 ? ' class="primary"' : ""}>${esc(o)}</button>`).join("")}</div>`;
+  box.querySelectorAll("[data-answer]").forEach((b) => (b.onclick = async () => {
+    const id = t.id;
+    box.hidden = true; shownApproval = null;
+    const r = await run(() => api("/tasks/answer", { id, approval: p.approval, option: b.dataset.answer }));
+    if (r && !r.answered) toast("That question was already answered");
+    refreshTask();
+  }));
+  box.scrollIntoView({ block: "nearest" });
 }
 async function runTask(prompt, resume) {
   const r = await run(() => api("/tasks", { prompt, resume, ask: $("taskAsk").checked }));

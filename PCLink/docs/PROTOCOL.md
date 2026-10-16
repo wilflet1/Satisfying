@@ -51,12 +51,14 @@ arrive: the PC uses odd ids, the phone even ids.
 `clip.get`, `clip.set {text}`, `open_url {url}`, `open_inbox`,
 `input {kind: move|click|button|scroll|text|key, …}`, `media {cmd}`,
 `sys {cmd: lock|sleep|hibernate|shutdown|restart|signout|display_off}`,
-`actions.list`, `actions.run {name, wait}`, `speaker.set {on}`, `notify {title, text}`.
+`actions.list`, `actions.run {name, wait}`, `speaker.set {on}`, `notify {title, text}`,
+`tasks.list`, `tasks.get {id, since}`, `tasks.start {prompt, resume, ask}`, `tasks.stop {id}`,
+`tasks.answer {id, approval, option}` (answers a task's pending permission from the chat).
 
 ### PC → phone requests
 `status`, `battery`, `fs.list {path|null}`, `fs.read`, `fs.write`, `xfer.status`,
 `clip.get`, `clip.set {text}`, `notify {title, text, channel, url}`,
-`ask {title, question, detail, options[], timeout_ms, channel}` → `{answer|null}`,
+`ask {title, question, detail, options[], timeout_ms, channel, task?, approval?}` → `{answer|null}`,
 `find_phone`, `open_url {url}`, `sms.latest_code` → `{code, from}`,
 `media.latest {screenshots_only}` → `{path, taken}`, `notif.reply {key, text}`,
 `notif.dismiss {key}`, `audio.start {key, rate, channels, frame_ms}` → `{port}`, `audio.stop`.
@@ -64,7 +66,8 @@ arrive: the PC uses odd ids, the phone even ids.
 ### Events
 Phone → PC: `battery`, `status`, `notif.posted {key, package, app, title, text, time, can_reply, silent}`,
 `notif.removed {key}`, `clip.changed {text}`, `speaker.stopped`.
-PC → phone: `clip.changed {text}`, `action.done {job, name, code, ok, secs, output}`.
+PC → phone: `clip.changed {text}`, `action.done {job, name, code, ok, secs, output}`,
+`task.event {id, status, event}`, `ask.cancel {task, approval}` (answered elsewhere; drop that question).
 
 ## Speaker stream
 

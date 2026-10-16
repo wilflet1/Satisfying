@@ -128,6 +128,14 @@ class PhoneOps(private val ctx: Context) {
         when (ev) {
             "clip.changed" -> if (prefs.syncClipboard) setClipboard(data.optString("text"))
             "task.event" -> ClaudeActivity.dispatch(data)
+            // Answered elsewhere (the task chat or the PC dashboard).
+            "ask.cancel" -> {
+                val task = data.optLong("task")
+                val approval = data.optLong("approval").takeIf { it > 0 }
+                questions.values
+                    .filter { it.task == task && (approval == null || it.approval == approval) }
+                    .forEach { answer(it.id, "") }
+            }
             "action.done" -> {
                 val ok = data.optBoolean("ok")
                 val title = "${if (ok) "✅" else "❌"} ${data.optString("name")} (exit ${data.optInt("code")})"
@@ -282,6 +290,8 @@ class PhoneOps(private val ctx: Context) {
             args.optString("question"),
             args.str("detail"),
             (0 until options.length()).map { options.getString(it) },
+            args.optLong("task").takeIf { it > 0 },
+            args.optLong("approval").takeIf { it > 0 },
         )
         val future = CompletableFuture<String>()
         questions[id] = q
@@ -385,7 +395,16 @@ class PhoneOps(private val ctx: Context) {
         throw IOException("No photos found (does PCLink have All files access?)")
     }
 
-    data class Question(val id: Int, val title: String, val question: String, val detail: String?, val options: List<String>)
+    data class Question(
+        val id: Int,
+        val title: String,
+        val question: String,
+        val detail: String?,
+        val options: List<String>,
+        /** Claude task this approval belongs to, if any. */
+        val task: Long? = null,
+        val approval: Long? = null,
+    )
 
     companion object {
         private const val ASK_NOTIF_BASE = 10_000

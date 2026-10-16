@@ -49,6 +49,7 @@ pub fn router(agent: Arc<Agent>) -> Router {
         .route("/tasks/get", get(tasks_get))
         .route("/tasks/stop", post(tasks_stop))
         .route("/tasks/approve", post(tasks_approve))
+        .route("/tasks/answer", post(tasks_answer))
         .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(agent.clone(), auth));
     Router::new()
@@ -458,6 +459,19 @@ struct Approve {
 /// Called by the task's PermissionRequest hook; answers with the hook output.
 async fn tasks_approve(State(a): State<AppState>, Json(b): Json<Approve>) -> Json<Value> {
     Json(a.approve_task_tool(b.task, &b.tool_name, &b.tool_input).await)
+}
+
+#[derive(Deserialize)]
+struct Answer {
+    id: u64,
+    #[serde(default)]
+    approval: Option<u64>,
+    option: String,
+}
+
+/// The dashboard answering a task's pending approval.
+async fn tasks_answer(State(a): State<AppState>, Json(b): Json<Answer>) -> Json<Value> {
+    Json(json!({"answered": a.tasks.answer(b.id, b.approval, &b.option)}))
 }
 
 async fn mic(State(a): State<AppState>, Json(b): Json<SpeakerBody>) -> ApiResult {

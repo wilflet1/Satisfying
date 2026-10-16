@@ -571,6 +571,11 @@ impl Agent {
                 let id = args["id"].as_u64().ok_or_else(|| anyhow!("missing id"))?;
                 Ok(json!({"stopped": self.tasks.stop(id)}))
             }
+            "tasks.answer" => {
+                let id = args["id"].as_u64().ok_or_else(|| anyhow!("missing id"))?;
+                let option = args["option"].as_str().ok_or_else(|| anyhow!("missing option"))?;
+                Ok(json!({"answered": self.tasks.answer(id, args["approval"].as_u64(), option)}))
+            }
             "notify" => {
                 platform::notify(
                     args["title"].as_str().unwrap_or("Phone"),
