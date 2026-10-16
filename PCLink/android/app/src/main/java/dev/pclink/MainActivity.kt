@@ -38,11 +38,6 @@ class MainActivity : Activity() {
         prefs = Prefs(this)
         root = Ui.page(this)
         handlePairLink(intent)
-        if (savedInstanceState == null) {
-            // Self-update check at launch (silent unless something happens).
-            val app = applicationContext
-            kotlin.concurrent.thread { Updater.checkAndInstall(app, manual = false) }
-        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -53,6 +48,8 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         visible = true
+        // Self-update: at launch and whenever the app returns to the front.
+        Updater.checkIfDue(this)
         LinkService.listeners += listener
         if (prefs.paired) LinkService.start(this) else startDiscovery()
         val sp = getSharedPreferences("pclink", MODE_PRIVATE)

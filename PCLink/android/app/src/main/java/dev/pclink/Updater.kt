@@ -7,9 +7,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import org.json.JSONObject
 import java.io.File
 import java.io.IOException
@@ -25,6 +23,15 @@ object Updater {
     const val REPO = "wilflet1/Satisfying"
     private const val BASE = "https://github.com/$REPO/releases/download/pclink-latest"
     @Volatile private var running = false
+    @Volatile private var lastCheck = 0L
+
+    /** Checks at most every 15 minutes (called whenever the app comes to the front). */
+    fun checkIfDue(ctx: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastCheck < 15 * 60_000) return
+        lastCheck = now
+        kotlin.concurrent.thread { checkAndInstall(ctx.applicationContext, manual = false) }
+    }
 
     fun currentBuild(ctx: Context): Long =
         ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode
@@ -48,6 +55,8 @@ object Updater {
     fun checkAndInstall(ctx: Context, manual: Boolean): String {
         if (running) return "Already checking for updates"
         running = true
+        // A notice from an earlier check may be stale.
+        ctx.getSystemService(NotificationManager::class.java).cancel(UPDATE_NOTIF)
         try {
             val manifest = JSONObject(open("$BASE/latest.json").inputStream.bufferedReader().readText())
             val latest = manifest.getLong("build")
@@ -55,10 +64,8 @@ object Updater {
             if (current <= 1) return "This is a local build, which doesn't update itself."
             if (latest <= current) return "PCLink is up to date (build $current)."
             val info = manifest.getJSONObject("files").getJSONObject("PCLink.apk")
-            if (!ctx.packageManager.canRequestPackageInstalls()) {
-                askForInstallPermission(ctx, latest)
-                return "Allow PCLink to install updates, then check again."
-            }
+            // No permission pre-check: if "Install unknown apps" is off, Android's
+            // own install prompt asks for it and then continues the install.
             val apk = download(ctx, info.getString("sha256"), info.getLong("size"))
             install(ctx, apk)
             return "Installing build $latest…"
@@ -116,12 +123,6 @@ object Updater {
             val pending = PendingIntent.getBroadcast(ctx, id, intent, PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
             session.commit(pending.intentSender)
         }
-    }
-
-    private fun askForInstallPermission(ctx: Context, build: Long) {
-        val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${ctx.packageName}"))
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        notify(ctx, "PCLink build $build is available", "Tap to allow PCLink to install its updates.", intent)
     }
 
     fun notify(ctx: Context, title: String, text: String, intent: Intent?) {
