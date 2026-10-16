@@ -26,6 +26,24 @@ class MainActivity : Activity() {
     private var discovery: Discovery? = null
     private val listener: () -> Unit = { runOnUiThread { render() } }
     private var actionsBox: LinearLayout? = null
+    private var speakerReadout: TextView? = null
+    private val readoutTick = object : Runnable {
+        override fun run() {
+            updateReadout()
+            root.postDelayed(this, 1000)
+        }
+    }
+
+    /** Live "is audio arriving?" line under the speaker button. */
+    private fun updateReadout() {
+        val r = speakerReadout ?: return
+        r.text = when {
+            Speaker.lastError != null -> "⚠ ${Speaker.lastError}"
+            !Speaker.isPlaying -> ""
+            Speaker.packets == 0L -> "Waiting for audio from the PC… (0 packets). If this stays at 0, check the PC dashboard's speaker line."
+            else -> "Receiving PC audio: ${Speaker.packets} packets${if (Speaker.voiceMode) " · call volume (mic on)" else ""}"
+        }
+    }
     /** Pairing fields survive re-renders (discovery and status updates redraw the screen). */
     private var codeText = ""
     private var hostText = ""
@@ -48,6 +66,7 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         visible = true
+        root.post(readoutTick)
         // Self-update: at launch and whenever the app returns to the front.
         Updater.checkIfDue(this)
         LinkService.listeners += listener
@@ -64,6 +83,7 @@ class MainActivity : Activity() {
 
     override fun onPause() {
         visible = false
+        root.removeCallbacks(readoutTick)
         LinkService.listeners -= listener
         discovery?.stop()
         discovery = null
@@ -133,6 +153,7 @@ class MainActivity : Activity() {
         val y = scroll?.scrollY ?: 0
         root.removeAllViews()
         actionsBox = null
+        speakerReadout = null
         if (!prefs.paired) renderPairing() else renderHome()
         scroll?.post { scroll.scrollTo(0, y) }
     }
@@ -202,6 +223,12 @@ class MainActivity : Activity() {
             setOnCheckedChangeListener { view, on -> toggleMic(view as Switch, on) }
         })
         if (Mic.isOn) speaker.addView(Ui.text(this, "Mic: ${Mic.source}. On the PC, apps use the VB-Cable output as their microphone.", 13f, muted = true))
+        if (Speaker.isPlaying || Speaker.lastError != null) {
+            val readout = Ui.text(this, "", 13f, muted = true)
+            speaker.addView(readout)
+            speakerReadout = readout
+            updateReadout()
+        }
         root.addView(speaker)
 
         val claude = Ui.card(this)

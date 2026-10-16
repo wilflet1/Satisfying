@@ -47,7 +47,8 @@ pub struct ActivityItem {
 
 pub struct SpeakerSession {
     stop: Arc<AtomicBool>,
-    restore_default: Option<String>,
+    pub restore_default: Option<String>,
+    pub stats: Arc<audio::SendStats>,
     pub device: String,
     pub format: AudioFormat,
 }
@@ -661,6 +662,16 @@ impl Agent {
         let previous = platform::default_output();
         let mut restore = None;
         let mut capture_name = previous.as_ref().map(|(_, n)| n.clone());
+        // If Windows' default output is the cable the phone mic plays into,
+        // capturing it would send the mic back to the phone instead of PC
+        // sound: capture a real output instead.
+        let mic_cable_now = self.mic.lock().unwrap().as_ref().map(|m| m.device.clone());
+        if capture_name.is_some() && capture_name == mic_cable_now {
+            capture_name = platform::output_devices()
+                .into_iter()
+                .map(|(_, n)| n)
+                .find(|n| !crate::cable::is_virtual_cable(n));
+        }
         if mode == "auto" || mode == "switch" {
             let want = self.cfg.speaker.silent_device.to_lowercase();
             // Never silence the PC through the cable the phone mic uses, or
@@ -712,12 +723,14 @@ impl Agent {
             .map_err(fail)?;
         let port = res["port"].as_u64().ok_or_else(|| fail(anyhow!("phone gave no audio port")))? as u16;
         let dest = std::net::SocketAddr::new(link.peer.ip(), port);
-        audio::spawn_sender(rx, dest, key, fmt, frame_ms, stop.clone()).map_err(fail)?;
+        let stats = Arc::new(audio::SendStats::default());
+        audio::spawn_sender_with_stats(rx, dest, key, fmt, frame_ms, stop.clone(), stats.clone()).map_err(fail)?;
         let device = capture_name.unwrap_or_else(|| "default output".into());
         self.log("speaker", format!("streaming {} Hz from {device} to the phone", fmt.rate));
         *self.speaker.lock().unwrap() = Some(SpeakerSession {
             stop,
             restore_default: restore,
+            stats,
             device,
             format: fmt,
         });
@@ -784,6 +797,8 @@ impl Agent {
                 "device": s.device,
                 "rate": s.format.rate,
                 "channels": s.format.channels,
+                "packets": s.stats.packets.load(Ordering::Relaxed),
+                "level": s.stats.level.load(Ordering::Relaxed),
             })),
             "idle_secs": platform::idle_secs(),
             "mic": self.mic_status(),

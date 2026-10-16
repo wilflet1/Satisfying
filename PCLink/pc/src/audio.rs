@@ -58,6 +58,14 @@ pub fn samples_per_frame(fmt: AudioFormat, frame_ms: u32) -> usize {
 
 /// Reads PCM blocks from `rx`, and sends them to `dest` until `stop` is set
 /// or the producer goes away. Runs on its own thread.
+/// What the sender has done, for the dashboard.
+#[derive(Default)]
+pub struct SendStats {
+    pub packets: std::sync::atomic::AtomicU64,
+    /// RMS level of recent audio, 0..1000 (0 = the PC is playing silence).
+    pub level: std::sync::atomic::AtomicU32,
+}
+
 pub fn spawn_sender(
     rx: Receiver<Vec<i16>>,
     dest: SocketAddr,
@@ -65,6 +73,18 @@ pub fn spawn_sender(
     fmt: AudioFormat,
     frame_ms: u32,
     stop: Arc<AtomicBool>,
+) -> Result<std::thread::JoinHandle<()>> {
+    spawn_sender_with_stats(rx, dest, key, fmt, frame_ms, stop, Arc::new(SendStats::default()))
+}
+
+pub fn spawn_sender_with_stats(
+    rx: Receiver<Vec<i16>>,
+    dest: SocketAddr,
+    key: [u8; 32],
+    fmt: AudioFormat,
+    frame_ms: u32,
+    stop: Arc<AtomicBool>,
+    stats: Arc<SendStats>,
 ) -> Result<std::thread::JoinHandle<()>> {
     let sock = UdpSocket::bind(if dest.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" })?;
     let handle = std::thread::Builder::new()
@@ -83,9 +103,14 @@ pub fn spawn_sender(
                 }
                 while pending.len() >= per {
                     bytes.clear();
+                    let mut sum = 0f64;
                     for s in pending.drain(..per) {
+                        sum += (s as f64 / 32768.0).powi(2);
                         bytes.extend_from_slice(&s.to_le_bytes());
                     }
+                    let rms = (sum / per as f64).sqrt();
+                    stats.level.store((rms * 1000.0) as u32, Ordering::Relaxed);
+                    stats.packets.fetch_add(1, Ordering::Relaxed);
                     let _ = sock.send_to(&seal(&key, seq, &bytes), dest);
                     seq += 1;
                 }

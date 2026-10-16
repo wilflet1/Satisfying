@@ -34,6 +34,12 @@ object Speaker {
      */
     @Volatile var voiceMode = false
 
+    /** For the on-screen readout: packets received and the last problem. */
+    @Volatile var packets = 0L
+        private set
+    @Volatile var lastError: String? = null
+        private set
+
     @Synchronized
     fun start(context: Context, key: ByteArray, rate: Int, channels: Int): Int {
         stop()
@@ -87,10 +93,30 @@ object Speaker {
             .build()
     }
 
+    /** Makes the track, falling back to plain media audio if the voice path fails. */
+    private fun safeTrack(rate: Int, channels: Int, voice: Boolean): AudioTrack = try {
+        makeTrack(rate, channels, voice)
+    } catch (e: Exception) {
+        lastError = "Voice audio path failed (${e.message}); using media audio"
+        makeTrack(rate, channels, false)
+    }
+
     private fun play(sock: DatagramSocket, key: ByteArray, rate: Int, channels: Int) {
+        try {
+            playLoop(sock, key, rate, channels)
+        } catch (e: Throwable) {
+            // Never die silently: show the problem and tell the PC.
+            lastError = "Playback stopped: ${e.message ?: e.javaClass.simpleName}"
+            LinkService.changed()
+        }
+    }
+
+    private fun playLoop(sock: DatagramSocket, key: ByteArray, rate: Int, channels: Int) {
         val frameBytes = 2 * channels
         var voice = voiceMode
-        var track = makeTrack(rate, channels, voice)
+        var track = safeTrack(rate, channels, voice)
+        packets = 0
+        lastError = null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val keySpec = SecretKeySpec(key, "AES")
         val nonce = ByteArray(12)
@@ -107,7 +133,7 @@ object Speaker {
                     voice = voiceMode
                     track.stop()
                     track.release()
-                    track = makeTrack(rate, channels, voice)
+                    track = safeTrack(rate, channels, voice)
                     track.play()
                     framesWritten = 0
                 }
@@ -129,6 +155,7 @@ object Speaker {
                     continue // not ours / corrupted
                 }
                 lastSeq = seq
+                packets++
                 val played = track.playbackHeadPosition.toLong() and 0xffffffffL
                 val queued = framesWritten - played
                 if (queued < 0) framesWritten = played // underrun reset

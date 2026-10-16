@@ -149,15 +149,9 @@ impl Agent {
             choose_device(&platform::output_devices(), &self.cfg.mic.device, &self.cfg.speaker.silent_device)?
         };
 
-        // Windows often makes a newly installed cable the default playback
-        // device: then PC sound goes silent and leaks into the mic. Put the
-        // default back on a real output.
-        if !test_mode {
-            self.fix_default_output(&device);
-        }
-
-        // If the speaker is silencing the PC through this same cable, PC
-        // audio would leak into the mic. Restart it so it avoids the cable.
+        // If the speaker is using this cable (to silence the PC, or because
+        // it was Windows' default), PC audio and the mic would mix. Stop it
+        // first; it restarts below on a real output.
         let speaker_shares = self
             .speaker
             .lock()
@@ -165,6 +159,15 @@ impl Agent {
             .as_ref()
             .map(|s| s.device == device)
             .unwrap_or(false);
+        if speaker_shares {
+            let _ = self.set_speaker(false).await;
+        }
+        // Windows often makes a newly installed cable the default playback
+        // device: then PC sound goes silent and leaks into the mic. Put the
+        // default back on a real output.
+        if !test_mode {
+            self.fix_default_output(&device);
+        }
 
         let stop = Arc::new(AtomicBool::new(false));
         let buffer = Arc::new(Mutex::new(VecDeque::new()));
@@ -201,8 +204,9 @@ impl Agent {
             stats,
         });
         if speaker_shares {
-            let _ = self.set_speaker(false).await;
-            let _ = self.set_speaker(true).await;
+            if let Err(e) = self.set_speaker(true).await {
+                tracing::warn!("restarting the speaker: {e:#}");
+            }
         }
         self.log("mic", format!("phone mic → {device}"));
         self.changed();
@@ -222,10 +226,6 @@ impl Agent {
         let Some((_, default_name)) = platform::default_output() else { return };
         if default_name != cable {
             return;
-        }
-        let speaker_switched = self.speaker.lock().unwrap().as_ref().map(|s| s.device == cable).unwrap_or(false);
-        if speaker_switched {
-            return; // handled by moving the speaker off this cable
         }
         let real = platform::output_devices()
             .into_iter()
