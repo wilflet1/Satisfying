@@ -52,7 +52,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      # The runner image ships the Android SDK (ANDROID_HOME).
       - run: chmod +x gradlew && ./gradlew --no-daemon assembleRelease
       - uses: actions/upload-artifact@v4
         with:
