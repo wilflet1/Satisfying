@@ -131,6 +131,12 @@ $('start').addEventListener('click', async () => {
     await startSensors();
   } catch (err) {
     setStatus('Sensor error: ' + err.message, 'bad');
+    if (/denied/i.test(err.message)) {
+      $('hint').innerHTML = 'iPhone remembers a "Deny" until Safari restarts:<br>' +
+        '1. Swipe Safari away in the app switcher, reopen this page<br>' +
+        '2. Tap START, then tap <b>Allow</b> on the motion prompt<br>' +
+        'Still no prompt? Settings → Apps → Safari → Advanced → Website Data → delete this address, then try again.';
+    }
     return;
   }
   keepAwake();
