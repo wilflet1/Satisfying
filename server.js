@@ -12,8 +12,8 @@ const { WebSocketServer } = require('ws');
 const selfsigned = require('selfsigned');
 const QRCode = require('qrcode');
 
-const HTTP_PORT = Number(process.env.HTTP_PORT) || 8080;
-const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 8443;
+const HTTP_PORT = Number(process.env.HTTP_PORT) || 4180;
+const HTTPS_PORT = Number(process.env.HTTPS_PORT) || 4443;
 const PUBLIC = path.join(__dirname, 'public');
 const THREE = path.join(__dirname, 'node_modules', 'three', 'build');
 const CERT_DIR = path.join(__dirname, '.cert');
@@ -35,7 +35,7 @@ function lanAddress() {
 }
 
 const LAN_IP = lanAddress();
-const PHONE_URL = `https://${LAN_IP}:${HTTPS_PORT}/phone.html`;
+let PHONE_URL = '';
 
 function sendFile(res, file) {
   fs.readFile(file, (err, data) => {
@@ -146,17 +146,31 @@ async function getCert() {
   return { key: pems.private, cert: pems.cert };
 }
 
+// Listen on `port`, or the next free port if something else is already using it.
+function listen(server, port, tries = 20) {
+  return new Promise((resolve, reject) => {
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE' && tries > 1) {
+        console.log(`  Port ${port} is busy, trying ${port + 1}...`);
+        resolve(listen(server, port + 1, tries - 1));
+      } else reject(err);
+    });
+    server.listen(port, '0.0.0.0', () => resolve(port));
+  });
+}
+
 (async () => {
   const httpServer = http.createServer(handler);
+  const httpPort = await listen(httpServer, HTTP_PORT);
   attachWs(httpServer);
-  httpServer.listen(HTTP_PORT, '0.0.0.0');
 
   const httpsServer = https.createServer(await getCert(), handler);
+  const httpsPort = await listen(httpsServer, HTTPS_PORT);
   attachWs(httpsServer);
-  httpsServer.listen(HTTPS_PORT, '0.0.0.0');
+  PHONE_URL = `https://${LAN_IP}:${httpsPort}/phone.html`;
 
   console.log('\n  Phone Paddle is running\n');
-  console.log(`  1. On this computer open:  http://localhost:${HTTP_PORT}`);
+  console.log(`  1. On this computer open:  http://localhost:${httpPort}`);
   console.log(`  2. On your phone open:     ${PHONE_URL}`);
   console.log('     (or scan the QR code shown on the computer screen)');
   console.log('     Your phone will warn about the certificate - tap "Advanced" -> "Proceed".\n');

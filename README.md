@@ -15,8 +15,9 @@ npm install
 npm start
 ```
 
-1. On the computer, open **http://localhost:8080**.
-2. Connect the phone to the **same Wi-Fi**, then scan the QR code on screen (or type the `https://…:8443/phone.html` URL printed in the terminal).
+1. On the computer, open **http://localhost:4180**.
+   If port 4180 is already in use, the server picks the next free one. Use the address it prints.
+2. Connect the phone to the **same Wi-Fi**, then scan the QR code on screen (or type the `https://…:4443/phone.html` URL printed in the terminal).
 3. The phone warns about the certificate. It is a self-signed certificate made on your machine. Tap *Advanced → Proceed* (Android) or *Show Details → visit this website* (iOS). Phones only give motion sensors to `https` pages, so this step is needed.
 4. Tap **TAP TO START**. On iOS, allow motion access.
 5. Hold the phone like a paddle handle: the bottom of the phone is the grip and the screen is the red face. Point it at the monitor and tap **RE-CENTER**.
