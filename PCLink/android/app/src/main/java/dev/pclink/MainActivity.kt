@@ -194,6 +194,14 @@ class MainActivity : Activity() {
             Ui.background(this) { ActionReceiver.toggleSpeaker().also { runOnUiThread { render() } } }
         }.apply { isEnabled = link != null })
         speaker.addView(Ui.text(this, "Also on the PC (Ctrl+Alt+P), in Quick Settings and in the PCLink notification.", 13f, muted = true))
+        speaker.addView(Switch(this).apply {
+            text = "🎙  Use my mic on the PC (headset mic when connected)"
+            isChecked = Mic.isOn
+            isEnabled = link != null
+            setPadding(0, Ui.dp(this@MainActivity, 10), 0, 0)
+            setOnCheckedChangeListener { view, on -> toggleMic(view as Switch, on) }
+        })
+        if (Mic.isOn) speaker.addView(Ui.text(this, "Mic: ${Mic.source}. On the PC, apps use the VB-Cable output as their microphone.", 13f, muted = true))
         root.addView(speaker)
 
         val claude = Ui.card(this)
@@ -341,6 +349,33 @@ class MainActivity : Activity() {
 
     // ------------------------------------------------------------- actions
 
+    private fun toggleMic(view: Switch, on: Boolean) {
+        if (on == Mic.isOn) return
+        if (on && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            view.isChecked = false
+            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), MIC_PERMISSION)
+            return
+        }
+        Ui.background(this) {
+            try {
+                if (on) Mic.start(applicationContext) else { Mic.stop(); "Mic off" }
+            } finally {
+                runOnUiThread { render() }
+            }
+        }
+    }
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == MIC_PERMISSION && grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
+            Ui.background(this) {
+                try { Mic.start(applicationContext) } finally { runOnUiThread { render() } }
+            }
+        } else if (requestCode == MIC_PERMISSION) {
+            Ui.toast(this, "PCLink needs microphone access for this")
+        }
+    }
+
     private fun sys(cmd: String) = Ui.background(this) {
         LinkService.require().request("sys", jsonOf("cmd" to cmd))
         "Done"
@@ -405,6 +440,7 @@ class MainActivity : Activity() {
 
     companion object {
         private const val PICK_FILES = 10
+        private const val MIC_PERMISSION = 11
         @Volatile var visible = false
     }
 }

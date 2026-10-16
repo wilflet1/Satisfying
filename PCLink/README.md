@@ -39,6 +39,25 @@ Rust agent on the PC and a Kotlin app on the phone, talking over TLS on your LAN
   while streaming and switches it back afterwards. Without a virtual device, audio plays
   on both.
 
+### Phone mic → PC microphone
+Turn on **🎙 Use my mic on the PC** under the speaker button on the phone (or *Phone as
+microphone* in the tray, or the dashboard). The phone records its mic, using your
+headset's mic when one is connected (wired, USB or Bluetooth), with Android's echo
+cancellation and noise suppression, and streams it encrypted to the PC.
+
+- On the PC the audio plays into a virtual cable, and while the mic is on PCLink makes
+  the cable's other end ("CABLE Output") Windows' default microphone, so Discord, Zoom,
+  games and so on pick it up. Your previous default mic comes back when you turn it off.
+- Needs [VB-Cable](https://vb-audio.com/Cable/). To use the mic together with a silenced
+  PC (speaker feature), install a second cable (VB-Cable A+B): PCLink gives the mic one
+  cable and the speaker the other. With a single cable the mic gets it and the PC keeps
+  playing out loud, so PC audio never leaks into your mic.
+- While the mic is on, PC audio on the phone switches to the voice path, so a Bluetooth
+  headset carries both directions (Bluetooth then uses its call profile: lower audio
+  quality is a Bluetooth limit).
+- Android only allows the mic in the background if you switch it on with the app open.
+- Settings: `[mic] device` ("auto" or part of a device name) and `set_default`.
+
 ### Claude Code
 Run `pclink install-claude` once. It adds hooks to `~/.claude/settings.json` (keeping
 your existing ones, with a backup) and registers the MCP server.

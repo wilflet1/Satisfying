@@ -75,6 +75,7 @@ pub struct Agent {
     pub activity: Mutex<VecDeque<ActivityItem>>,
     pub phone_status: Mutex<Value>,
     pub speaker: Mutex<Option<SpeakerSession>>,
+    pub mic: Mutex<Option<crate::mic::MicSession>>,
     /// Last clipboard text we set or sent, to avoid echoing it back.
     pub clip_last: Mutex<String>,
     pub mac: Option<String>,
@@ -103,6 +104,7 @@ impl Agent {
             activity: Mutex::new(VecDeque::new()),
             phone_status: Mutex::new(json!({})),
             speaker: Mutex::new(None),
+            mic: Mutex::new(None),
             clip_last: Mutex::new(String::new()),
             mac,
             job_counter: AtomicU64::new(1),
@@ -188,6 +190,7 @@ impl Agent {
     /// Releases things the next process needs (default audio device, phone link).
     pub fn shutdown(&self) {
         *self.speaker.lock().unwrap() = None;
+        *self.mic.lock().unwrap() = None;
         if let Some(l) = self.current_link() {
             l.close();
         }
@@ -323,6 +326,7 @@ impl Agent {
             *cur = None;
             drop(cur);
             *self.speaker.lock().unwrap() = None;
+            *self.mic.lock().unwrap() = None;
             self.log("link", format!("{} disconnected", link.device_name));
             self.changed();
         }
@@ -376,6 +380,9 @@ impl Agent {
                 }
                 drop(st);
                 self.changed();
+            }
+            "mic.stopped" => {
+                self.close_mic();
             }
             "speaker.stopped" => {
                 *self.speaker.lock().unwrap() = None;
@@ -501,6 +508,11 @@ impl Agent {
                 let wait = args["wait"].as_bool().unwrap_or(false);
                 self.run_action(&name, wait).await
             }
+            "mic.open" => self.open_mic().await,
+            "mic.close" => {
+                self.close_mic();
+                Ok(json!({}))
+            }
             "speaker.set" => {
                 let on = args["on"].as_bool().unwrap_or(true);
                 self.set_speaker(on).await.map(|on| json!({"on": on}))
@@ -560,6 +572,7 @@ impl Agent {
             "mem_total": sys.total_memory(),
             "uptime": sysinfo::System::uptime(),
             "speaker": self.speaker.lock().unwrap().is_some(),
+            "mic": self.mic_on(),
         })
     }
 
@@ -649,9 +662,12 @@ impl Agent {
         let mut capture_name = previous.as_ref().map(|(_, n)| n.clone());
         if mode == "auto" || mode == "switch" {
             let want = self.cfg.speaker.silent_device.to_lowercase();
+            // Never silence the PC through the cable the phone mic uses, or
+            // PC audio would be heard through the mic.
+            let mic_cable = self.mic.lock().unwrap().as_ref().map(|m| m.device.clone());
             let target = platform::output_devices()
                 .into_iter()
-                .find(|(_, name)| !want.is_empty() && name.to_lowercase().contains(&want));
+                .find(|(_, name)| !want.is_empty() && name.to_lowercase().contains(&want) && Some(name) != mic_cable.as_ref());
             match target {
                 Some((id, name)) => {
                     if previous.as_ref().map(|(pid, _)| pid != &id).unwrap_or(true) {
@@ -769,6 +785,7 @@ impl Agent {
                 "channels": s.format.channels,
             })),
             "idle_secs": platform::idle_secs(),
+            "mic": self.mic_status(),
             "claude": self.cfg.claude,
             "pairing_active": pairing.as_ref().map(|p| p.expires > Instant::now()).unwrap_or(false),
             "inbox": crate::files::display(&self.cfg.inbox),

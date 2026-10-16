@@ -111,6 +111,11 @@ class PhoneOps(private val ctx: Context) {
             LinkService.changed()
             jsonOf("port" to port)
         }
+        "mic.start" -> jsonOf("message" to Mic.start(ctx))
+        "mic.stop" -> {
+            Mic.stop(tellPc = false)
+            JSONObject()
+        }
         "audio.stop" -> {
             Speaker.stop()
             LinkService.changed()
@@ -147,6 +152,7 @@ class PhoneOps(private val ctx: Context) {
         put("all_files_access", Environment.isExternalStorageManager())
         put("notification_access", NotifListener.instance != null)
         put("speaker", Speaker.isPlaying)
+        put("mic", Mic.isOn)
         val stat = android.os.StatFs(Environment.getExternalStorageDirectory().path)
         put("storage_free", stat.availableBytes)
         put("storage_total", stat.totalBytes)

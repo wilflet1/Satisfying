@@ -306,12 +306,11 @@ fn device_id_and_name(dev: &windows::Win32::Media::Audio::IMMDevice) -> Result<(
     }
 }
 
-/// Active output devices as (id, friendly name).
-pub fn output_devices() -> Vec<(String, String)> {
-    use windows::Win32::Media::Audio::{eRender, DEVICE_STATE_ACTIVE};
+fn devices(flow: windows::Win32::Media::Audio::EDataFlow) -> Vec<(String, String)> {
+    use windows::Win32::Media::Audio::DEVICE_STATE_ACTIVE;
     let run = || -> Result<Vec<(String, String)>> {
         let en = enumerator()?;
-        let coll = unsafe { en.EnumAudioEndpoints(eRender, DEVICE_STATE_ACTIVE)? };
+        let coll = unsafe { en.EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE)? };
         let mut out = vec![];
         for i in 0..unsafe { coll.GetCount()? } {
             let dev = unsafe { coll.Item(i)? };
@@ -324,13 +323,32 @@ pub fn output_devices() -> Vec<(String, String)> {
     run().unwrap_or_default()
 }
 
-pub fn default_output() -> Option<(String, String)> {
-    use windows::Win32::Media::Audio::{eConsole, eRender};
+fn default_device(flow: windows::Win32::Media::Audio::EDataFlow) -> Option<(String, String)> {
+    use windows::Win32::Media::Audio::eConsole;
     let en = enumerator().ok()?;
-    let dev = unsafe { en.GetDefaultAudioEndpoint(eRender, eConsole).ok()? };
+    let dev = unsafe { en.GetDefaultAudioEndpoint(flow, eConsole).ok()? };
     device_id_and_name(&dev).ok()
 }
 
+/// Active output devices as (id, friendly name).
+pub fn output_devices() -> Vec<(String, String)> {
+    devices(windows::Win32::Media::Audio::eRender)
+}
+
+pub fn default_output() -> Option<(String, String)> {
+    default_device(windows::Win32::Media::Audio::eRender)
+}
+
+/// Active recording devices (microphones) as (id, friendly name).
+pub fn input_devices() -> Vec<(String, String)> {
+    devices(windows::Win32::Media::Audio::eCapture)
+}
+
+pub fn default_input() -> Option<(String, String)> {
+    default_device(windows::Win32::Media::Audio::eCapture)
+}
+
+/// Makes `id` (an output or a recording device) Windows' default for all roles.
 pub fn set_default_output(id: &str) -> Result<()> {
     use policy::{IPolicyConfig, CLSID_POLICY_CONFIG_CLIENT};
     use windows::core::{HSTRING, PCWSTR};
@@ -711,4 +729,100 @@ pub fn launch(target: &str, args: Option<&str>) -> Result<()> {
     } else {
         bail!("could not open {target} (error {})", result.0 as usize)
     }
+}
+
+// ---------------------------------------------------------------------------
+// Phone mic: play received mic audio into an output device (a virtual
+// cable), whose recording side apps then use as a microphone.
+
+/// Plays mono 16-bit audio pulled from `buffer` on `device_name` until
+/// `stop` is set. Underruns play silence.
+pub fn start_playback(
+    device_name: String,
+    buffer: Arc<Mutex<std::collections::VecDeque<i16>>>,
+    rate: u32,
+    stop: Arc<AtomicBool>,
+) -> Result<()> {
+    let (ready_tx, ready_rx) = mpsc::channel::<Result<()>>();
+    std::thread::Builder::new()
+        .name("pclink-mic-playback".into())
+        .spawn(move || {
+            let stream = match open_playback(&device_name, buffer, rate) {
+                Ok(s) => {
+                    let _ = ready_tx.send(Ok(()));
+                    s
+                }
+                Err(e) => {
+                    let _ = ready_tx.send(Err(e));
+                    return;
+                }
+            };
+            while !stop.load(Ordering::Relaxed) {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+            drop(stream);
+        })?;
+    ready_rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .map_err(|_| anyhow!("mic playback did not start"))?
+}
+
+fn open_playback(
+    device_name: &str,
+    buffer: Arc<Mutex<std::collections::VecDeque<i16>>>,
+    src_rate: u32,
+) -> Result<cpal::Stream> {
+    use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+    let host = cpal::default_host();
+    let device = host
+        .output_devices()?
+        .find(|d| d.name().map(|n| n == device_name).unwrap_or(false))
+        .ok_or_else(|| anyhow!("output device `{device_name}` not found"))?;
+    let supported = device.default_output_config()?;
+    let config: cpal::StreamConfig = supported.config();
+    let channels = config.channels as usize;
+    let out_rate = config.sample_rate.0 as f64;
+    // Linear resampling from the phone's rate to the device's.
+    let step = src_rate as f64 / out_rate;
+    let mut pos = 0.0f64;
+    let mut prev = 0i16;
+    let mut next_sample = move |buf: &mut std::collections::VecDeque<i16>| -> f32 {
+        pos += step;
+        while pos >= 1.0 {
+            prev = buf.pop_front().unwrap_or(0);
+            pos -= 1.0;
+        }
+        let next = buf.front().copied().unwrap_or(prev);
+        (prev as f64 + (next as f64 - prev as f64) * pos) as f32 / 32768.0
+    };
+    let err_fn = |e| tracing::warn!("mic playback error: {e}");
+    let stream = match supported.sample_format() {
+        cpal::SampleFormat::F32 => device.build_output_stream(
+            &config,
+            move |data: &mut [f32], _| {
+                let mut buf = buffer.lock().unwrap();
+                for frame in data.chunks_mut(channels) {
+                    let v = next_sample(&mut buf);
+                    frame.iter_mut().for_each(|s| *s = v);
+                }
+            },
+            err_fn,
+            None,
+        )?,
+        cpal::SampleFormat::I16 => device.build_output_stream(
+            &config,
+            move |data: &mut [i16], _| {
+                let mut buf = buffer.lock().unwrap();
+                for frame in data.chunks_mut(channels) {
+                    let v = (next_sample(&mut buf) * 32767.0) as i16;
+                    frame.iter_mut().for_each(|s| *s = v);
+                }
+            },
+            err_fn,
+            None,
+        )?,
+        other => bail!("unsupported playback format {other:?}"),
+    };
+    stream.play()?;
+    Ok(stream)
 }

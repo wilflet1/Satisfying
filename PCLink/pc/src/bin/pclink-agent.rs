@@ -145,6 +145,7 @@ mod tray {
         let open = MenuItem::new("Open dashboard", true, None);
         let pair = MenuItem::new("Pair a phone…", true, None);
         let speaker = CheckMenuItem::new("Phone as speaker\tCtrl+Alt+P", true, false, None);
+        let mic = CheckMenuItem::new("Phone as microphone", true, false, None);
         let clip = MenuItem::new("Send clipboard to phone", true, None);
         let ring = MenuItem::new("Find my phone", true, None);
         let inbox = MenuItem::new("Open received files", true, None);
@@ -161,6 +162,7 @@ mod tray {
             &pair,
             &PredefinedMenuItem::separator(),
             &speaker,
+            &mic,
             &clip,
             &ring,
             &inbox,
@@ -228,6 +230,15 @@ mod tray {
                 } else if id == speaker.id().clone() {
                     toggle_speaker(agent.clone());
                     dirty.store(true, Ordering::SeqCst);
+                } else if id == mic.id().clone() {
+                    let a = agent.clone();
+                    let on = !agent.mic_on();
+                    rt.spawn(async move {
+                        if let Err(e) = a.set_mic(on).await {
+                            pclink::platform::notify("Phone mic", &format!("{e:#}"));
+                        }
+                    });
+                    dirty.store(true, Ordering::SeqCst);
                 } else if id == clip.id().clone() {
                     let a = agent.clone();
                     rt.spawn(async move {
@@ -289,6 +300,7 @@ mod tray {
                 let link = agent.current_link();
                 let on = agent.speaker_on();
                 speaker.set_checked(on);
+                mic.set_checked(agent.mic_on());
                 let (text, colour) = match &link {
                     Some(l) if on => (format!("PCLink: {} (speaker on)", l.device_name), blue),
                     Some(l) => (format!("PCLink: {} connected", l.device_name), green),

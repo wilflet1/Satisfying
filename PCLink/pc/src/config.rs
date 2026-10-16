@@ -46,6 +46,7 @@ pub struct Config {
     /// Check GitHub for a newer build at launch and install it.
     pub auto_update: bool,
     pub speaker: SpeakerConfig,
+    pub mic: MicConfig,
     pub claude: ClaudeConfig,
     /// Buttons shown on the phone's control panel.
     pub actions: Vec<Action>,
@@ -73,6 +74,24 @@ impl Default for SpeakerConfig {
             silent_device: "CABLE Input".into(),
             frame_ms: 5,
         }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MicConfig {
+    /// Output device the phone's mic is played into: "auto" picks a virtual
+    /// cable (VB-Cable), preferring one the speaker feature isn't using; or
+    /// part of a device name, e.g. "CABLE-A Input".
+    pub device: String,
+    /// While the mic is on, make the cable's recording side Windows' default
+    /// microphone (restored afterwards), so apps pick it up automatically.
+    pub set_default: bool,
+}
+
+impl Default for MicConfig {
+    fn default() -> Self {
+        Self { device: "auto".into(), set_default: true }
     }
 }
 
@@ -152,6 +171,7 @@ impl Default for Config {
             notification_blocklist: vec![],
             auto_update: true,
             speaker: SpeakerConfig::default(),
+            mic: MicConfig::default(),
             claude: ClaudeConfig::default(),
             actions: vec![
                 Action {

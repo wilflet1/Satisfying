@@ -15,3 +15,4 @@ pub mod client;
 pub mod mcp;
 pub mod update;
 pub mod tasks;
+pub mod mic;

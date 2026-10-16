@@ -25,6 +25,37 @@ pub fn default_output() -> Option<(String, String)> {
     None
 }
 
+pub fn input_devices() -> Vec<(String, String)> {
+    vec![]
+}
+
+pub fn default_input() -> Option<(String, String)> {
+    None
+}
+
+/// Mic playback needs Windows. With `PCLINK_TEST_TONE` set (tests), the
+/// audio is consumed in real time and discarded instead.
+pub fn start_playback(
+    _device_name: String,
+    buffer: Arc<std::sync::Mutex<std::collections::VecDeque<i16>>>,
+    rate: u32,
+    stop: Arc<AtomicBool>,
+) -> Result<()> {
+    if std::env::var_os("PCLINK_TEST_TONE").is_none() {
+        bail!("playing the phone mic into a PC device is only supported on Windows");
+    }
+    std::thread::spawn(move || {
+        use std::sync::atomic::Ordering;
+        while !stop.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+            let mut b = buffer.lock().unwrap();
+            let n = (rate as usize / 100).min(b.len());
+            b.drain(..n);
+        }
+    });
+    Ok(())
+}
+
 pub fn set_default_output(_id: &str) -> Result<()> {
     bail!("switching audio devices is only supported on Windows")
 }

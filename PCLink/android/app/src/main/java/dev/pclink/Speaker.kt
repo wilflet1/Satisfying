@@ -28,6 +28,12 @@ object Speaker {
     /** Max audio queued in the phone before packets are dropped. */
     private const val MAX_LATENCY_MS = 90
 
+    /**
+     * When the phone mic is on, PC audio plays as voice-communication audio:
+     * it follows the headset the mic uses and echo cancellation can hear it.
+     */
+    @Volatile var voiceMode = false
+
     @Synchronized
     fun start(context: Context, key: ByteArray, rate: Int, channels: Int): Int {
         stop()
@@ -35,28 +41,6 @@ object Speaker {
             receiveBufferSize = 512 * 1024
             soTimeout = 1000
         }
-        val mask = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
-        val minBuf = AudioTrack.getMinBufferSize(rate, mask, AudioFormat.ENCODING_PCM_16BIT)
-        val frameBytes = 2 * channels
-        val track = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                    .build(),
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setSampleRate(rate)
-                    .setChannelMask(mask)
-                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                    .build(),
-            )
-            .setBufferSizeInBytes(maxOf(minBuf * 2, rate * frameBytes * 150 / 1000))
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
-            .build()
-
         val app = context.applicationContext
         wifiLock = app.getSystemService(WifiManager::class.java)
             .createWifiLock(WifiManager.WIFI_MODE_FULL_LOW_LATENCY, "pclink-speaker")
@@ -67,14 +51,46 @@ object Speaker {
 
         socket = sock
         isPlaying = true
-        thread = Thread({ play(sock, track, key, rate, frameBytes) }, "pclink-speaker").apply {
+        thread = Thread({ play(sock, key, rate, channels) }, "pclink-speaker").apply {
             priority = Thread.MAX_PRIORITY
             start()
         }
         return sock.localPort
     }
 
-    private fun play(sock: DatagramSocket, track: AudioTrack, key: ByteArray, rate: Int, frameBytes: Int) {
+    private fun makeTrack(rate: Int, channels: Int, voice: Boolean): AudioTrack {
+        val mask = if (channels == 1) AudioFormat.CHANNEL_OUT_MONO else AudioFormat.CHANNEL_OUT_STEREO
+        val minBuf = AudioTrack.getMinBufferSize(rate, mask, AudioFormat.ENCODING_PCM_16BIT)
+        val attrs = if (voice) {
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+        } else {
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+        }
+        return AudioTrack.Builder()
+            .setAudioAttributes(attrs)
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setSampleRate(rate)
+                    .setChannelMask(mask)
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .build(),
+            )
+            .setBufferSizeInBytes(maxOf(minBuf * 2, rate * 2 * channels * 150 / 1000))
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+            .build()
+    }
+
+    private fun play(sock: DatagramSocket, key: ByteArray, rate: Int, channels: Int) {
+        val frameBytes = 2 * channels
+        var voice = voiceMode
+        var track = makeTrack(rate, channels, voice)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val keySpec = SecretKeySpec(key, "AES")
         val nonce = ByteArray(12)
@@ -86,6 +102,15 @@ object Speaker {
         track.play()
         try {
             while (isPlaying && sock === socket) {
+                if (voiceMode != voice) {
+                    // The mic was turned on or off: switch the audio path.
+                    voice = voiceMode
+                    track.stop()
+                    track.release()
+                    track = makeTrack(rate, channels, voice)
+                    track.play()
+                    framesWritten = 0
+                }
                 try {
                     sock.receive(packet)
                 } catch (_: java.net.SocketTimeoutException) {

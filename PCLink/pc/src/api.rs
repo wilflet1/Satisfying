@@ -39,6 +39,7 @@ pub fn router(agent: Arc<Agent>) -> Router {
         .route("/notifications/dismiss", post(notif_dismiss))
         .route("/speaker", post(speaker))
         .route("/clipboard/send", post(clipboard_send))
+        .route("/mic", post(mic))
         .route("/actions/run", post(action_run))
         .route("/activity", get(activity))
         .route("/open_inbox", post(open_inbox))
@@ -456,4 +457,9 @@ struct Approve {
 /// Called by the task's PermissionRequest hook; answers with the hook output.
 async fn tasks_approve(State(a): State<AppState>, Json(b): Json<Approve>) -> Json<Value> {
     Json(a.approve_task_tool(b.task, &b.tool_name, &b.tool_input).await)
+}
+
+async fn mic(State(a): State<AppState>, Json(b): Json<SpeakerBody>) -> ApiResult {
+    let on = b.on.unwrap_or(!a.mic_on());
+    Ok(Json(json!({"on": a.set_mic(on).await?})))
 }

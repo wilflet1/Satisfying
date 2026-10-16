@@ -165,6 +165,7 @@ class LinkService : Service(), Link.Handler {
         if (current === link) {
             current = null
             Speaker.stop()
+            Mic.stop(tellPc = false)
             setState(if (running) "Disconnected. Reconnecting…" else null)
         }
         kick()
@@ -180,7 +181,7 @@ class LinkService : Service(), Link.Handler {
         for (l in listeners) l()
     }
 
-    private fun buildNotification(): Notification {
+    internal fun buildNotification(): Notification {
         val link = current
         val title = if (link != null) "Connected to ${link.pcName}" else "PCLink"
         val text = stateText ?: if (link != null) "Tap for controls" else "Not connected"
@@ -221,6 +222,22 @@ class LinkService : Service(), Link.Handler {
 
         /** UI callbacks fired when the connection state changes. */
         val listeners = CopyOnWriteArraySet<() -> Unit>()
+
+        /**
+         * Adds (or removes) the microphone foreground-service type, which
+         * Android 14+ requires to record in the background. Only allowed
+         * while the app is open.
+         */
+        fun setMicForeground(on: Boolean) {
+            val svc = instance ?: if (on) throw IOException("PCLink isn't running") else return
+            val type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE or
+                (if (on) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
+            try {
+                svc.startForeground(NOTIF_ID, svc.buildNotification(), type)
+            } catch (e: Exception) {
+                if (on) throw IOException("Android only lets PCLink use the mic if you turn it on with the app open")
+            }
+        }
 
         fun start(context: Context) = startSafely(context, Intent(context, LinkService::class.java))
 

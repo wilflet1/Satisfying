@@ -158,6 +158,8 @@ async fn api_async(port: u16, token: String, method: &'static str, path: &'stati
 async fn phone_and_pc_end_to_end() {
     let home = tempfile::tempdir().unwrap();
     std::env::set_var("PCLINK_HOME", home.path());
+    // No audio devices here: lets the mic path run with a null output.
+    std::env::set_var("PCLINK_TEST_TONE", "1");
     let shared = home.path().join("shared");
     std::fs::create_dir_all(&shared).unwrap();
     std::fs::write(shared.join("notes.txt"), "hello from the PC").unwrap();
@@ -269,6 +271,31 @@ async fn phone_and_pc_end_to_end() {
     assert_eq!(status["phone"]["status"]["battery"], 81);
     let notifs = api_async(port, token.clone(), "GET", "/api/notifications", json!({})).await.unwrap();
     assert_eq!(notifs[0]["title"], "Sam");
+
+    // --- Phone mic → PC: open, stream encrypted packets, close.
+    let opened = phone.request("mic.open", json!({})).await;
+    assert_eq!(opened["ok"], true, "{opened}");
+    let mic = &opened["data"];
+    let mic_port = mic["port"].as_u64().unwrap() as u16;
+    use base64::Engine;
+    let key: [u8; 32] = base64::engine::general_purpose::STANDARD
+        .decode(mic["key"].as_str().unwrap())
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let sealer = pclink::audio::make_key(&key);
+    let udp = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+    let tone: Vec<u8> = (0..480).flat_map(|i| (((i as f64 / 10.0).sin() * 12000.0) as i16).to_le_bytes()).collect();
+    for seq in 0..20u64 {
+        udp.send_to(&pclink::audio::seal(&sealer, seq, &tone), ("127.0.0.1", mic_port)).unwrap();
+    }
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let status = api_async(port, token.clone(), "GET", "/api/status", json!({})).await.unwrap();
+    assert_eq!(status["mic"]["packets"], 20, "{}", status["mic"]);
+    assert!(status["mic"]["level"].as_u64().unwrap() > 100);
+    phone.request("mic.close", json!({})).await;
+    let status = api_async(port, token.clone(), "GET", "/api/status", json!({})).await.unwrap();
+    assert!(status["mic"].is_null());
 
     // --- PC → phone through the local API (what the CLI, hooks and MCP use).
     let r = api_async(port, token.clone(), "POST", "/api/notify", json!({"title": "Claude", "text": "done", "channel": "claude"})).await.unwrap();
