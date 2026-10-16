@@ -509,6 +509,7 @@ impl Agent {
                 self.run_action(&name, wait).await
             }
             "mic.open" => self.open_mic().await,
+            "cable.open" => Ok(json!({"message": crate::cable::open_download_page()?})),
             "mic.close" => {
                 self.close_mic();
                 Ok(json!({}))
@@ -786,6 +787,7 @@ impl Agent {
             })),
             "idle_secs": platform::idle_secs(),
             "mic": self.mic_status(),
+            "cable_present": crate::mic::cable_present(),
             "claude": self.cfg.claude,
             "pairing_active": pairing.as_ref().map(|p| p.expires > Instant::now()).unwrap_or(false),
             "inbox": crate::files::display(&self.cfg.inbox),

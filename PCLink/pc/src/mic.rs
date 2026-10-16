@@ -16,6 +16,8 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 pub const MIC_RATE: u32 = 48_000;
+/// Error text the apps recognise to offer installing VB-Cable.
+pub const NO_CABLE: &str = "No virtual audio cable on the PC: install VB-Cable from VB-Audio, then restart the PC.";
 /// Audio older than this is dropped so the mic stays live, not delayed.
 const MAX_BUFFER_MS: usize = 160;
 
@@ -56,24 +58,24 @@ pub fn choose_device(outputs: &[(String, String)], wanted: &str, speaker_cable: 
             .find(|n| n.to_lowercase().contains(&w))
             .ok_or_else(|| anyhow!("no output device matching `{wanted}` (mic.device in config.toml)"));
     }
-    let cables: Vec<String> = names
-        .filter(|n| {
-            let l = n.to_lowercase();
-            l.contains("cable") && l.contains("input")
-        })
-        .collect();
+    let cables: Vec<String> = names.filter(|n| crate::cable::is_virtual_cable(n)).collect();
     let speaker = speaker_cable.to_lowercase();
     cables
         .iter()
         .find(|n| speaker.is_empty() || !n.to_lowercase().contains(&speaker))
         .or_else(|| cables.first())
         .cloned()
-        .ok_or_else(|| anyhow!("The phone mic needs a virtual audio cable on the PC. Install VB-Cable (vb-audio.com/Cable) and try again."))
+        .ok_or_else(|| anyhow!("{NO_CABLE}"))
 }
 
 /// The recording side of a cable: "CABLE-A Input (…)" → "CABLE-A Output (…)".
 pub fn recording_side(output_name: &str) -> String {
     output_name.replacen("Input", "Output", 1)
+}
+
+/// Whether this PC has a virtual cable the mic can use.
+pub fn cable_present() -> bool {
+    platform::output_devices().iter().any(|(_, n)| crate::cable::is_virtual_cable(n))
 }
 
 /// Decrypts packets from the phone into the playback buffer.

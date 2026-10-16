@@ -40,6 +40,7 @@ pub fn router(agent: Arc<Agent>) -> Router {
         .route("/speaker", post(speaker))
         .route("/clipboard/send", post(clipboard_send))
         .route("/mic", post(mic))
+        .route("/cable/open", post(cable_open))
         .route("/actions/run", post(action_run))
         .route("/activity", get(activity))
         .route("/open_inbox", post(open_inbox))
@@ -462,4 +463,8 @@ async fn tasks_approve(State(a): State<AppState>, Json(b): Json<Approve>) -> Jso
 async fn mic(State(a): State<AppState>, Json(b): Json<SpeakerBody>) -> ApiResult {
     let on = b.on.unwrap_or(!a.mic_on());
     Ok(Json(json!({"on": a.set_mic(on).await?})))
+}
+
+async fn cable_open() -> ApiResult {
+    Ok(Json(json!({"message": crate::cable::open_download_page()?})))
 }

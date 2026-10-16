@@ -96,6 +96,10 @@ textarea { font: inherit; padding: 10px; border: 1px solid var(--line); border-r
         <div class="muted" id="speakerInfo">Shortcut: Ctrl+Alt+P. Install VB-Cable to silence the PC while the phone plays.</div>
         <button id="micBtn">🎙 Use phone mic on this PC</button>
         <div class="muted" id="micInfo">Your phone (or headset) mic becomes a microphone here. Needs VB-Cable.</div>
+        <div class="row" id="cableRow" hidden>
+          <button id="cableBtn">Get VB-Cable</button>
+          <span class="muted">Free virtual audio cable from VB-Audio that the phone mic plays into. Restart the PC after installing it.</span>
+        </div>
       </div>
       <div class="card stack">
         <h2>Quick actions</h2>
@@ -286,6 +290,7 @@ async function refresh() {
   $("micInfo").textContent = mic
     ? `Live into ${mic.device}${mic.recording_device ? `; apps use "${mic.recording_device}" as the microphone` : ""}. Level ${"▮".repeat(Math.min(10, Math.round(mic.level / 30)))}`
     : "Your phone (or headset) mic becomes a microphone here. Needs VB-Cable.";
+  $("cableRow").hidden = !!status.cable_present;
   const acts = $("actions");
   if (acts.dataset.n != status.actions.length) {
     acts.dataset.n = status.actions.length;
@@ -312,6 +317,10 @@ async function refresh() {
 
 $("speakerBtn").onclick = () => run(() => api("/speaker", {})).then(refresh);
 $("micBtn").onclick = () => run(() => api("/mic", {})).then(refresh);
+$("cableBtn").onclick = async () => {
+  const r = await run(() => api("/cable/open", {}));
+  if (r) $("micInfo").textContent = r.message;
+};
 $("clipBtn").onclick = () => run(() => api("/clipboard/send", {}), "Clipboard sent");
 $("ringBtn").onclick = () => run(() => api("/phone", { op: "find_phone" }), "Ringing");
 $("inboxBtn").onclick = () => run(() => api("/open_inbox", {}));
