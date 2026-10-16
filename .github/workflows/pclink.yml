@@ -43,6 +43,8 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: PCLink/android
@@ -58,3 +60,15 @@ jobs:
         with:
           name: pclink-android
           path: PCLink/android/app/build/outputs/apk/release/*.apk
+      # A fixed "pclink-latest" pre-release gives a plain download link for
+      # the newest APK (artifacts need a GitHub login to download).
+      - name: Publish APK to the pclink-latest release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk PCLink.apk
+          gh release delete pclink-latest --cleanup-tag --yes || true
+          gh release create pclink-latest PCLink.apk --prerelease --target "$GITHUB_SHA" \
+            --title "PCLink (latest build)" \
+            --notes "Android app built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. Install PCLink.apk on Android 11+."
