@@ -15,8 +15,15 @@
   button { flex: 1; border: 0; border-radius: 22px; font-size: 30px; font-weight: 800;
     color: #fff; letter-spacing: .5px; }
   button:active { transform: scale(.97); filter: brightness(1.2); }
-  #drop { background: #e8562a; flex: 3; }
-  #center { background: #2a6fe8; }
+  #controls { flex: 1; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+  #row { flex: 1; display: flex; gap: 12px; min-height: 0; }
+  #drop { background: #e8562a; flex: 2; }
+  #center { background: #2a6fe8; font-size: 20px; }
+  #slider { flex: 1.4; min-height: 0; width: 100%; touch-action: none; }
+  #track { fill: none; stroke: #2b2f38; stroke-width: 11; stroke-linecap: round; }
+  #fill { fill: none; stroke: #e8a12a; stroke-width: 11; stroke-linecap: round; opacity: .55; }
+  #knob { fill: #f5f5f5; stroke: #e8a12a; stroke-width: 2.5; }
+  #tick { stroke: #555; stroke-width: 1.2; }
   #start { background: #19a35b; }
   .hint { font-size: 13px; opacity: .75; text-align: center; line-height: 1.4; }
   .hidden { display: none !important; }
@@ -26,9 +33,19 @@
 <div id="app">
   <div id="status">Connecting…</div>
   <button id="start">TAP TO START</button>
-  <button id="drop" class="hidden">DROP BALL</button>
-  <button id="center" class="hidden">RE-CENTER</button>
-  <div class="hint" id="hint">Hold the phone like a paddle handle (bottom of the phone = grip, screen = paddle face). Point it at your monitor and tap RE-CENTER.</div>
+  <div id="controls" class="hidden">
+    <div id="row">
+      <button id="drop">DROP BALL</button>
+      <button id="center">RE-<br>CENTER</button>
+    </div>
+    <svg id="slider" viewBox="-9 6 118 64" preserveAspectRatio="xMidYMid meet">
+      <line id="tick" x1="50" y1="12" x2="50" y2="17"></line>
+      <path id="track"></path>
+      <path id="fill"></path>
+      <circle id="knob" r="7.5"></circle>
+    </svg>
+  </div>
+  <div class="hint" id="hint">Hold the phone like a paddle handle (bottom of the phone = grip, screen = paddle face). Point it at your monitor and tap RE-CENTER. Slide your thumb along the curve to move left/right.</div>
 </div>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -54,9 +71,82 @@ function send(obj) {
 }
 
 // Quaternion (x, y, z, w) mapping device frame -> earth frame (X east, Y north, Z up).
+// Also carries the current swing velocity (earth frame) so hits get the real swing speed.
+let lastQ = [0, 0, 0, 1];
+const vel = [0, 0, 0];
 function sendQuat(x, y, z, w) {
-  send({ t: 'o', q: [+x.toFixed(5), +y.toFixed(5), +z.toFixed(5), +w.toFixed(5)] });
+  lastQ = [x, y, z, w];
+  send({ t: 'o', q: [+x.toFixed(5), +y.toFixed(5), +z.toFixed(5), +w.toFixed(5)],
+    v: [+vel[0].toFixed(3), +vel[1].toFixed(3), +vel[2].toFixed(3)] });
 }
+
+// Rotate vector v by quaternion q.
+function rotate(q, v) {
+  const [x, y, z, w] = q;
+  const tx = 2 * (y * v[2] - z * v[1]), ty = 2 * (z * v[0] - x * v[2]), tz = 2 * (x * v[1] - y * v[0]);
+  return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
+}
+
+// Swing speed: integrate gravity-free acceleration with a short leak so it can't drift.
+// Used only for hit power; the paddle's on-screen position comes from the slider.
+let lastAccAt = 0;
+function onAccel(ax, ay, az) {
+  const now = performance.now();
+  const dt = lastAccAt ? Math.min(0.05, (now - lastAccAt) / 1000) : 0;
+  lastAccAt = now;
+  const a = rotate(lastQ, [ax || 0, ay || 0, az || 0]);
+  const decay = Math.exp(-dt / 0.15);
+  for (let i = 0; i < 3; i++) vel[i] = vel[i] * decay + (Math.abs(a[i]) < 0.4 ? 0 : a[i]) * dt;
+}
+
+function startAccel() {
+  if ('LinearAccelerationSensor' in window) {
+    try {
+      const s = new LinearAccelerationSensor({ frequency: 120 });
+      s.addEventListener('reading', () => onAccel(s.x, s.y, s.z));
+      s.addEventListener('error', () => {
+        window.addEventListener('devicemotion', (e) => e.acceleration && onAccel(e.acceleration.x, e.acceleration.y, e.acceleration.z));
+      });
+      s.start();
+      return;
+    } catch (_) {}
+  }
+  window.addEventListener('devicemotion', (e) => e.acceleration && onAccel(e.acceleration.x, e.acceleration.y, e.acceleration.z));
+}
+
+// ---- Curved slider: thumb sweeps an arc; position maps 1:1 to paddle left/right ----
+const ARC = { cx: 50, cy: 84, r: 62, from: 140, to: 40 }; // degrees, left end -> right end
+const arcPt = (deg) => {
+  const a = deg * Math.PI / 180;
+  return [ARC.cx + ARC.r * Math.cos(a), ARC.cy - ARC.r * Math.sin(a)];
+};
+const arcPath = (d0, d1) => {
+  const [x0, y0] = arcPt(d0), [x1, y1] = arcPt(d1);
+  return `M ${x0} ${y0} A ${ARC.r} ${ARC.r} 0 0 ${d1 < d0 ? 1 : 0} ${x1} ${y1}`;
+};
+$('track').setAttribute('d', arcPath(ARC.from, ARC.to));
+let slide = 0; // -1..1
+function drawSlider() {
+  const deg = ARC.from + (slide + 1) / 2 * (ARC.to - ARC.from);
+  const [x, y] = arcPt(deg);
+  $('knob').setAttribute('cx', x);
+  $('knob').setAttribute('cy', y);
+  $('fill').setAttribute('d', arcPath(90, deg));
+}
+drawSlider();
+const svg = $('slider');
+function slideFromPointer(e, force) {
+  const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse());
+  const deg = Math.atan2(ARC.cy - pt.y, pt.x - ARC.cx) * 180 / Math.PI;
+  const t = Math.min(1, Math.max(0, (ARC.from - deg) / (ARC.from - ARC.to)));
+  slide = t * 2 - 1;
+  drawSlider();
+  const msg = { t: 's', x: +slide.toFixed(4) };
+  if (force) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); } else send(msg);
+}
+svg.addEventListener('pointerdown', (e) => { svg.setPointerCapture(e.pointerId); slideFromPointer(e, true); });
+svg.addEventListener('pointermove', (e) => { if (svg.hasPointerCapture(e.pointerId)) slideFromPointer(e); });
+svg.addEventListener('pointerup', (e) => slideFromPointer(e, true));
 
 // W3C deviceorientation (Z-X'-Y'' intrinsic) -> quaternion.
 function eulerToQuat(alpha, beta, gamma) {
@@ -169,10 +259,10 @@ $('start').addEventListener('click', async () => {
     isAndroid ? androidHelp() : iosHelp();
     return;
   }
+  startAccel();
   keepAwake();
   $('start').classList.add('hidden');
-  $('drop').classList.remove('hidden');
-  $('center').classList.remove('hidden');
+  $('controls').classList.remove('hidden');
   setStatus(`Connected · ${sensorMode}`, 'ok');
   send({ t: 'center' });
 });

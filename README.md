@@ -37,7 +37,9 @@ Turn off auto-rotate on the phone so the page doesn't flip while you swing.
 
 | Where    | Action                                |
 |----------|---------------------------------------|
-| Phone    | Rotate/swing: move the paddle         |
+| Phone    | Rotate: paddle rotates 1:1 around its grip |
+| Phone    | Curved slider (thumb): move the paddle left/right |
+| Phone    | Swing: swing speed (from the accelerometer) sets hit power |
 | Phone    | DROP BALL / RE-CENTER buttons         |
 | Computer | `Space`: drop a ball, `C`: re-center, `H`: hide help |
 | Computer | Mouse moves the paddle when no phone is connected |
@@ -50,4 +52,7 @@ Click the 3D page once to turn on sound. Browsers block audio until you click.
 - Each reading goes out right away over a LAN WebSocket. Nagle and compression are off, and a frame is dropped rather than queued if the socket is busy, so the screen always shows the newest pose.
 - The screen draws the latest pose on the next frame with no smoothing or buffering. Physics runs 16 sub-steps per frame against the interpolated paddle, so fast swings don't pass through the ball.
 
-Phones can't measure their own position accurately, so the paddle follows the phone's **rotation**. It swings around a virtual shoulder, so rotating your wrist or arm moves the paddle across the table.
+Phones can't measure their own position accurately (accelerometer drift makes positions useless within a second), so:
+- **rotation** is exact and 1:1, pivoting around the grip like the phone in your hand,
+- **left/right position** comes from the curved slider under your thumb,
+- **swing speed** is estimated from the accelerometer over a short window and only affects how hard you hit the ball.

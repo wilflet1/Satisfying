@@ -7,8 +7,12 @@ const TABLE = { w: 1.525, l: 2.74, h: 0.76 };
 const NET_H = 0.1525;
 const BALL_R = 0.022;
 const GRAVITY = -9.81;
-const PIVOT = new THREE.Vector3(0, 1.15, 1.8); // "shoulder" the paddle swings around
-const REACH = 0.7;                              // pivot -> grip distance
+// The paddle's grip sits here; the phone slider moves it left/right along X.
+// Rotation happens around the grip, exactly like the phone turning in your hand.
+const GRIP_Y = 0.98;
+const GRIP_Z = 1.3;
+const SLIDE_RANGE = 0.75;                       // slider end -> paddle X in metres
+const MAX_SWING = 10;                           // clamp accelerometer swing speed (m/s)
 const BLADE_R = 0.095;
 const BLADE_OFFSET = 0.12;                      // grip -> blade centre along handle
 const BLADE_HALF_T = 0.007;
@@ -135,6 +139,9 @@ const EARTH_TO_THREE = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3
 const calib = new THREE.Quaternion();
 const rawQ = new THREE.Quaternion();     // latest phone orientation in three.js frame (pre-calibration)
 const targetQ = new THREE.Quaternion();  // calibrated paddle orientation
+const phoneVel = new THREE.Vector3();  // swing velocity from the phone accelerometer (three.js frame)
+const _pv = new THREE.Vector3();
+let slideX = 0;                          // -1..1 from the phone slider
 let haveSample = false;
 let lastSampleAt = -1e9;
 let wantCenter = true;
@@ -147,7 +154,7 @@ function center() {
 }
 
 // Mouse fallback so the scene is usable before a phone connects.
-const mouse = { x: 0, y: 0.3 };
+const mouse = { x: 0, y: 0 };
 addEventListener('pointermove', (e) => {
   mouse.x = (e.clientX / innerWidth) * 2 - 1;
   mouse.y = (e.clientY / innerHeight) * 2 - 1;
@@ -155,7 +162,7 @@ addEventListener('pointermove', (e) => {
 const FLAT_FORWARD = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -Math.PI / 2);
 const _e = new THREE.Euler();
 function mouseQuat(out) {
-  _e.set(-0.1 - mouse.y * 0.7, -mouse.x * 0.9, 0, 'YXZ');
+  _e.set(-mouse.y * 0.8, 0, 0, 'YXZ');
   return out.setFromEuler(_e).multiply(FLAT_FORWARD);
 }
 
@@ -178,6 +185,11 @@ function connect() {
       lastSampleAt = performance.now();
       sampleCount++;
       if (wantCenter) { center(); wantCenter = false; }
+      if (m.v) _pv.set(m.v[0], m.v[1], m.v[2]).applyQuaternion(EARTH_TO_THREE).applyQuaternion(calib);
+      else _pv.set(0, 0, 0);
+      phoneVel.copy(_pv).clampLength(0, MAX_SWING);
+    } else if (m.t === 's') {
+      slideX = THREE.MathUtils.clamp(m.x, -1, 1);
     } else if (m.t === 'center') {
       if (haveSample) center(); else wantCenter = true;
     } else if (m.t === 'drop') {
@@ -185,7 +197,7 @@ function connect() {
     } else if (m.t === 'status') {
       connEl.textContent = m.phones ? 'connected' : 'not connected';
       connEl.className = m.phones ? 'ok' : 'bad';
-      if (!m.phones) { haveSample = false; wantCenter = true; }
+      if (!m.phones) { haveSample = false; wantCenter = true; phoneVel.set(0, 0, 0); }
     }
   };
   ws.onclose = () => setTimeout(connect, 800);
@@ -227,10 +239,10 @@ const ballMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xff
 const balls = [];
 
 function dropBall() {
-  // Somewhere above the near half of the table, inside the paddle's reach.
+  // Above the line the paddle slides along, so the slider can always reach it.
   const b = {
     mesh: new THREE.Mesh(ballGeo, ballMat),
-    pos: new THREE.Vector3(THREE.MathUtils.randFloat(-0.25, 0.25), 1.9, THREE.MathUtils.randFloat(1.12, 1.3)),
+    pos: new THREE.Vector3(THREE.MathUtils.randFloat(-0.55, 0.55) * SLIDE_RANGE / 0.75, 1.8, GRIP_Z - BLADE_OFFSET * 0.8),
     vel: new THREE.Vector3(0, 0, 0),
     still: 0,
     cooldown: 0,
@@ -266,19 +278,20 @@ const vGrip = new THREE.Vector3();   // smoothed linear velocity of grip
 const omega = new THREE.Vector3();   // smoothed angular velocity
 let firstFrame = true;
 
-function gripFor(q, out) {
-  return out.set(0, 1, 0).applyQuaternion(q).multiplyScalar(REACH).add(PIVOT);
+function phoneActive() {
+  return haveSample && performance.now() - lastSampleAt < 1000;
 }
 
 const _dq = new THREE.Quaternion(), _qp = new THREE.Quaternion(), _v = new THREE.Vector3(), _w = new THREE.Vector3();
 function updatePaddle(dt) {
-  if (haveSample && performance.now() - lastSampleAt < 1000) targetQ.copy(rawQ).premultiply(calib);
-  else mouseQuat(targetQ);
+  const live = phoneActive();
+  if (live) targetQ.copy(rawQ).premultiply(calib);
+  else { mouseQuat(targetQ); phoneVel.set(0, 0, 0); }
 
   qPrev.copy(qCur);
   gripPrev.copy(gripCur);
   qCur.copy(targetQ); // no smoothing on pose: show exactly the latest sample
-  gripFor(qCur, gripCur);
+  gripCur.set((live ? slideX : mouse.x) * SLIDE_RANGE, GRIP_Y, GRIP_Z);
   if (firstFrame) { qPrev.copy(qCur); gripPrev.copy(gripCur); firstFrame = false; }
 
   // Velocities (smoothed a little, since phone samples arrive unevenly vs frames)
@@ -319,7 +332,7 @@ function collidePaddle(b, alpha) {
   // Velocity of the paddle surface at the contact point.
   _cp.set(_local.x, _local.y, 0).applyQuaternion(_q).add(_grip);
   _r.subVectors(_cp, _grip);
-  _vp.crossVectors(omega, _r).add(vGrip);
+  _vp.crossVectors(omega, _r).add(vGrip).add(phoneVel);
   _rel.subVectors(b.vel, _vp);
   const vn = _rel.dot(_n);
   if (vn < 0) {
