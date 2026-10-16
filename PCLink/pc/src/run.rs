@@ -56,5 +56,7 @@ pub async fn start_with(cfg: Config, background_tasks: bool) -> Result<Running> 
 }
 
 pub fn dashboard_url(api_port: u16, token: &str, page: &str) -> String {
-    format!("http://127.0.0.1:{api_port}/#{page}&t={token}")
+    // The token goes in the query string: some ways of launching a browser
+    // drop the `#fragment`.
+    format!("http://127.0.0.1:{api_port}/?t={token}#{page}")
 }

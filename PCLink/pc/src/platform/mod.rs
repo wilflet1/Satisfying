@@ -80,15 +80,16 @@ pub fn open_path(path: &std::path::Path) -> Result<()> {
     open_with_shell(&path.to_string_lossy())
 }
 
+#[cfg(windows)]
 fn open_with_shell(target: &str) -> Result<()> {
-    #[cfg(windows)]
-    let mut cmd = {
-        // explorer.exe hands the argument to the shell without going through
-        // cmd.exe, so no quoting or metacharacter issues.
-        let mut c = std::process::Command::new("explorer.exe");
-        c.arg(target);
-        c
-    };
+    // ShellExecuteW opens URLs in the default browser and folders in
+    // Explorer. (Passing a URL to explorer.exe breaks on `#` and `&` and
+    // just opens the Documents folder.)
+    shell_execute(target)
+}
+
+#[cfg(not(windows))]
+fn open_with_shell(target: &str) -> Result<()> {
     #[cfg(target_os = "macos")]
     let mut cmd = {
         let mut c = std::process::Command::new("open");

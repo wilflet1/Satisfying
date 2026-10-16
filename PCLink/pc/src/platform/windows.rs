@@ -20,6 +20,22 @@ pub fn notify(title: &str, body: &str) {
     }
 }
 
+/// Opens a URL, file or folder with its default handler.
+pub fn shell_execute(target: &str) -> Result<()> {
+    use windows::core::{w, HSTRING};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    com_init();
+    let file = HSTRING::from(target);
+    let result = unsafe { ShellExecuteW(None, w!("open"), &file, None, None, SW_SHOWNORMAL) };
+    // Values above 32 mean success.
+    if result.0 as usize > 32 {
+        Ok(())
+    } else {
+        bail!("could not open {target} (error {})", result.0 as usize)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Keyboard and mouse. Enigo is driven from one dedicated thread.
 

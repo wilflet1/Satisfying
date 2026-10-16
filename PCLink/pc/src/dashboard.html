@@ -172,11 +172,14 @@ ol { padding-left: 20px; }
 <div id="toast"></div>
 
 <script>
+// The token arrives as ?t=… (or, from older links, #page&t=…).
 const params = new URLSearchParams(location.hash.slice(1).replace(/^[a-z]+&?/, ""));
-if (params.get("t")) {
-  try { sessionStorage.setItem("pclink-token", params.get("t")); } catch (e) {}
+let TOKEN = new URLSearchParams(location.search).get("t") || params.get("t");
+if (TOKEN) {
+  try { sessionStorage.setItem("pclink-token", TOKEN); } catch (e) {}
+  // Keep the token out of the address bar once it's stored.
+  history.replaceState(null, "", "/" + location.hash.replace(/&t=[^&]*/, ""));
 }
-let TOKEN = params.get("t");
 try { TOKEN = TOKEN || sessionStorage.getItem("pclink-token"); } catch (e) {}
 const $ = (id) => document.getElementById(id);
 let status = {};
