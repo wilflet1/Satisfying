@@ -60,13 +60,14 @@ class PcFilesActivity : Activity() {
         path = null
         parent = null
         root.removeAllViews()
-        root.addView(Ui.text(this, "Shared folders on ${Prefs(this).pcName}", 20f, bold = true))
+        root.addView(Ui.text(this, "PC files", 22f, bold = true))
+        root.addView(Ui.text(this, "Shared folders on ${Prefs(this).pcName}", 15f))
         root.addView(Ui.text(this, "Change these in the PC's config.toml (shared_folders).", 13f, muted = true))
         val card = Ui.card(this)
         if (roots.length() == 0) card.addView(Ui.text(this, "The PC isn't sharing any folders.", muted = true))
         for (i in 0 until roots.length()) {
             val r = roots.getJSONObject(i)
-            card.addView(Ui.button(this, "📁 ${r.getString("name")}") { load(r.getString("path")) })
+            card.addView(Ui.listRow(this, "📁  ${r.getString("name")}", r.getString("path")) { load(r.getString("path")) })
         }
         root.addView(card)
     }
@@ -75,11 +76,16 @@ class PcFilesActivity : Activity() {
         path = listing.getString("path")
         parent = listing.str("parent")
         root.removeAllViews()
-        root.addView(Ui.text(this, path!!, 14f, muted = true))
-        val bar = Ui.row(this)
-        bar.addView(Ui.button(this, "↑ Up") { onBackPressedCompat() })
-        bar.addView(Ui.button(this, "⬆ Upload here") { pickUpload() })
-        root.addView(bar)
+        root.addView(Ui.text(this, "PC files", 22f, bold = true))
+        root.addView(Ui.text(this, path!!, 13f, muted = true).apply {
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.START
+            setPadding(0, 0, 0, Ui.dp(this@PcFilesActivity, 6))
+        })
+        root.addView(Ui.buttonRow(this,
+            Ui.button(this, "↑ Up") { onBackPressedCompat() },
+            Ui.button(this, "⬆ Upload here") { pickUpload() },
+        ))
         val card = Ui.card(this)
         val entries = listing.getJSONArray("entries")
         if (entries.length() == 0) card.addView(Ui.text(this, "Empty folder", muted = true))
@@ -87,11 +93,11 @@ class PcFilesActivity : Activity() {
         for (i in 0 until entries.length()) {
             val e = entries.getJSONObject(i)
             val isDir = e.getBoolean("dir")
-            val label = if (isDir) "📁 ${e.getString("name")}" else
-                "📄 ${e.getString("name")}\n${Ui.size(e.getLong("size"))} · ${fmt.format(Date(e.getLong("mtime")))}"
-            card.addView(Ui.button(this, label) {
+            val title = (if (isDir) "📁  " else "📄  ") + e.getString("name")
+            val detail = if (isDir) null else "${Ui.size(e.getLong("size"))} · ${fmt.format(Date(e.getLong("mtime")))} · tap to download"
+            card.addView(Ui.listRow(this, title, detail) {
                 if (isDir) load(e.getString("path")) else download(e.getString("path"), e.getString("name"), e.getLong("size"))
-            }.apply { gravity = android.view.Gravity.START or android.view.Gravity.CENTER_VERTICAL })
+            })
         }
         root.addView(card)
     }

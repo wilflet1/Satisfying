@@ -146,6 +146,7 @@ class AskActivity : Activity() {
             })
         }
         setContentView(android.widget.ScrollView(this).apply { addView(col) })
+        // Dialog windows aren't edge to edge, so no system-bar padding needed here.
     }
 
     companion object {

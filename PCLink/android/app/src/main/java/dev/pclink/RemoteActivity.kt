@@ -44,6 +44,9 @@ class RemoteActivity : Activity() {
             setPadding(p, p, p, p)
             setBackgroundColor(Ui.bgColor(this@RemoteActivity))
         }
+        Ui.fitSystemBars(root)
+        root.addView(Ui.text(this, "Touchpad & keys", 20f, bold = true))
+        root.addView(Ui.text(this, "Tip: tap the mic on your keyboard to dictate a prompt for Claude.", 13f, muted = true))
 
         // Text to type on the PC.
         val field = EditText(this).apply {
@@ -53,7 +56,6 @@ class RemoteActivity : Activity() {
             imeOptions = EditorInfo.IME_ACTION_SEND
         }
         root.addView(field)
-        val sendRow = Ui.row(this)
         fun sendText(enter: Boolean) {
             val t = field.text.toString()
             if (t.isNotEmpty()) input("kind" to "text", "text" to t)
@@ -68,9 +70,10 @@ class RemoteActivity : Activity() {
                 false
             }
         }
-        sendRow.addView(Ui.button(this, "Send") { sendText(false) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        sendRow.addView(Ui.button(this, "Send + Enter", primary = true) { sendText(true) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        root.addView(sendRow)
+        root.addView(Ui.buttonRow(this,
+            Ui.button(this, "Type") { sendText(false) },
+            Ui.button(this, "Type + Enter", primary = true) { sendText(true) },
+        ))
 
         val keys = listOf(
             "Esc" to listOf("esc"), "Tab" to listOf("tab"), "⌫" to listOf("backspace"), "Enter" to listOf("enter"),
@@ -94,10 +97,10 @@ class RemoteActivity : Activity() {
         root.addView(pad, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f).apply {
             topMargin = Ui.dp(this@RemoteActivity, 8)
         })
-        val clicks = Ui.row(this)
-        clicks.addView(Ui.button(this, "Left") { input("kind" to "click", "button" to "left") }, LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f))
-        clicks.addView(Ui.button(this, "Right") { input("kind" to "click", "button" to "right") }, LinearLayout.LayoutParams(0, Ui.dp(this, 56), 1f))
-        root.addView(clicks)
+        root.addView(Ui.buttonRow(this,
+            Ui.button(this, "Left click") { input("kind" to "click", "button" to "left") }.apply { minHeight = Ui.dp(this@RemoteActivity, 56) },
+            Ui.button(this, "Right click") { input("kind" to "click", "button" to "right") }.apply { minHeight = Ui.dp(this@RemoteActivity, 56) },
+        ))
         setContentView(root)
     }
 

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- No title bar (each screen draws its own heading); content runs edge to
+         edge and pads itself for the system bars (see Ui.fitSystemBars). -->
+    <style name="PCLink" parent="@android:style/Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowBackground">@color/pclink_bg</item>
+    </style>
+    <color name="pclink_bg">#F4F6F9</color>
+</resources>

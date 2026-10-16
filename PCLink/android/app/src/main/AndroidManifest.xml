@@ -28,7 +28,7 @@
         android:allowBackup="false"
         android:icon="@drawable/ic_launcher"
         android:label="PCLink"
-        android:theme="@android:style/Theme.DeviceDefault.DayNight">
+        android:theme="@style/PCLink">
 
         <activity
             android:name=".MainActivity"
