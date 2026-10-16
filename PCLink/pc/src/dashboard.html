@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PCLink</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #5f6b7a; --line: #e3e7ec;
+  --accent: #2f6fed; --accent-text: #ffffff; --ok: #1f8a4c; --warn: #b4540a; --bad: #c62f3a;
+  --chip: #eef2f7;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111418; --card: #1a1f25; --text: #e7ebf0; --muted: #98a3b1; --line: #2a313a;
+    --accent: #5b8cff; --accent-text: #0b0e12; --ok: #4cc27f; --warn: #f0a050; --bad: #ff6b75;
+    --chip: #232a33;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 16px 24px; border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; }
+header h1 { font-size: 18px; margin: 0; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+.dot.on { background: var(--ok); }
+#phoneLine { color: var(--muted); }
+nav { display: flex; gap: 4px; margin-left: auto; flex-wrap: wrap; }
+nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 8px; }
+nav a.active, nav a:hover { background: var(--chip); color: var(--text); }
+main { max-width: 1000px; margin: 0 auto; padding: 24px 16px 64px; }
+section { display: none; }
+section.active { display: block; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 18px; }
+.card h2 { font-size: 15px; margin: 0 0 12px; }
+.muted { color: var(--muted); }
+button, .btn { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--text); padding: 8px 14px; border-radius: 10px; cursor: pointer; text-decoration: none; display: inline-block; }
+button:hover, .btn:hover { border-color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+button.big { width: 100%; padding: 16px; font-size: 16px; font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+input[type=text] { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--text); width: 100%; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.stack > * + * { margin-top: 10px; }
+.qr { background: #fff; border-radius: 12px; padding: 8px; width: 260px; height: 260px; }
+.qr svg { width: 100%; height: 100%; }
+.code { font: 600 28px/1 ui-monospace, Consolas, monospace; letter-spacing: 4px; }
+table { width: 100%; border-collapse: collapse; }
+td { padding: 8px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td.size { color: var(--muted); text-align: right; white-space: nowrap; }
+.crumbs { font-family: ui-monospace, Consolas, monospace; font-size: 13px; color: var(--muted); word-break: break-all; }
+.notif { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.notif b { display: block; }
+.log { font: 13px/1.6 ui-monospace, Consolas, monospace; max-height: 360px; overflow: auto; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+#toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+#toast.show { opacity: 1; }
+#drop.over { outline: 2px dashed var(--accent); }
+ol { padding-left: 20px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>PCLink</h1>
+  <span id="phoneLine">Loading…</span>
+  <nav>
+    <a href="#home" data-page="home">Home</a>
+    <a href="#files" data-page="files">Phone files</a>
+    <a href="#notifs" data-page="notifs">Notifications</a>
+    <a href="#pair" data-page="pair">Pair</a>
+    <a href="#settings" data-page="settings">Settings</a>
+  </nav>
+</header>
+<main>
+  <section id="home">
+    <div class="grid">
+      <div class="card stack">
+        <h2>Phone as speaker</h2>
+        <button class="big primary" id="speakerBtn">Play PC audio on phone</button>
+        <div class="muted" id="speakerInfo">Shortcut: Ctrl+Alt+P. Install VB-Cable to silence the PC while the phone plays.</div>
+      </div>
+      <div class="card stack">
+        <h2>Quick actions</h2>
+        <div class="row">
+          <button id="clipBtn">Send clipboard</button>
+          <button id="ringBtn">Find my phone</button>
+          <button id="inboxBtn">Received files</button>
+        </div>
+        <div class="row">
+          <input type="text" id="urlInput" placeholder="https://… open on phone">
+          <button id="urlBtn">Open</button>
+        </div>
+      </div>
+      <div class="card stack" id="drop">
+        <h2>Send files to phone</h2>
+        <div class="muted">Drop files here or pick them. They land in Download/PCLink on the phone.</div>
+        <input type="file" id="sendFiles" multiple>
+        <div id="sendStatus" class="muted"></div>
+      </div>
+      <div class="card stack">
+        <h2>Control panel</h2>
+        <div class="muted">These buttons also appear on the phone. Add your own under [[actions]] in config.toml.</div>
+        <div class="row" id="actions"></div>
+        <pre class="log" id="actionOut" style="white-space:pre-wrap"></pre>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h2>Activity</h2>
+      <div class="log" id="activity"></div>
+    </div>
+  </section>
+
+  <section id="files">
+    <div class="card stack">
+      <div class="row">
+        <button id="upBtn">↑ Up</button>
+        <button id="homeBtn">Storage root</button>
+        <span class="crumbs" id="crumbs"></span>
+        <label class="btn" style="margin-left:auto">Upload here<input type="file" id="uploadHere" multiple hidden></label>
+      </div>
+      <table id="fileTable"></table>
+    </div>
+  </section>
+
+  <section id="notifs">
+    <div class="card">
+      <h2>Phone notifications</h2>
+      <div id="notifList" class="muted">Nothing yet.</div>
+    </div>
+  </section>
+
+  <section id="pair">
+    <div class="grid">
+      <div class="card stack">
+        <h2>Pair your phone</h2>
+        <ol>
+          <li>Install the PCLink app on your Android phone.</li>
+          <li>Make sure the phone is on the same Wi-Fi as this PC.</li>
+          <li>Scan this code with the phone's camera (or the PCLink app), or type the code in the app.</li>
+        </ol>
+        <button class="primary" id="newCode">Show pairing code</button>
+        <div class="muted">Codes work once and expire after 10 minutes.</div>
+      </div>
+      <div class="card stack" id="pairOut" hidden>
+        <div class="qr" id="qr"></div>
+        <div class="code" id="code"></div>
+        <div class="muted" id="pairHosts"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="settings">
+    <div class="grid">
+      <div class="card stack">
+        <h2>Paired phones</h2>
+        <table id="devices"></table>
+      </div>
+      <div class="card stack">
+        <h2>This PC</h2>
+        <div id="pcInfo" class="muted"></div>
+        <div class="muted">Settings live in <code>config.toml</code>: tray menu → Edit settings.</div>
+      </div>
+      <div class="card stack">
+        <h2>Claude Code</h2>
+        <div class="muted">Run <code>pclink install-claude</code> once. Claude then pings your phone when it finishes or needs you, sends permission prompts to the phone while you're away, and gets phone tools through MCP.</div>
+        <div id="claudeInfo" class="muted"></div>
+      </div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const params = new URLSearchParams(location.hash.slice(1).replace(/^[a-z]+&?/, ""));
+if (params.get("t")) {
+  try { sessionStorage.setItem("pclink-token", params.get("t")); } catch (e) {}
+}
+let TOKEN = params.get("t");
+try { TOKEN = TOKEN || sessionStorage.getItem("pclink-token"); } catch (e) {}
+const $ = (id) => document.getElementById(id);
+let status = {};
+let phonePath = null;
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove("show"), 3000);
+}
+async function api(path, body, method) {
+  const res = await fetch("/api" + path, {
+    method: method || (body === undefined ? "GET" : "POST"),
+    headers: { "Authorization": "Bearer " + TOKEN, "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  return data;
+}
+async function run(fn, okMsg) {
+  try { const r = await fn(); if (okMsg) toast(okMsg); return r; } catch (e) { toast(e.message); }
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function size(n) { if (!n) return ""; const u = ["B","KB","MB","GB"]; let i = 0; while (n >= 1024 && i < 3) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + " " + u[i]; }
+
+function show(page) {
+  document.querySelectorAll("section").forEach(s => s.classList.toggle("active", s.id === page));
+  document.querySelectorAll("nav a").forEach(a => a.classList.toggle("active", a.dataset.page === page));
+  if (page === "files" && phonePath === null) listPhone(null);
+  if (page === "notifs") loadNotifs();
+  if (page === "pair" && !status.connected && $("pairOut").hidden) newCode();
+}
+function route() { show((location.hash.slice(1).split("&")[0]) || "home"); }
+window.addEventListener("hashchange", route);
+
+async function refresh() {
+  try { status = await api("/status"); } catch (e) { $("phoneLine").textContent = e.message; return; }
+  $("dot").classList.toggle("on", status.connected);
+  const p = status.phone;
+  let line = p ? `${p.name} connected` : "Phone not connected";
+  if (p && p.status && p.status.battery != null) line += ` · ${p.status.battery}%${p.status.charging ? " ⚡" : ""}`;
+  $("phoneLine").textContent = line;
+  const on = !!status.speaker;
+  $("speakerBtn").textContent = on ? "Stop playing on phone" : "Play PC audio on phone";
+  $("speakerBtn").disabled = !status.connected;
+  if (on) $("speakerInfo").textContent = `Streaming ${status.speaker.rate} Hz from ${status.speaker.device}.`;
+  const acts = $("actions");
+  if (acts.dataset.n != status.actions.length) {
+    acts.dataset.n = status.actions.length;
+    acts.innerHTML = "";
+    for (const a of status.actions) {
+      const b = document.createElement("button");
+      b.textContent = (a.icon ? a.icon + " " : "") + a.name;
+      b.onclick = async () => {
+        $("actionOut").textContent = `Running ${a.name}…`;
+        const r = await run(() => api("/actions/run", { name: a.name, wait: true }));
+        if (r) $("actionOut").textContent = `${a.name}: exit ${r.code} in ${r.secs}s\n${r.output}`;
+      };
+      acts.appendChild(b);
+    }
+  }
+  $("devices").innerHTML = status.devices.map(d => `<tr><td><b>${esc(d.name)}</b><div class="muted">paired ${new Date(d.paired_at * 1000).toLocaleDateString()}</div></td><td style="text-align:right"><button data-forget="${esc(d.id)}">Forget</button></td></tr>`).join("") || `<tr><td class="muted">No phones paired yet.</td></tr>`;
+  document.querySelectorAll("[data-forget]").forEach(b => b.onclick = () => run(() => api("/devices/forget", { id: b.dataset.forget }), "Forgotten").then(refresh));
+  $("pcInfo").innerHTML = `${esc(status.pc_name)} · PCLink ${esc(status.version)}<br>Received files: ${esc(status.inbox)}<br>Shared with the phone: ${status.shared_folders.map(f => esc(f.path)).join(", ")}<br><span class="pill">fingerprint ${esc(status.fingerprint.slice(0, 16))}…</span>`;
+  $("claudeInfo").innerHTML = `Approvals: <b>${esc(status.claude.approvals)}</b> · Notifications: <b>${esc(status.claude.notify)}</b> · away after ${status.claude.away_after_secs}s` + (status.idle_secs != null ? ` · idle now ${status.idle_secs}s` : "");
+  const log = await api("/activity").catch(() => []);
+  $("activity").innerHTML = log.map(a => `<div><span class="muted">${new Date(a.time).toLocaleTimeString()}</span> <span class="pill">${esc(a.kind)}</span> ${esc(a.text)}</div>`).join("") || `<span class="muted">Nothing yet.</span>`;
+}
+
+$("speakerBtn").onclick = () => run(() => api("/speaker", {})).then(refresh);
+$("clipBtn").onclick = () => run(() => api("/clipboard/send", {}), "Clipboard sent");
+$("ringBtn").onclick = () => run(() => api("/phone", { op: "find_phone" }), "Ringing");
+$("inboxBtn").onclick = () => run(() => api("/open_inbox", {}));
+$("urlBtn").onclick = () => run(() => api("/phone", { op: "open_url", args: { url: $("urlInput").value } }), "Opened on phone");
+
+async function uploadFiles(files, dir) {
+  for (const f of files) {
+    $("sendStatus").textContent = `Sending ${f.name} (${size(f.size)})…`;
+    const q = new URLSearchParams({ name: f.name }); if (dir) q.set("dir", dir);
+    const res = await fetch("/api/upload?" + q, { method: "POST", headers: { "Authorization": "Bearer " + TOKEN }, body: f });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast(data.error || "Upload failed"); $("sendStatus").textContent = ""; return; }
+    toast(`Sent ${f.name}`);
+  }
+  $("sendStatus").textContent = "";
+}
+$("sendFiles").onchange = (e) => uploadFiles(e.target.files);
+const drop = $("drop");
+drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); uploadFiles(e.dataTransfer.files); };
+
+let parentPath = null;
+async function listPhone(path) {
+  const r = await run(() => api("/phone", { op: "fs.list", args: { path } }));
+  if (!r) return;
+  phonePath = r.path; parentPath = r.parent;
+  $("crumbs").textContent = r.path;
+  $("fileTable").innerHTML = r.entries.map((e, i) => `<tr><td>${e.dir ? "📁" : "📄"} ${e.dir ? `<a href="#files" data-dir="${i}">${esc(e.name)}</a>` : esc(e.name)}</td><td class="size">${e.dir ? "" : size(e.size)}</td><td style="text-align:right">${e.dir ? "" : `<a class="btn" href="/api/download?token=${encodeURIComponent(TOKEN)}&path=${encodeURIComponent(e.path)}">Download</a>`}</td></tr>`).join("") || `<tr><td class="muted">Empty folder.</td></tr>`;
+  document.querySelectorAll("[data-dir]").forEach(a => a.onclick = (ev) => { ev.preventDefault(); listPhone(r.entries[a.dataset.dir].path); });
+}
+$("upBtn").onclick = () => parentPath && listPhone(parentPath);
+$("homeBtn").onclick = () => listPhone(null);
+$("uploadHere").onchange = async (e) => { await uploadFiles(e.target.files, phonePath); listPhone(phonePath); };
+
+async function loadNotifs() {
+  const list = await api("/notifications").catch(() => []);
+  $("notifList").innerHTML = list.map((n, i) => `<div class="notif"><span class="pill">${esc(n.app)}</span> <span class="muted">${new Date(n.time).toLocaleTimeString()}</span><b>${esc(n.title)}</b>${esc(n.text)}<div class="row" style="margin-top:6px">${n.can_reply ? `<input type="text" placeholder="Reply…" data-reply="${i}" style="max-width:320px"><button data-send="${i}">Send</button>` : ""}<button data-dismiss="${i}">Dismiss</button></div></div>`).join("") || "Nothing yet. Turn on notification access in the phone app.";
+  document.querySelectorAll("[data-send]").forEach(b => b.onclick = () => {
+    const n = list[b.dataset.send]; const input = document.querySelector(`[data-reply="${b.dataset.send}"]`);
+    run(() => api("/notifications/reply", { key: n.key, text: input.value }), "Reply sent").then(loadNotifs);
+  });
+  document.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = () => run(() => api("/notifications/dismiss", { key: list[b.dataset.dismiss].key })).then(loadNotifs));
+}
+
+async function newCode() {
+  const r = await run(() => api("/pair", {}));
+  if (!r) return;
+  $("pairOut").hidden = false;
+  $("qr").innerHTML = r.svg;
+  $("code").textContent = r.code;
+  $("pairHosts").textContent = `PC address: ${r.hosts.join(", ") || "unknown"} port ${r.port}`;
+}
+$("newCode").onclick = newCode;
+
+if (!TOKEN) {
+  document.querySelector("main").innerHTML = `<div class="card">Open the dashboard from the PCLink tray icon (or run <code>pclink dashboard</code>).</div>`;
+} else {
+  route(); refresh(); setInterval(refresh, 3000);
+  setInterval(() => { if ($("notifs").classList.contains("active")) loadNotifs(); }, 5000);
+}
+</script>
+</body>
+</html>

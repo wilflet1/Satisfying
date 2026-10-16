@@ -1,0 +1,60 @@
+name: PCLink
+
+on:
+  push:
+    paths: ["PCLink/**", ".github/workflows/pclink.yml"]
+  pull_request:
+    paths: ["PCLink/**", ".github/workflows/pclink.yml"]
+  workflow_dispatch:
+
+jobs:
+  pc-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PCLink/pc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: PCLink/pc
+      - run: cargo test
+
+  pc-windows:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: PCLink/pc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: PCLink/pc
+      - run: cargo test
+      - run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pclink-windows
+          path: |
+            PCLink/pc/target/release/pclink-agent.exe
+            PCLink/pc/target/release/pclink.exe
+
+  android:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: PCLink/android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - run: chmod +x gradlew && ./gradlew --no-daemon assembleRelease
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pclink-android
+          path: PCLink/android/app/build/outputs/apk/release/*.apk
