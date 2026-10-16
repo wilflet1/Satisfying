@@ -48,6 +48,8 @@ pub struct ActivityItem {
 pub struct SpeakerSession {
     stop: Arc<AtomicBool>,
     pub restore_default: Option<String>,
+    /// Output device PCLink muted (and must unmute).
+    pub unmute: Option<String>,
     pub stats: Arc<audio::SendStats>,
     pub device: String,
     pub format: AudioFormat,
@@ -56,12 +58,41 @@ pub struct SpeakerSession {
 impl Drop for SpeakerSession {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
+        if let Some(id) = self.unmute.take() {
+            unmute_output(&id);
+        }
         if let Some(id) = self.restore_default.take() {
             if let Err(e) = platform::set_default_output(&id) {
                 tracing::warn!("could not restore default output: {e:#}");
             }
         }
     }
+}
+
+/// File remembering a device PCLink muted, so a crash can't leave it muted.
+fn muted_marker() -> PathBuf {
+    crate::config::home_dir().join("muted-output")
+}
+
+fn unmute_output(id: &str) {
+    if let Err(e) = platform::set_output_mute(id, false) {
+        tracing::warn!("could not unmute the PC's output: {e:#}");
+    }
+    let _ = std::fs::remove_file(muted_marker());
+}
+
+/// Unmutes a device left muted by a previous run that didn't exit cleanly.
+pub fn unmute_after_crash() {
+    if let Ok(id) = std::fs::read_to_string(muted_marker()) {
+        unmute_output(id.trim());
+    }
+}
+
+/// Peak capture level over the next `ms` milliseconds.
+async fn peak_over(stats: &audio::SendStats, ms: u64) -> u32 {
+    stats.peak.store(0, Ordering::Relaxed);
+    tokio::time::sleep(Duration::from_millis(ms)).await;
+    stats.peak.load(Ordering::Relaxed)
 }
 
 pub struct Agent {
@@ -77,6 +108,8 @@ pub struct Agent {
     pub phone_status: Mutex<Value>,
     pub speaker: Mutex<Option<SpeakerSession>>,
     pub mic: Mutex<Option<crate::mic::MicSession>>,
+    /// Set when muting the PC turned out to silence the capture too.
+    mute_breaks_capture: AtomicBool,
     /// Last clipboard text we set or sent, to avoid echoing it back.
     pub clip_last: Mutex<String>,
     pub mac: Option<String>,
@@ -106,6 +139,7 @@ impl Agent {
             phone_status: Mutex::new(json!({})),
             speaker: Mutex::new(None),
             mic: Mutex::new(None),
+            mute_breaks_capture: AtomicBool::new(false),
             clip_last: Mutex::new(String::new()),
             mac,
             job_counter: AtomicU64::new(1),
@@ -654,39 +688,65 @@ impl Agent {
         if self.speaker_on() {
             return Ok(true);
         }
-        let link = self.phone()?;
-
-        // Decide which output device to capture, switching Windows' default
-        // to a silent virtual device when configured.
-        let mode = self.cfg.speaker.pc_output.as_str();
-        let previous = platform::default_output();
-        let mut restore = None;
-        let mut capture_name = previous.as_ref().map(|(_, n)| n.clone());
-        // If Windows' default output is the cable the phone mic plays into,
-        // capturing it would send the mic back to the phone instead of PC
-        // sound: capture a real output instead.
-        let mic_cable_now = self.mic.lock().unwrap().as_ref().map(|m| m.device.clone());
-        if capture_name.is_some() && capture_name == mic_cable_now {
-            capture_name = platform::output_devices()
-                .into_iter()
-                .map(|(_, n)| n)
-                .find(|n| !crate::cable::is_virtual_cable(n));
+        let mode = match self.cfg.speaker.pc_output.as_str() {
+            "auto" if self.mute_breaks_capture.load(Ordering::Relaxed) => "switch-or-keep",
+            "auto" => "mute",
+            other => other,
         }
-        if mode == "auto" || mode == "switch" {
+        .to_string();
+        match self.start_speaker(&mode).await? {
+            true => Ok(true),
+            false => {
+                // Muting silenced the capture on this PC: use the cable instead.
+                self.mute_breaks_capture.store(true, Ordering::Relaxed);
+                *self.speaker.lock().unwrap() = None;
+                if let Some(l) = self.current_link() {
+                    let _ = l.request("audio.stop", json!({}), Duration::from_secs(5)).await;
+                }
+                self.log("speaker", "muting this PC also silences the capture; using the cable method");
+                self.start_speaker("switch-or-keep").await?;
+                Ok(true)
+            }
+        }
+    }
+
+    /// Starts streaming. Modes: "mute" (capture the real output and mute
+    /// it), "switch" / "switch-or-keep" (make a virtual cable the default
+    /// output and capture it), "keep" (capture, PC keeps playing).
+    /// Returns false if muting turned out to silence the capture.
+    async fn start_speaker(&self, mode: &str) -> Result<bool> {
+        let link = self.phone()?;
+        let mic_cable = self.mic.lock().unwrap().as_ref().map(|m| m.device.clone());
+        let mut previous = platform::default_output();
+
+        // If Windows plays into the mic's cable (common right after
+        // installing VB-Cable), PC sound would go into the mic: use a real
+        // output as the default and capture that.
+        if previous.as_ref().map(|(_, n)| Some(n) == mic_cable.as_ref()).unwrap_or(false) {
+            if let Some((id, name)) = platform::output_devices().into_iter().find(|(_, n)| !crate::cable::is_virtual_cable(n)) {
+                if platform::set_default_output(&id).is_ok() {
+                    self.log("speaker", format!("default output moved off the mic cable to {name}"));
+                    previous = Some((id, name));
+                }
+            }
+        }
+
+        let mut restore = None;
+        let mut capture = previous.clone();
+        if mode == "switch" || mode == "switch-or-keep" {
             let want = self.cfg.speaker.silent_device.to_lowercase();
-            // Never silence the PC through the cable the phone mic uses, or
-            // PC audio would be heard through the mic.
-            let mic_cable = self.mic.lock().unwrap().as_ref().map(|m| m.device.clone());
-            let target = platform::output_devices()
-                .into_iter()
-                .find(|(_, name)| !want.is_empty() && name.to_lowercase().contains(&want) && Some(name) != mic_cable.as_ref());
+            // Never silence the PC through the mic's cable: PC audio would
+            // be heard through the mic.
+            let target = platform::output_devices().into_iter().find(|(_, name)| {
+                !want.is_empty() && name.to_lowercase().contains(&want) && Some(name) != mic_cable.as_ref()
+            });
             match target {
                 Some((id, name)) => {
                     if previous.as_ref().map(|(pid, _)| pid != &id).unwrap_or(true) {
                         platform::set_default_output(&id)?;
                         restore = previous.as_ref().map(|(pid, _)| pid.clone());
                     }
-                    capture_name = Some(name);
+                    capture = Some((id, name));
                 }
                 None if mode == "switch" => {
                     bail!("no output device matching `{}` (install VB-Cable or change speaker.silent_device)", self.cfg.speaker.silent_device)
@@ -694,6 +754,7 @@ impl Agent {
                 None => {}
             }
         }
+        let capture_name = capture.as_ref().map(|(_, n)| n.clone());
 
         let stop = Arc::new(AtomicBool::new(false));
         let (tx, rx) = std::sync::mpsc::channel();
@@ -730,11 +791,31 @@ impl Agent {
         *self.speaker.lock().unwrap() = Some(SpeakerSession {
             stop,
             restore_default: restore,
-            stats,
+            unmute: None,
+            stats: stats.clone(),
             device,
             format: fmt,
         });
         self.changed();
+
+        // Silence the PC by muting the device we capture. On most PCs the
+        // capture still gets the sound; check, in case this one doesn't.
+        if mode == "mute" {
+            if let Some((id, _)) = &capture {
+                let before = peak_over(&stats, 700).await;
+                let was_muted = platform::set_output_mute(id, true).unwrap_or(true);
+                if !was_muted {
+                    let _ = std::fs::write(muted_marker(), id);
+                    if let Some(s) = self.speaker.lock().unwrap().as_mut() {
+                        s.unmute = Some(id.clone());
+                    }
+                }
+                let after = peak_over(&stats, 900).await;
+                if before > 20 && after < 3 {
+                    return Ok(false);
+                }
+            }
+        }
         Ok(true)
     }
 
@@ -799,6 +880,7 @@ impl Agent {
                 "channels": s.format.channels,
                 "packets": s.stats.packets.load(Ordering::Relaxed),
                 "level": s.stats.level.load(Ordering::Relaxed),
+                "pc_muted": s.unmute.is_some(),
             })),
             "idle_secs": platform::idle_secs(),
             "mic": self.mic_status(),

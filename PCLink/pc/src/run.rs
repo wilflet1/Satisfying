@@ -50,6 +50,7 @@ pub async fn start_with(cfg: Config, background_tasks: bool) -> Result<Running> 
     let api_addr = api_listener.local_addr()?;
     let phone_addr = phone_listener.local_addr()?;
 
+    crate::agent::unmute_after_crash();
     let agent = Agent::new(cfg, state, identity, token);
     tokio::spawn(crate::server::run(agent.clone(), phone_listener));
     let router = crate::api::router(agent.clone());

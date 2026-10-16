@@ -56,10 +56,12 @@ pub struct Config {
 #[serde(default)]
 pub struct SpeakerConfig {
     /// What happens to the PC's own speakers while the phone plays:
-    /// "auto"   - switch Windows' default output to a virtual cable if one is
-    ///            installed (PC goes silent), otherwise keep playing on both.
-    /// "switch" - always switch to `silent_device`.
-    /// "keep"   - leave Windows' output alone; sound plays on both.
+    /// "auto"   - mute them (Windows' default output and apps stay as they
+    ///            are); if muting also silences the capture on this PC, fall
+    ///            back to "switch", or play on both if there's no spare cable.
+    /// "mute"   - always mute.
+    /// "switch" - make `silent_device` (a virtual cable) the default output.
+    /// "keep"   - leave the PC alone; sound plays on both.
     pub pc_output: String,
     /// Part of the name of the output device to switch to, e.g. "CABLE Input".
     pub silent_device: String,

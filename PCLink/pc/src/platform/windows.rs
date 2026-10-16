@@ -348,6 +348,21 @@ pub fn default_input() -> Option<(String, String)> {
     default_device(windows::Win32::Media::Audio::eCapture)
 }
 
+/// Mutes or unmutes an output device. Returns whether it was muted before.
+pub fn set_output_mute(id: &str, mute: bool) -> Result<bool> {
+    use windows::core::HSTRING;
+    use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
+    use windows::Win32::System::Com::CLSCTX_ALL;
+    let en = enumerator()?;
+    unsafe {
+        let dev = en.GetDevice(&HSTRING::from(id))?;
+        let vol: IAudioEndpointVolume = dev.Activate(CLSCTX_ALL, None)?;
+        let was = vol.GetMute()?.as_bool();
+        vol.SetMute(mute, std::ptr::null())?;
+        Ok(was)
+    }
+}
+
 /// Makes `id` (an output or a recording device) Windows' default for all roles.
 pub fn set_default_output(id: &str) -> Result<()> {
     use policy::{IPolicyConfig, CLSID_POLICY_CONFIG_CLIENT};

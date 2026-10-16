@@ -34,10 +34,12 @@ Rust agent on the PC and a Kotlin app on the phone, talking over TLS on your LAN
 - Captures everything the PC plays (WASAPI loopback), streams 16-bit PCM over UDP,
   encrypted with a fresh AES-256-GCM key per session, and plays it with a low-latency
   `AudioTrack` that drops late packets to keep delay around 50–100 ms on Wi-Fi.
-- **Silence the PC while the phone plays:** install [VB-Cable](https://vb-audio.com/Cable/).
-  With `speaker.pc_output = "auto"` PCLink switches Windows' default output to the cable
-  while streaming and switches it back afterwards. Without a virtual device, audio plays
-  on both.
+- **The PC goes quiet while the phone plays:** PCLink records what your real speakers or
+  headphones play and mutes them; Windows' default output doesn't change, so apps such as
+  Discord on "Default" keep working and their sound goes to the phone. If muting also
+  silences the recording on your PC, PCLink detects it and instead switches the default
+  output to a spare virtual cable (or lets the PC keep playing). Set `speaker.pc_output`
+  to `mute`, `switch` or `keep` to choose yourself.
 
 ### Phone mic → PC microphone
 Turn on **🎙 Use my mic on the PC** under the speaker button on the phone (or *Phone as
@@ -48,10 +50,9 @@ cancellation and noise suppression, and streams it encrypted to the PC.
 - On the PC the audio plays into a virtual cable, and while the mic is on PCLink makes
   the cable's other end ("CABLE Output") Windows' default microphone, so Discord, Zoom,
   games and so on pick it up. Your previous default mic comes back when you turn it off.
-- Needs [VB-Cable](https://vb-audio.com/Cable/). To use the mic together with a silenced
-  PC (speaker feature), install a second cable (VB-Cable A+B): PCLink gives the mic one
-  cable and the speaker the other. With a single cable the mic gets it and the PC keeps
-  playing out loud, so PC audio never leaks into your mic.
+- Needs [VB-Cable](https://vb-audio.com/Cable/). The speaker doesn't use the cable (it
+  mutes your real output instead), so one cable is enough for speaker + mic together. In
+  Discord and similar apps leave input and output on **Default**.
 - While the mic is on, PC audio on the phone switches to the voice path, so a Bluetooth
   headset carries both directions (Bluetooth then uses its call profile: lower audio
   quality is a Bluetooth limit).

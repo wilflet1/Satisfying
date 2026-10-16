@@ -42,6 +42,10 @@ pub fn start_playback(
     bail!("playing the phone mic into a PC device is only supported on Windows")
 }
 
+pub fn set_output_mute(_id: &str, _mute: bool) -> Result<bool> {
+    bail!("muting devices is only supported on Windows")
+}
+
 pub fn set_default_output(_id: &str) -> Result<()> {
     bail!("switching audio devices is only supported on Windows")
 }

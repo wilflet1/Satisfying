@@ -64,6 +64,8 @@ pub struct SendStats {
     pub packets: std::sync::atomic::AtomicU64,
     /// RMS level of recent audio, 0..1000 (0 = the PC is playing silence).
     pub level: std::sync::atomic::AtomicU32,
+    /// Highest level since last reset (for the mute check).
+    pub peak: std::sync::atomic::AtomicU32,
 }
 
 pub fn spawn_sender(
@@ -110,6 +112,7 @@ pub fn spawn_sender_with_stats(
                     }
                     let rms = (sum / per as f64).sqrt();
                     stats.level.store((rms * 1000.0) as u32, Ordering::Relaxed);
+                    stats.peak.fetch_max((rms * 1000.0) as u32, Ordering::Relaxed);
                     stats.packets.fetch_add(1, Ordering::Relaxed);
                     let _ = sock.send_to(&seal(&key, seq, &bytes), dest);
                     seq += 1;

@@ -282,7 +282,7 @@ async function refresh() {
   $("speakerBtn").textContent = on ? "Stop playing on phone" : "Play PC audio on phone";
   $("speakerBtn").disabled = !status.connected;
   $("speakerInfo").textContent = on
-    ? `Streaming ${status.speaker.rate} Hz from ${status.speaker.device}. PC sound level: ${status.speaker.level > 3 ? "▮".repeat(Math.min(10, Math.ceil(status.speaker.level / 25))) : "silent (nothing is playing on this device)"} · ${status.speaker.packets} packets sent.`
+    ? `Streaming ${status.speaker.rate} Hz from ${status.speaker.device}. PC sound level: ${status.speaker.level > 3 ? "▮".repeat(Math.min(10, Math.ceil(status.speaker.level / 25))) : "silent (nothing is playing on this device)"} · ${status.speaker.packets} packets sent.${status.speaker.pc_muted ? " PC speakers muted while the phone plays." : ""}`
     : "Shortcut: Ctrl+Alt+P. Install VB-Cable to silence the PC while the phone plays.";
   const mic = status.mic;
   $("micBtn").textContent = mic ? "🎙 Stop phone mic" : "🎙 Use phone mic on this PC";
