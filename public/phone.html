@@ -18,7 +18,7 @@
   #drop { background: #e8562a; flex: 3; }
   #center { background: #2a6fe8; }
   #start { background: #19a35b; }
-  .hint { font-size: 13px; opacity: .6; text-align: center; line-height: 1.4; }
+  .hint { font-size: 13px; opacity: .75; text-align: center; line-height: 1.4; }
   .hidden { display: none !important; }
 </style>
 </head>
@@ -73,20 +73,26 @@ function eulerToQuat(alpha, beta, gamma) {
   ];
 }
 
+// Resolves once real orientation data arrives, rejects if none comes in time.
 function startDeviceOrientation() {
-  sensorMode = 'orientation events';
-  window.addEventListener('deviceorientation', (e) => {
-    if (e.alpha == null) return;
-    const q = eulerToQuat(e.alpha, e.beta, e.gamma);
-    sendQuat(q[0], q[1], q[2], q[3]);
+  return new Promise((resolve, reject) => {
+    let got = false;
+    window.addEventListener('deviceorientation', (e) => {
+      if (e.alpha == null) return;
+      if (!got) { got = true; resolve(); }
+      const q = eulerToQuat(e.alpha, e.beta, e.gamma);
+      sendQuat(q[0], q[1], q[2], q[3]);
+    });
+    setTimeout(() => { if (!got) reject(new Error('no motion data')); }, 2000);
   });
 }
 
 async function startSensors() {
-  // iOS needs an explicit permission prompt from a user gesture.
+  // iOS (and some Chrome versions) expose a permission prompt that must run in the tap.
+  // Its answer isn't always reliable on Android, so note it and keep trying.
+  let permission = 'granted';
   if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) {
-    const res = await DeviceOrientationEvent.requestPermission();
-    if (res !== 'granted') throw new Error('Motion permission denied');
+    try { permission = await DeviceOrientationEvent.requestPermission(); } catch (_) { permission = 'error'; }
   }
   // Prefer the Generic Sensor API (Chrome/Android): direct quaternion, higher rate.
   if ('RelativeOrientationSensor' in window) {
@@ -108,7 +114,35 @@ async function startSensors() {
       console.warn('RelativeOrientationSensor unavailable, falling back', err);
     }
   }
-  startDeviceOrientation();
+  try {
+    await startDeviceOrientation();
+    sensorMode = 'orientation events';
+  } catch (_) {
+    throw new Error(permission === 'granted' ? 'no motion data from the phone' : 'motion permission denied');
+  }
+}
+
+const isAndroid = /Android/i.test(navigator.userAgent);
+let httpPhoneUrl = location.href;
+fetch('/info').then((r) => r.json()).then((i) => { httpPhoneUrl = i.httpPhoneUrl; }).catch(() => {});
+
+function androidHelp() {
+  const origin = new URL(httpPhoneUrl).origin;
+  $('hint').innerHTML =
+    '<b>Chrome is blocking motion sensors.</b><br>' +
+    '1. Tap the icon left of the address bar → Permissions / Site settings → <b>Motion sensors → Allow</b>, then reload.<br>' +
+    '2. If that doesn\'t fix it (Chrome often blocks sensors on certificate-warning pages):<br>' +
+    'open <b>chrome://flags</b>, search <i>insecure origins treated as secure</i>, enter<br>' +
+    `<b style="user-select:all">${origin}</b><br>` +
+    'set it to Enabled, tap Relaunch, then open<br>' +
+    `<b style="user-select:all">${httpPhoneUrl}</b>`;
+}
+
+function iosHelp() {
+  $('hint').innerHTML = 'iPhone remembers a "Deny" until Safari restarts:<br>' +
+    '1. Swipe Safari away in the app switcher, reopen this page<br>' +
+    '2. Tap START, then tap <b>Allow</b> on the motion prompt<br>' +
+    'Still no prompt? Settings → Apps → Safari → Advanced → Website Data → delete this address, then try again.';
 }
 
 async function keepAwake() {
@@ -124,19 +158,15 @@ async function keepAwake() {
 
 $('start').addEventListener('click', async () => {
   if (!window.isSecureContext) {
-    setStatus('Open this page over https:// for motion sensors', 'bad');
+    setStatus('This address is not trusted for motion sensors', 'bad');
+    isAndroid ? androidHelp() : iosHelp();
     return;
   }
   try {
     await startSensors();
   } catch (err) {
     setStatus('Sensor error: ' + err.message, 'bad');
-    if (/denied/i.test(err.message)) {
-      $('hint').innerHTML = 'iPhone remembers a "Deny" until Safari restarts:<br>' +
-        '1. Swipe Safari away in the app switcher, reopen this page<br>' +
-        '2. Tap START, then tap <b>Allow</b> on the motion prompt<br>' +
-        'Still no prompt? Settings → Apps → Safari → Advanced → Website Data → delete this address, then try again.';
-    }
+    isAndroid ? androidHelp() : iosHelp();
     return;
   }
   keepAwake();

@@ -36,6 +36,7 @@ function lanAddress() {
 
 const LAN_IP = lanAddress();
 let PHONE_URL = '';
+let HTTP_PHONE_URL = '';
 
 function sendFile(res, file) {
   fs.readFile(file, (err, data) => {
@@ -57,7 +58,7 @@ async function handler(req, res) {
 
   if (p === '/info') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify({ phoneUrl: PHONE_URL }));
+    return res.end(JSON.stringify({ phoneUrl: PHONE_URL, httpPhoneUrl: HTTP_PHONE_URL }));
   }
   if (p === '/qr.svg') {
     const svg = await QRCode.toString(PHONE_URL, { type: 'svg', margin: 1 });
@@ -162,6 +163,7 @@ function listen(server, port, tries = 20) {
 (async () => {
   const httpServer = http.createServer(handler);
   const httpPort = await listen(httpServer, HTTP_PORT);
+  HTTP_PHONE_URL = `http://${LAN_IP}:${httpPort}/phone.html`;
   attachWs(httpServer);
 
   const httpsServer = https.createServer(await getCert(), handler);
@@ -173,5 +175,7 @@ function listen(server, port, tries = 20) {
   console.log(`  1. On this computer open:  http://localhost:${httpPort}`);
   console.log(`  2. On your phone open:     ${PHONE_URL}`);
   console.log('     (or scan the QR code shown on the computer screen)');
-  console.log('     Your phone will warn about the certificate - tap "Advanced" -> "Proceed".\n');
+  console.log('     Your phone will warn about the certificate - tap "Advanced" -> "Proceed".');
+  console.log(`     Android Chrome blocking sensors? See the phone screen, or use ${HTTP_PHONE_URL}`);
+  console.log('     after adding it under chrome://flags "Insecure origins treated as secure".\n');
 })();

@@ -25,6 +25,14 @@ npm start
 
 Turn off auto-rotate on the phone so the page doesn't flip while you swing.
 
+## Android Chrome says the sensors are blocked
+
+1. Tap the icon left of the address bar → *Permissions* / *Site settings* → **Motion sensors → Allow**, then reload.
+2. If that doesn't fix it (Chrome often blocks sensors on pages with a certificate warning), skip the certificate entirely:
+   open `chrome://flags`, search **Insecure origins treated as secure**, enter `http://<your-PC-IP>:4180`,
+   set it to *Enabled*, tap *Relaunch*, then open `http://<your-PC-IP>:4180/phone.html`.
+   The terminal and the phone screen both show the exact address.
+
 ## Controls
 
 | Where    | Action                                |
