@@ -222,7 +222,9 @@ async function refresh() {
   const on = !!status.speaker;
   $("speakerBtn").textContent = on ? "Stop playing on phone" : "Play PC audio on phone";
   $("speakerBtn").disabled = !status.connected;
-  if (on) $("speakerInfo").textContent = `Streaming ${status.speaker.rate} Hz from ${status.speaker.device}.`;
+  $("speakerInfo").textContent = on
+    ? `Streaming ${status.speaker.rate} Hz from ${status.speaker.device}.`
+    : "Shortcut: Ctrl+Alt+P. Install VB-Cable to silence the PC while the phone plays.";
   const acts = $("actions");
   if (acts.dataset.n != status.actions.length) {
     acts.dataset.n = status.actions.length;
