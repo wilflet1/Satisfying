@@ -117,6 +117,18 @@ fn spawn_receiver(
         .expect("mic receive thread");
 }
 
+/// Consumes the buffer in real time without playing it (tests).
+fn null_playback(buffer: Arc<Mutex<VecDeque<i16>>>, stop: Arc<AtomicBool>) {
+    std::thread::spawn(move || {
+        while !stop.load(Ordering::Relaxed) {
+            std::thread::sleep(Duration::from_millis(10));
+            let mut b = buffer.lock().unwrap();
+            let n = (MIC_RATE as usize / 100).min(b.len());
+            b.drain(..n);
+        }
+    });
+}
+
 impl Agent {
     pub fn mic_on(&self) -> bool {
         self.mic.lock().unwrap().is_some()
@@ -127,11 +139,13 @@ impl Agent {
     pub async fn open_mic(self: &Arc<Self>) -> Result<Value> {
         *self.mic.lock().unwrap() = None;
         self.phone()?;
-        let device = choose_device(&platform::output_devices(), &self.cfg.mic.device, &self.cfg.speaker.silent_device)
-            .or_else(|e| {
-                // Tests and non-Windows builds have no devices.
-                if std::env::var_os("PCLINK_TEST_TONE").is_some() { Ok("test output".into()) } else { Err(e) }
-            })?;
+        // Tests (PCLINK_TEST_TONE) use a null output instead of a real device.
+        let test_mode = std::env::var_os("PCLINK_TEST_TONE").is_some();
+        let device = if test_mode {
+            "test output".to_string()
+        } else {
+            choose_device(&platform::output_devices(), &self.cfg.mic.device, &self.cfg.speaker.silent_device)?
+        };
 
         // If the speaker is silencing the PC through this same cable, PC
         // audio would leak into the mic. Restart it so it avoids the cable.
@@ -146,7 +160,11 @@ impl Agent {
         let stop = Arc::new(AtomicBool::new(false));
         let buffer = Arc::new(Mutex::new(VecDeque::new()));
         let stats = Arc::new(MicStats::default());
-        platform::start_playback(device.clone(), buffer.clone(), MIC_RATE, stop.clone())?;
+        if test_mode {
+            null_playback(buffer.clone(), stop.clone());
+        } else {
+            platform::start_playback(device.clone(), buffer.clone(), MIC_RATE, stop.clone())?;
+        }
         let sock = UdpSocket::bind("0.0.0.0:0")?;
         let port = sock.local_addr()?.port();
         let key = crate::util::random_bytes::<32>();
