@@ -71,6 +71,8 @@ enum Cmd {
     SmsCode,
     /// Run a control-panel action defined in config.toml.
     Action { name: String },
+    /// Check for a newer PCLink build and install it (the agent restarts).
+    Update,
     /// Claude Code hook handler (reads hook JSON on stdin).
     Hook { event: String },
     /// Run the MCP server on stdio (for Claude Code).
@@ -220,6 +222,10 @@ fn run(cli: Cli) -> Result<()> {
             let r = c.post("/api/actions/run", json!({"name": name, "wait": true}), long)?;
             print!("{}", r["output"].as_str().unwrap_or(""));
             std::process::exit(r["code"].as_i64().unwrap_or(0) as i32);
+        }
+        Cmd::Update => {
+            let r = c.post("/api/update", json!({"install": true}), Duration::from_secs(120))?;
+            println!("{}", r["message"].as_str().unwrap_or(""));
         }
         Cmd::Hook { .. } | Cmd::Mcp | Cmd::InstallClaude => unreachable!(),
     }

@@ -141,6 +141,17 @@ class Link private constructor(
         }
     }
 
+    /**
+     * Sends a request without waiting for the answer (touchpad and keys).
+     * Requests reach the PC in the order they're posted.
+     */
+    fun post(op: String, args: JSONObject) {
+        try {
+            sendJson(jsonOf("t" to "req", "id" to nextId.getAndIncrement(), "op" to op, "args" to args))
+        } catch (_: IOException) {
+        }
+    }
+
     /** Like [request] but for responses whose data is a JSON array. */
     fun requestArray(op: String, args: JSONObject = JSONObject()): org.json.JSONArray =
         request(op, args).optJSONArray("value") ?: org.json.JSONArray()

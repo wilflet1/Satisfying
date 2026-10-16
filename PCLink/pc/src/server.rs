@@ -134,6 +134,10 @@ async fn dispatch(agent: &Arc<Agent>, link: &Arc<Link>, msg: Value) {
             let id = msg.u64_of("id").unwrap_or(0);
             let op = msg.str_of("op").unwrap_or("").to_string();
             let args = msg.get("args").cloned().unwrap_or(Value::Null);
+            if let Some(res) = agent.handle_inline(&op, &args) {
+                let _ = link.respond(id, res).await;
+                return;
+            }
             let agent = agent.clone();
             let link = link.clone();
             tokio::spawn(async move {

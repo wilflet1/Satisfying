@@ -32,17 +32,28 @@ class PcFilesActivity : Activity() {
     }
 
     private fun load(target: String?) {
-        Ui.background(this) {
-            val link = LinkService.require()
-            if (target == null) {
-                val roots = link.requestArray("fs.roots")
-                runOnUiThread { showRoots(roots) }
-            } else {
-                val listing = link.request("fs.list", jsonOf("path" to target))
-                runOnUiThread { showListing(listing) }
+        kotlin.concurrent.thread {
+            try {
+                val link = LinkService.await(applicationContext)
+                if (target == null) {
+                    val roots = link.requestArray("fs.roots")
+                    runOnUiThread { showRoots(roots) }
+                } else {
+                    val listing = link.request("fs.list", jsonOf("path" to target))
+                    runOnUiThread { showListing(listing) }
+                }
+            } catch (e: Exception) {
+                runOnUiThread { showError(target, e.message ?: "Something went wrong") }
             }
-            null
         }
+    }
+
+    private fun showError(target: String?, message: String) {
+        root.removeAllViews()
+        val card = Ui.card(this, "Can't show the PC's files")
+        card.addView(Ui.text(this, message, muted = true))
+        card.addView(Ui.button(this, "Try again", primary = true) { load(target) })
+        root.addView(card)
     }
 
     private fun showRoots(roots: org.json.JSONArray) {
@@ -52,6 +63,7 @@ class PcFilesActivity : Activity() {
         root.addView(Ui.text(this, "Shared folders on ${Prefs(this).pcName}", 20f, bold = true))
         root.addView(Ui.text(this, "Change these in the PC's config.toml (shared_folders).", 13f, muted = true))
         val card = Ui.card(this)
+        if (roots.length() == 0) card.addView(Ui.text(this, "The PC isn't sharing any folders.", muted = true))
         for (i in 0 until roots.length()) {
             val r = roots.getJSONObject(i)
             card.addView(Ui.button(this, "📁 ${r.getString("name")}") { load(r.getString("path")) })

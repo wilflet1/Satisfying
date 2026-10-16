@@ -22,14 +22,19 @@ class RemoteActivity : Activity() {
     /** One thread keeps input events in order. */
     private val sender = Executors.newSingleThreadExecutor()
 
+    private var warned = false
+
+    /** Fire-and-forget, in order, off the main thread. */
     private fun input(vararg pairs: Pair<String, Any?>) {
-        val link = LinkService.current ?: return
-        sender.execute {
-            try {
-                link.request("input", jsonOf(*pairs), 5000)
-            } catch (_: Exception) {
-            }
+        val link = LinkService.current
+        if (link == null) {
+            if (!warned) Ui.toast(this, "Not connected to your PC")
+            warned = true
+            return
         }
+        warned = false
+        val args = jsonOf(*pairs)
+        sender.execute { link.post("input", args) }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,9 +48,9 @@ class RemoteActivity : Activity() {
         // Text to type on the PC.
         val field = EditText(this).apply {
             hint = "Type or dictate, then Send (types on the PC)"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            // Single-line so the keyboard shows a Send key (Send = type + Enter).
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             imeOptions = EditorInfo.IME_ACTION_SEND
-            maxLines = 4
         }
         root.addView(field)
         val sendRow = Ui.row(this)
@@ -54,6 +59,14 @@ class RemoteActivity : Activity() {
             if (t.isNotEmpty()) input("kind" to "text", "text" to t)
             if (enter) input("kind" to "key", "key" to "enter")
             field.setText("")
+        }
+        field.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEND) {
+                sendText(true)
+                true
+            } else {
+                false
+            }
         }
         sendRow.addView(Ui.button(this, "Send") { sendText(false) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         sendRow.addView(Ui.button(this, "Send + Enter", primary = true) { sendText(true) }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -99,6 +112,8 @@ class RemoteActivity : Activity() {
         private var downTime = 0L
         private var moved = 0f
         private var fingers = 0
+        /** After a finger lifts mid-gesture, ignore moves until all are up (no cursor jump). */
+        private var settling = false
         private var accX = 0f
         private var accY = 0f
         private var scrollAcc = 0f
@@ -108,12 +123,16 @@ class RemoteActivity : Activity() {
             when (e.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     lastX = e.x; lastY = e.y; downTime = System.currentTimeMillis(); moved = 0f; fingers = 1
+                    settling = false; scrollAcc = 0f
                 }
                 MotionEvent.ACTION_POINTER_DOWN -> {
-                    fingers = e.pointerCount
-                    lastY = e.getY(0)
+                    fingers = maxOf(fingers, e.pointerCount)
+                    lastX = e.getX(0); lastY = e.getY(0)
                 }
+                MotionEvent.ACTION_POINTER_UP -> settling = true
+                MotionEvent.ACTION_CANCEL -> fingers = 0
                 MotionEvent.ACTION_MOVE -> {
+                    if (settling) return true
                     val dx = e.x - lastX
                     val dy = e.y - lastY
                     lastX = e.x; lastY = e.y

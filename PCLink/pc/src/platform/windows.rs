@@ -163,24 +163,15 @@ fn named_key(name: &str) -> Result<enigo::Key> {
     })
 }
 
-pub fn input(cmd: InputCmd) -> Result<()> {
-    let (tx, rx) = mpsc::channel();
+/// Queues an input event without waiting for it to run. Events run in
+/// the order they're queued.
+pub fn input_queue(cmd: InputCmd) -> Result<()> {
+    let (tx, _rx) = mpsc::channel();
     input_thread()
         .lock()
         .unwrap()
         .send((cmd, tx))
-        .map_err(|_| anyhow!("input thread stopped"))?;
-    rx.recv().map_err(|_| anyhow!("input thread stopped"))?
-}
-
-pub fn media(cmd: &str) -> Result<()> {
-    match cmd {
-        "play_pause" | "next" | "prev" | "vol_up" | "vol_down" | "mute" => input(InputCmd::Key {
-            key: cmd.to_string(),
-            modifiers: vec![],
-        }),
-        other => bail!("unknown media command {other}"),
-    }
+        .map_err(|_| anyhow!("input thread stopped"))
 }
 
 /// Seconds since the last keyboard/mouse input.

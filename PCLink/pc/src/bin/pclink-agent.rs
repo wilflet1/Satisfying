@@ -48,6 +48,7 @@ fn run() -> Result<()> {
         }
         Err(e) => return Err(e),
     };
+    pclink::run::spawn_update_check(running.agent.clone());
     if running.agent.state.lock().unwrap().devices.is_empty() {
         let url = pclink::run::dashboard_url(running.api_addr.port(), &running.agent.local_token, "pair");
         let _ = pclink::platform::open_url(&url);
@@ -140,6 +141,7 @@ mod tray {
         let port = running.api_addr.port();
 
         let status = MenuItem::new("PCLink: phone not connected", false, None);
+        let version = MenuItem::new(format!("Version {}", pclink::update::version_string()), false, None);
         let open = MenuItem::new("Open dashboard", true, None);
         let pair = MenuItem::new("Pair a phone…", true, None);
         let speaker = CheckMenuItem::new("Phone as speaker\tCtrl+Alt+P", true, false, None);
@@ -147,7 +149,9 @@ mod tray {
         let ring = MenuItem::new("Find my phone", true, None);
         let inbox = MenuItem::new("Open received files", true, None);
         let settings = MenuItem::new("Edit settings…", true, None);
+        let restart = MenuItem::new("Restart PCLink (apply settings)", true, None);
         let startup = CheckMenuItem::new("Start with Windows", true, startup_enabled(), None);
+        let updates = MenuItem::new("Check for updates", true, None);
         let quit = MenuItem::new("Quit PCLink", true, None);
         let menu = Menu::new();
         menu.append_items(&[
@@ -162,7 +166,11 @@ mod tray {
             &inbox,
             &PredefinedMenuItem::separator(),
             &settings,
+            &restart,
             &startup,
+            &PredefinedMenuItem::separator(),
+            &version,
+            &updates,
             &quit,
         ])?;
 
@@ -223,16 +231,29 @@ mod tray {
                 } else if id == clip.id().clone() {
                     let a = agent.clone();
                     rt.spawn(async move {
-                        let Ok(l) = a.phone() else { return };
                         let text = pclink::platform::clipboard_get_text().unwrap_or_default();
+                        if text.is_empty() {
+                            pclink::platform::notify("Send clipboard", "The clipboard has no text.");
+                            return;
+                        }
                         *a.clip_last.lock().unwrap() = text.clone();
-                        let _ = l.request("clip.set", serde_json::json!({"text": text}), std::time::Duration::from_secs(10)).await;
+                        let res = match a.phone() {
+                            Ok(l) => l.request("clip.set", serde_json::json!({"text": text}), std::time::Duration::from_secs(10)).await,
+                            Err(e) => Err(e),
+                        };
+                        if let Err(e) = res {
+                            pclink::platform::notify("Send clipboard", &format!("{e:#}"));
+                        }
                     });
                 } else if id == ring.id().clone() {
                     let a = agent.clone();
                     rt.spawn(async move {
-                        if let Ok(l) = a.phone() {
-                            let _ = l.request("find_phone", serde_json::json!({}), std::time::Duration::from_secs(10)).await;
+                        let res = match a.phone() {
+                            Ok(l) => l.request("find_phone", serde_json::json!({}), std::time::Duration::from_secs(10)).await,
+                            Err(e) => Err(e),
+                        };
+                        if let Err(e) = res {
+                            pclink::platform::notify("Find my phone", &format!("{e:#}"));
                         }
                     });
                 } else if id == inbox.id().clone() {
@@ -240,11 +261,20 @@ mod tray {
                     let _ = pclink::platform::open_path(&agent.inbox());
                 } else if id == settings.id().clone() {
                     let _ = std::process::Command::new("notepad.exe").arg(pclink::config::Config::path()).spawn();
+                } else if id == restart.id().clone() {
+                    agent.shutdown();
+                    pclink::update::restart();
+                } else if id == updates.id().clone() {
+                    let a = agent.clone();
+                    std::thread::spawn(move || {
+                        let msg = a.check_update(true).unwrap_or_else(|e| format!("{e:#}"));
+                        pclink::platform::notify("PCLink updates", &msg);
+                    });
                 } else if id == startup.id().clone() {
                     set_startup(startup.is_checked());
                 } else if id == quit.id().clone() {
                     // Restores the default audio device if the speaker was on.
-                    *agent.speaker.lock().unwrap() = None;
+                    agent.shutdown();
                     return Ok(());
                 }
             }

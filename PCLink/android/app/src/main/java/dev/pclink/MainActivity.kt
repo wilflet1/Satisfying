@@ -26,12 +26,23 @@ class MainActivity : Activity() {
     private var discovery: Discovery? = null
     private val listener: () -> Unit = { runOnUiThread { render() } }
     private var actionsBox: LinearLayout? = null
+    /** Pairing fields survive re-renders (discovery and status updates redraw the screen). */
+    private var codeText = ""
+    private var hostText = ""
+    /** Control-panel buttons, fetched once per connection. */
+    private var actions: org.json.JSONArray? = null
+    private var actionsFor: Link? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         root = Ui.page(this)
         handlePairLink(intent)
+        if (savedInstanceState == null) {
+            // Self-update check at launch (silent unless something happens).
+            val app = applicationContext
+            kotlin.concurrent.thread { Updater.checkAndInstall(app, manual = false) }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -44,7 +55,11 @@ class MainActivity : Activity() {
         visible = true
         LinkService.listeners += listener
         if (prefs.paired) LinkService.start(this) else startDiscovery()
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        val sp = getSharedPreferences("pclink", MODE_PRIVATE)
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !sp.getBoolean("asked_notifications", false)
+        ) {
+            sp.edit().putBoolean("asked_notifications", true).apply()
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1)
         }
         render()
@@ -116,9 +131,23 @@ class MainActivity : Activity() {
     // -------------------------------------------------------------- render
 
     private fun render() {
+        // Keep the scroll position across redraws.
+        val scroll = root.parent as? android.widget.ScrollView
+        val y = scroll?.scrollY ?: 0
         root.removeAllViews()
         actionsBox = null
         if (!prefs.paired) renderPairing() else renderHome()
+        scroll?.post { scroll.scrollTo(0, y) }
+    }
+
+    private fun EditText.keepText(initial: String, store: (String) -> Unit) = apply {
+        setText(initial)
+        setSelection(initial.length)
+        addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(e: android.text.Editable?) = store(e?.toString() ?: "")
+        })
     }
 
     private fun renderPairing() {
@@ -128,8 +157,9 @@ class MainActivity : Activity() {
         card.addView(Ui.text(this, "1. On the PC, run PCLink and open Pair (tray icon → Pair a phone).\n2. Scan the QR code with your camera, or pick your PC below and type the code shown on it.", muted = true))
         val codeField = EditText(this).apply {
             hint = "Pairing code (8 letters)"
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS
-        }
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_CHARACTERS or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            filters = arrayOf<android.text.InputFilter>(android.text.InputFilter.LengthFilter(8), android.text.InputFilter.AllCaps())
+        }.keepText(codeText) { codeText = it }
         card.addView(codeField)
         val found = discovery?.found?.values?.sortedBy { it.name }.orEmpty()
         if (found.isEmpty()) {
@@ -141,7 +171,10 @@ class MainActivity : Activity() {
                 else pair(listOf(pc.host), pc.port, pc.fingerprint, codeField.text.toString())
             })
         }
-        val hostField = EditText(this).apply { hint = "Or the PC's IP address, e.g. 192.168.1.20" }
+        val hostField = EditText(this).apply {
+            hint = "Or the PC's IP address, e.g. 192.168.1.20"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+        }.keepText(hostText) { hostText = it }
         card.addView(hostField)
         card.addView(Ui.button(this, "Pair by address") {
             val host = hostField.text.toString().trim()
@@ -196,32 +229,45 @@ class MainActivity : Activity() {
         panel.addView(box)
         actionsBox = box
         root.addView(panel)
-        if (link != null) loadActions(link)
+        if (link != null) loadActions(link) else box.addView(Ui.text(this, "Connect to your PC to see its buttons.", 13f, muted = true))
 
         renderSetup()
         renderSettings()
     }
 
     private fun loadActions(link: Link) {
+        val cached = actions
+        if (cached != null && actionsFor === link) {
+            showActions(cached)
+            return
+        }
         Ui.background(this) {
-            val actions = link.requestArray("actions.list")
-            runOnUiThread {
-                val box = actionsBox ?: return@runOnUiThread
-                val buttons = (0 until actions.length()).map { i ->
-                    val a = actions.getJSONObject(i)
-                    val name = a.getString("name")
-                    val icon = a.str("icon")
-                    Ui.button(this, listOfNotNull(icon, name).joinToString(" ")) {
-                        Ui.background(this) {
-                            LinkService.require().request("actions.run", jsonOf("name" to name))
-                            "Started $name"
-                        }
-                    }
-                }
-                box.addView(Ui.grid(this, buttons))
-            }
+            val list = link.requestArray("actions.list")
+            actions = list
+            actionsFor = link
+            runOnUiThread { showActions(list) }
             null
         }
+    }
+
+    private fun showActions(actions: org.json.JSONArray) {
+        val box = actionsBox ?: return
+        if (actions.length() == 0) {
+            box.addView(Ui.text(this, "No buttons yet. Add [[actions]] to the PC's config.toml.", 13f, muted = true))
+            return
+        }
+        val buttons = (0 until actions.length()).map { i ->
+            val a = actions.getJSONObject(i)
+            val name = a.getString("name")
+            val icon = a.str("icon")
+            Ui.button(this, listOfNotNull(icon, name).joinToString(" ")) {
+                Ui.background(this) {
+                    LinkService.require().request("actions.run", jsonOf("name" to name))
+                    "Started $name"
+                }
+            }
+        }
+        box.addView(Ui.grid(this, buttons))
     }
 
     private fun renderSetup() {
@@ -274,6 +320,12 @@ class MainActivity : Activity() {
                 prefs.forget()
                 render()
             }
+        })
+        card.addView(Ui.text(this, "Version ${Updater.versionName(this)} (build ${Updater.currentBuild(this)}). Updates install automatically when you open the app.", 13f, muted = true))
+        card.addView(Ui.button(this, "Check for updates") {
+            val app = applicationContext
+            Ui.toast(this, "Checking for updates…")
+            Ui.background(app) { Updater.checkAndInstall(app, manual = true) }
         })
         card.addView(TextView(this).apply {
             text = "Files from the PC are saved in Download/PCLink."

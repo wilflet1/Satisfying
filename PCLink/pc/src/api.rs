@@ -42,6 +42,7 @@ pub fn router(agent: Arc<Agent>) -> Router {
         .route("/actions/run", post(action_run))
         .route("/activity", get(activity))
         .route("/open_inbox", post(open_inbox))
+        .route("/update", post(update))
         .layer(DefaultBodyLimit::disable())
         .layer(middleware::from_fn_with_state(agent.clone(), auth));
     Router::new()
@@ -344,6 +345,9 @@ async fn speaker(State(a): State<AppState>, Json(b): Json<SpeakerBody>) -> ApiRe
 async fn clipboard_send(State(a): State<AppState>) -> ApiResult {
     let link = a.phone()?;
     let text = crate::platform::clipboard_get_text().unwrap_or_default();
+    if text.is_empty() {
+        return Err(ApiError(StatusCode::BAD_REQUEST, "The PC clipboard has no text to send.".into()));
+    }
     *a.clip_last.lock().unwrap() = text.clone();
     link.request("clip.set", json!({"text": text}), Duration::from_secs(10))
         .await?;
@@ -366,4 +370,33 @@ async fn open_inbox(State(a): State<AppState>) -> ApiResult {
     tokio::fs::create_dir_all(a.inbox()).await.map_err(anyhow::Error::from)?;
     crate::platform::open_path(&a.inbox())?;
     Ok(Json(json!({})))
+}
+
+#[derive(Deserialize)]
+struct UpdateBody {
+    #[serde(default)]
+    install: bool,
+}
+
+/// Checks for (and optionally installs) an update. Installing restarts the
+/// agent, so it happens just after this response is sent.
+async fn update(State(a): State<AppState>, Json(b): Json<UpdateBody>) -> ApiResult {
+    let agent = a.clone();
+    let check = tokio::task::spawn_blocking(crate::update::check)
+        .await
+        .map_err(anyhow::Error::from)??;
+    let msg = match check {
+        crate::update::Check::Available(m) if b.install => {
+            let build = m.build;
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(500));
+                agent.install_update(&m);
+            });
+            format!("Installing build {build}. PCLink will restart in a few seconds.")
+        }
+        _ => tokio::task::spawn_blocking(move || agent.check_update(false))
+            .await
+            .map_err(anyhow::Error::from)??,
+    };
+    Ok(Json(json!({"message": msg})))
 }

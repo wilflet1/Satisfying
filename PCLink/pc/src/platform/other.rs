@@ -9,12 +9,8 @@ pub fn notify(title: &str, body: &str) {
     tracing::info!(target: "notify", "{title}: {body}");
 }
 
-pub fn input(_cmd: InputCmd) -> Result<()> {
+pub fn input_queue(_cmd: InputCmd) -> Result<()> {
     bail!("remote input is only supported on Windows")
-}
-
-pub fn media(_cmd: &str) -> Result<()> {
-    bail!("media keys are only supported on Windows")
 }
 
 pub fn sys(cmd: &str) -> Result<()> {

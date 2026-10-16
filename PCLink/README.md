@@ -78,23 +78,46 @@ your existing ones, with a backup) and registers the MCP server.
 ## Install
 
 ### PC (Windows 10/11)
-1. Build: `cd PCLink/pc && cargo build --release`. That gives you
-   `target\release\pclink-agent.exe` (tray app) and `target\release\pclink.exe` (CLI).
-   Every push also builds both in GitHub Actions (*PCLink* workflow → `pclink-windows` artifact).
+1. Download `PCLink-windows.zip` from the
+   [`pclink-latest` release](https://github.com/wilflet1/Satisfying/releases/tag/pclink-latest),
+   or build it: `cd PCLink/pc && cargo build --release` (gives `pclink-agent.exe`, the
+   tray app, and `pclink.exe`, the CLI).
 2. Put both in one folder (e.g. `C:\Tools\PCLink`) and add it to `PATH` for the CLI.
 3. Run `pclink-agent.exe`. Allow it through Windows Firewall on **private networks**
    when asked; the phone must reach TCP port 47810.
 4. The dashboard opens on the pairing page. Tray icon → *Start with Windows* to keep it running.
 
 ### Phone (Android 11+)
-1. Build: open `PCLink/android` in Android Studio and run it, or
-   `./gradlew assembleRelease` (output in `app/build/outputs/apk/release/`).
-   GitHub Actions also builds it (`pclink-android` artifact).
+1. Download `PCLink.apk` from the
+   [`pclink-latest` release](https://github.com/wilflet1/Satisfying/releases/download/pclink-latest/PCLink.apk),
+   or build it: open `PCLink/android` in Android Studio, or `./gradlew assembleRelease`.
 2. Install the APK (sideloaded; it uses permissions the Play Store restricts).
 3. Pair: scan the QR code on the dashboard with your camera, or open the app, pick your
    PC from the list and type the 8-letter code.
 4. Work through *Finish setup* in the app: all-files access, notification access,
    unrestricted battery, and (optionally) SMS for 2FA codes.
+
+## Updates
+
+Every push builds both apps in GitHub Actions and publishes them to the
+[`pclink-latest` release](https://github.com/wilflet1/Satisfying/releases/tag/pclink-latest)
+with a `latest.json` manifest (build number and SHA-256 of each file).
+
+- **PC:** when the agent starts it checks the release; if there's a newer build it
+  downloads and verifies both `.exe` files, swaps them in, and restarts. Also: tray →
+  *Check for updates*, the dashboard's Settings page, or `pclink update`. Turn it off
+  with `auto_update = false`.
+- **Phone:** when you open the app it checks the same release and installs a newer APK.
+  Android asks you once to let PCLink install apps, and confirms the first self-update;
+  after that updates install without a prompt (Android 12+). Also: Settings →
+  *Check for updates*.
+- Only builds made by CI update themselves (local builds report "local build").
+- Updates need every APK signed with the same key. The key in `android/signing/` is
+  committed so this works out of the box; because the repository is public, anyone can
+  sign an APK with it. To use your own, add the repository secrets
+  `PCLINK_KEYSTORE_B64` (base64 of a .jks), `PCLINK_KEYSTORE_PASSWORD`,
+  `PCLINK_KEY_ALIAS` and `PCLINK_KEY_PASSWORD`. Switching keys means uninstalling the
+  app once.
 
 ## Configuration
 
@@ -108,6 +131,7 @@ clipboard_sync = true
 image_to_clipboard = true
 mirror_notifications = true
 notification_blocklist = ["com.whatsapp"]
+auto_update = true
 
 [speaker]
 pc_output = "auto"          # auto | switch | keep

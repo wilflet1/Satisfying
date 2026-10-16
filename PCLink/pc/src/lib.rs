@@ -13,3 +13,4 @@ pub mod run;
 pub mod claude;
 pub mod client;
 pub mod mcp;
+pub mod update;

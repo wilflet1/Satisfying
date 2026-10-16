@@ -141,6 +141,57 @@ impl Agent {
     }
 
     // ------------------------------------------------------------------
+    // Updates
+
+    /// Checks for an update; with `install`, installs it and restarts.
+    /// Returns a message for the user. Blocking.
+    pub fn check_update(&self, install: bool) -> Result<String> {
+        use crate::update::{check, Check, BUILD};
+        Ok(match check()? {
+            Check::UpToDate { latest } => format!("PCLink is up to date (build {BUILD}, latest {latest})."),
+            Check::LocalBuild { latest } => format!(
+                "This is a local build, which doesn't update itself. Build {latest} is available at https://github.com/{}/releases/tag/pclink-latest",
+                crate::update::repo()
+            ),
+            Check::Available(m) if install => {
+                let build = m.build;
+                self.install_update(&m);
+                // Only reached if installing failed.
+                format!("Build {build} is available but could not be installed; see agent.log.")
+            }
+            Check::Available(m) => format!("Build {} is available.", m.build),
+        })
+    }
+
+    /// Downloads and installs `m`, then restarts the agent. Returns only on failure.
+    pub fn install_update(&self, m: &crate::update::Manifest) {
+        self.log("update", format!("installing build {}", m.build));
+        platform::notify("Updating PCLink", &format!("Installing build {}. PCLink will restart.", m.build));
+        let result = crate::update::agent_path().and_then(|exe| {
+            crate::update::apply(m, exe.parent().unwrap_or(std::path::Path::new(".")))?;
+            Ok(exe)
+        });
+        match result {
+            Ok(exe) => {
+                self.shutdown();
+                crate::update::restart_with(&exe, Some(m.build));
+            }
+            Err(e) => {
+                tracing::error!("update failed: {e:#}");
+                platform::notify("PCLink update failed", &format!("{e:#}"));
+            }
+        }
+    }
+
+    /// Releases things the next process needs (default audio device, phone link).
+    pub fn shutdown(&self) {
+        *self.speaker.lock().unwrap() = None;
+        if let Some(l) = self.current_link() {
+            l.close();
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Pairing
 
     pub fn start_pairing(&self) -> Value {
@@ -247,6 +298,7 @@ impl Agent {
             "pc_name": self.cfg.pc_name,
             "mac": self.mac,
             "version": VERSION,
+            "build": crate::update::BUILD,
             "protocol": crate::proto::PROTOCOL_VERSION,
             "features": features(),
         })
@@ -335,6 +387,23 @@ impl Agent {
     // ------------------------------------------------------------------
     // Requests from the phone
 
+    /// Requests that must run in arrival order (typed text then Enter,
+    /// mouse moves). They're queued to the input thread without waiting,
+    /// so the touchpad never stalls on a round trip.
+    pub fn handle_inline(&self, op: &str, args: &Value) -> Option<Result<Value>> {
+        let cmd = match op {
+            "input" => parse_input(args),
+            "media" => match args["cmd"].as_str() {
+                Some(c @ ("play_pause" | "next" | "prev" | "vol_up" | "vol_down" | "mute")) => {
+                    Ok(platform::InputCmd::Key { key: c.to_string(), modifiers: vec![] })
+                }
+                other => Err(anyhow!("unknown media command {other:?}")),
+            },
+            _ => return None,
+        };
+        Some(cmd.and_then(platform::input_queue).map(|_| json!({})))
+    }
+
     pub async fn handle_request(self: &Arc<Self>, link: &Arc<Link>, op: &str, args: Value) -> Result<Value> {
         match op {
             "ping" => Ok(json!({"pong": true})),
@@ -410,16 +479,6 @@ impl Agent {
             }
             "open_inbox" => {
                 platform::open_path(&self.inbox())?;
-                Ok(json!({}))
-            }
-            "input" => {
-                let cmd = parse_input(&args)?;
-                tokio::task::spawn_blocking(move || platform::input(cmd)).await??;
-                Ok(json!({}))
-            }
-            "media" => {
-                let cmd = req_str(&args, "cmd")?;
-                tokio::task::spawn_blocking(move || platform::media(&cmd)).await??;
                 Ok(json!({}))
             }
             "sys" => {
@@ -671,7 +730,9 @@ impl Agent {
         json!({
             "pc_name": self.cfg.pc_name,
             "pc_id": st.pc_id,
-            "version": VERSION,
+            "version": crate::update::version_string(),
+            "build": crate::update::BUILD,
+            "auto_update": self.cfg.auto_update,
             "fingerprint": self.identity.fingerprint,
             "port": self.cfg.port,
             "connected": link.is_some(),

@@ -41,8 +41,11 @@ class SpeakerTile : TileService() {
 
     override fun onClick() {
         Thread {
-            ActionReceiver.toggleSpeaker()
-            refresh()
+            val msg = ActionReceiver.toggleSpeaker()
+            android.os.Handler(mainLooper).post {
+                refresh()
+                Ui.toast(this, msg)
+            }
         }.start()
     }
 }

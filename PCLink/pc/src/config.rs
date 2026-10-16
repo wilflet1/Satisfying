@@ -43,6 +43,8 @@ pub struct Config {
     pub mirror_notifications: bool,
     /// Apps whose notifications are not mirrored (Android package names).
     pub notification_blocklist: Vec<String>,
+    /// Check GitHub for a newer build at launch and install it.
+    pub auto_update: bool,
     pub speaker: SpeakerConfig,
     pub claude: ClaudeConfig,
     /// Buttons shown on the phone's control panel.
@@ -138,6 +140,7 @@ impl Default for Config {
             image_to_clipboard: true,
             mirror_notifications: true,
             notification_blocklist: vec![],
+            auto_update: true,
             speaker: SpeakerConfig::default(),
             claude: ClaudeConfig::default(),
             actions: vec![

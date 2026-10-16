@@ -162,6 +162,12 @@ ol { padding-left: 20px; }
         <div class="muted">Settings live in <code>config.toml</code>: tray menu → Edit settings.</div>
       </div>
       <div class="card stack">
+        <h2>Updates</h2>
+        <div id="versionInfo" class="muted"></div>
+        <div class="row"><button id="updateBtn">Check for updates</button></div>
+        <div id="updateMsg" class="muted"></div>
+      </div>
+      <div class="card stack">
         <h2>Claude Code</h2>
         <div class="muted">Run <code>pclink install-claude</code> once. Claude then pings your phone when it finishes or needs you, sends permission prompts to the phone while you're away, and gets phone tools through MCP.</div>
         <div id="claudeInfo" class="muted"></div>
@@ -245,7 +251,8 @@ async function refresh() {
   }
   $("devices").innerHTML = status.devices.map(d => `<tr><td><b>${esc(d.name)}</b><div class="muted">paired ${new Date(d.paired_at * 1000).toLocaleDateString()}</div></td><td style="text-align:right"><button data-forget="${esc(d.id)}">Forget</button></td></tr>`).join("") || `<tr><td class="muted">No phones paired yet.</td></tr>`;
   document.querySelectorAll("[data-forget]").forEach(b => b.onclick = () => run(() => api("/devices/forget", { id: b.dataset.forget }), "Forgotten").then(refresh));
-  $("pcInfo").innerHTML = `${esc(status.pc_name)} · PCLink ${esc(status.version)}<br>Received files: ${esc(status.inbox)}<br>Shared with the phone: ${status.shared_folders.map(f => esc(f.path)).join(", ")}<br><span class="pill">fingerprint ${esc(status.fingerprint.slice(0, 16))}…</span>`;
+  $("pcInfo").innerHTML = `${esc(status.pc_name)}<br>Received files: ${esc(status.inbox)}<br>Shared with the phone: ${status.shared_folders.map(f => esc(f.path)).join(", ")}<br><span class="pill">fingerprint ${esc(status.fingerprint.slice(0, 16))}…</span>`;
+  $("versionInfo").textContent = `PCLink ${status.version}. ${status.auto_update ? "Updates install automatically when PCLink starts." : "Automatic updates are off (auto_update in config.toml)."}`;
   $("claudeInfo").innerHTML = `Approvals: <b>${esc(status.claude.approvals)}</b> · Notifications: <b>${esc(status.claude.notify)}</b> · away after ${status.claude.away_after_secs}s` + (status.idle_secs != null ? ` · idle now ${status.idle_secs}s` : "");
   const log = await api("/activity").catch(() => []);
   $("activity").innerHTML = log.map(a => `<div><span class="muted">${new Date(a.time).toLocaleTimeString()}</span> <span class="pill">${esc(a.kind)}</span> ${esc(a.text)}</div>`).join("") || `<span class="muted">Nothing yet.</span>`;
@@ -287,14 +294,16 @@ $("upBtn").onclick = () => parentPath && listPhone(parentPath);
 $("homeBtn").onclick = () => listPhone(null);
 $("uploadHere").onchange = async (e) => { await uploadFiles(e.target.files, phonePath); listPhone(phonePath); };
 
-async function loadNotifs() {
+async function loadNotifs(auto) {
+  // Don't wipe a reply that's being typed.
+  if (auto && [...document.querySelectorAll("[data-reply]")].some(i => i.value || i === document.activeElement)) return;
   const list = await api("/notifications").catch(() => []);
   $("notifList").innerHTML = list.map((n, i) => `<div class="notif"><span class="pill">${esc(n.app)}</span> <span class="muted">${new Date(n.time).toLocaleTimeString()}</span><b>${esc(n.title)}</b>${esc(n.text)}<div class="row" style="margin-top:6px">${n.can_reply ? `<input type="text" placeholder="Reply…" data-reply="${i}" style="max-width:320px"><button data-send="${i}">Send</button>` : ""}<button data-dismiss="${i}">Dismiss</button></div></div>`).join("") || "Nothing yet. Turn on notification access in the phone app.";
   document.querySelectorAll("[data-send]").forEach(b => b.onclick = () => {
     const n = list[b.dataset.send]; const input = document.querySelector(`[data-reply="${b.dataset.send}"]`);
-    run(() => api("/notifications/reply", { key: n.key, text: input.value }), "Reply sent").then(loadNotifs);
+    run(() => api("/notifications/reply", { key: n.key, text: input.value }), "Reply sent").then(() => loadNotifs());
   });
-  document.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = () => run(() => api("/notifications/dismiss", { key: list[b.dataset.dismiss].key })).then(loadNotifs));
+  document.querySelectorAll("[data-dismiss]").forEach(b => b.onclick = () => run(() => api("/notifications/dismiss", { key: list[b.dataset.dismiss].key })).then(() => loadNotifs()));
 }
 
 async function newCode() {
@@ -306,12 +315,20 @@ async function newCode() {
   $("pairHosts").textContent = `PC address: ${r.hosts.join(", ") || "unknown"} port ${r.port}`;
 }
 $("newCode").onclick = newCode;
+$("updateBtn").onclick = async () => {
+  $("updateBtn").disabled = true;
+  $("updateMsg").textContent = "Checking…";
+  const r = await run(() => api("/update", { install: true }));
+  $("updateBtn").disabled = false;
+  $("updateMsg").textContent = r ? r.message : "";
+  if (r && r.message.startsWith("Installing")) setTimeout(() => location.reload(), 9000);
+};
 
 if (!TOKEN) {
   document.querySelector("main").innerHTML = `<div class="card">Open the dashboard from the PCLink tray icon (or run <code>pclink dashboard</code>).</div>`;
 } else {
   route(); refresh(); setInterval(refresh, 3000);
-  setInterval(() => { if ($("notifs").classList.contains("active")) loadNotifs(); }, 5000);
+  setInterval(() => { if ($("notifs").classList.contains("active")) loadNotifs(true); }, 5000);
 }
 </script>
 </body>

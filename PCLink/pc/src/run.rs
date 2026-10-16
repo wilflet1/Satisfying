@@ -27,9 +27,23 @@ pub async fn start_with(cfg: Config, background_tasks: bool) -> Result<Running> 
     let _ = std::fs::create_dir_all(&cfg.inbox);
 
     // Bind the API first: if it's taken, another agent is already running.
-    let api_listener = tokio::net::TcpListener::bind(("127.0.0.1", cfg.api_port))
-        .await
-        .with_context(|| format!("port {} is busy (is PCLink already running?)", cfg.api_port))?;
+    // After an update or restart the old agent may still be exiting.
+    let restarted = std::env::var_os(crate::update::RESTART_ENV).is_some();
+    let mut attempts = if restarted { 40 } else { 1 };
+    let api_listener = loop {
+        match tokio::net::TcpListener::bind(("127.0.0.1", cfg.api_port)).await {
+            Ok(l) => break l,
+            Err(_) if attempts > 1 => {
+                attempts -= 1;
+                tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+            }
+            Err(e) => {
+                return Err(e).with_context(|| {
+                    format!("port {} is busy (is PCLink already running?)", cfg.api_port)
+                })
+            }
+        }
+    };
     let phone_listener = tokio::net::TcpListener::bind(("0.0.0.0", cfg.port))
         .await
         .with_context(|| format!("binding phone port {}", cfg.port))?;
@@ -59,4 +73,23 @@ pub fn dashboard_url(api_port: u16, token: &str, page: &str) -> String {
     // The token goes in the query string: some ways of launching a browser
     // drop the `#fragment`.
     format!("http://127.0.0.1:{api_port}/?t={token}#{page}")
+}
+
+/// Starts the background update check (CI builds only).
+pub fn spawn_update_check(agent: std::sync::Arc<crate::agent::Agent>) {
+    if let Ok(dir) = crate::update::install_dir() {
+        crate::update::cleanup(&dir);
+    }
+    if !agent.cfg.auto_update || !crate::update::auto_update_allowed() {
+        return;
+    }
+    std::thread::spawn(move || {
+        // Let the agent finish starting first.
+        std::thread::sleep(std::time::Duration::from_secs(5));
+        match crate::update::check() {
+            Ok(crate::update::Check::Available(m)) => agent.install_update(&m),
+            Ok(_) => {}
+            Err(e) => tracing::info!("update check: {e:#}"),
+        }
+    });
 }
