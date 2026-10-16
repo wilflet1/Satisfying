@@ -50,7 +50,7 @@ class RemoteActivity : Activity() {
 
         // Text to type on the PC.
         val field = EditText(this).apply {
-            hint = "Type or dictate, then Send (types on the PC)"
+            hint = "Type or dictate here…"
             // Single-line so the keyboard shows a Send key (Send = type + Enter).
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
             imeOptions = EditorInfo.IME_ACTION_SEND

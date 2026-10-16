@@ -32,6 +32,10 @@ class PcFilesActivity : Activity() {
     }
 
     private fun load(target: String?) {
+        if (root.childCount == 0) {
+            root.addView(Ui.text(this, "PC files", 22f, bold = true))
+            root.addView(Ui.text(this, if (LinkService.current != null) "Loading…" else "Connecting to your PC…", muted = true))
+        }
         kotlin.concurrent.thread {
             try {
                 val link = LinkService.await(applicationContext)

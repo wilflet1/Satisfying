@@ -47,7 +47,7 @@ shot 04-home-bottom
 start
 tap "Touchpad"
 shot 05-remote
-tap "Type or dictate"
+tap "Type or dictate here"
 shot 06-remote-keyboard
 adb shell input keyevent KEYCODE_BACK
 adb shell input keyevent KEYCODE_BACK
