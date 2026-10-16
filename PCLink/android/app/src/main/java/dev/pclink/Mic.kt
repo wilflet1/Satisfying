@@ -159,7 +159,10 @@ object Mic {
                 val d = devices.firstOrNull { it.type == type } ?: continue
                 if (am.setCommunicationDevice(d)) return "${d.productName} (${label(type)})"
             }
-            return "phone mic"
+            // No headset: call audio would otherwise go to the earpiece and
+            // the PC's sound would seem to vanish. Use the loudspeaker.
+            devices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }?.let { am.setCommunicationDevice(it) }
+            return "phone mic (loudspeaker)"
         }
         @Suppress("DEPRECATION")
         if (am.isBluetoothScoAvailableOffCall) {
@@ -168,7 +171,10 @@ object Mic {
             return "Bluetooth headset mic"
         }
         @Suppress("DEPRECATION")
-        return if (am.isWiredHeadsetOn) "wired headset mic" else "phone mic"
+        if (am.isWiredHeadsetOn) return "wired headset mic"
+        @Suppress("DEPRECATION")
+        am.isSpeakerphoneOn = true
+        return "phone mic (loudspeaker)"
     }
 
     private fun label(type: Int) = when (type) {
@@ -181,9 +187,12 @@ object Mic {
     private fun resetAudio(am: AudioManager) {
         if (Build.VERSION.SDK_INT >= 31) {
             am.clearCommunicationDevice()
-        } else if (am.isBluetoothScoOn) {
-            am.isBluetoothScoOn = false
-            am.stopBluetoothSco()
+        } else {
+            if (am.isBluetoothScoOn) {
+                am.isBluetoothScoOn = false
+                am.stopBluetoothSco()
+            }
+            am.isSpeakerphoneOn = false
         }
         am.mode = AudioManager.MODE_NORMAL
     }

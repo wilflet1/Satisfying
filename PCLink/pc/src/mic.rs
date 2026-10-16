@@ -149,6 +149,13 @@ impl Agent {
             choose_device(&platform::output_devices(), &self.cfg.mic.device, &self.cfg.speaker.silent_device)?
         };
 
+        // Windows often makes a newly installed cable the default playback
+        // device: then PC sound goes silent and leaks into the mic. Put the
+        // default back on a real output.
+        if !test_mode {
+            self.fix_default_output(&device);
+        }
+
         // If the speaker is silencing the PC through this same cable, PC
         // audio would leak into the mic. Restart it so it avoids the cable.
         let speaker_shares = self
@@ -207,6 +214,31 @@ impl Agent {
             "device": device,
             "recording_device": recording,
         }))
+    }
+
+    /// If Windows plays PC sound into `cable`, switch the default output to
+    /// a real device (when the speaker isn't deliberately silencing the PC).
+    fn fix_default_output(&self, cable: &str) {
+        let Some((_, default_name)) = platform::default_output() else { return };
+        if default_name != cable {
+            return;
+        }
+        let speaker_switched = self.speaker.lock().unwrap().as_ref().map(|s| s.device == cable).unwrap_or(false);
+        if speaker_switched {
+            return; // handled by moving the speaker off this cable
+        }
+        let real = platform::output_devices()
+            .into_iter()
+            .find(|(_, n)| !crate::cable::is_virtual_cable(n));
+        if let Some((id, name)) = real {
+            if platform::set_default_output(&id).is_ok() {
+                self.log("mic", format!("PC sound was going into {cable}; switched it back to {name}"));
+                platform::notify(
+                    "PCLink fixed your PC sound",
+                    &format!("Windows was playing PC sound into {cable} (common after installing VB-Cable), so you couldn't hear it and it went into the mic. It now plays on {name}."),
+                );
+            }
+        }
     }
 
     pub fn close_mic(&self) {
