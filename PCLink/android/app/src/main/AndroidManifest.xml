@@ -64,6 +64,13 @@
             android:label="PC files" />
 
         <activity
+            android:name=".ScreenActivity"
+            android:exported="false"
+            android:label="PC screen"
+            android:configChanges="orientation|screenSize|keyboardHidden"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".RemoteActivity"
             android:exported="false"
             android:label="Remote"

@@ -18,3 +18,4 @@ pub mod tasks;
 pub mod mic;
 pub mod cable;
 pub mod relay;
+pub mod screen;

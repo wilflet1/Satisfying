@@ -487,6 +487,11 @@ impl Agent {
     /// mouse moves). They're queued to the input thread without waiting,
     /// so the touchpad never stalls on a round trip.
     pub fn handle_inline(&self, op: &str, args: &Value) -> Option<Result<Value>> {
+        // Pointer events must stay in order (down, moves, up): handled right
+        // here on the reader instead of in a spawned task.
+        if op == "screen.pointer" {
+            return Some(crate::screen::pointer(args));
+        }
         let cmd = match op {
             "input" => parse_input(args),
             "media" => match args["cmd"].as_str() {
@@ -623,6 +628,7 @@ impl Agent {
                 let id = args["id"].as_u64().ok_or_else(|| anyhow!("missing id"))?;
                 Ok(json!({"stopped": self.tasks.stop(id)}))
             }
+            "screen.frame" => tokio::task::spawn_blocking(move || crate::screen::frame(&args)).await?,
             "tasks.answer" => {
                 let id = args["id"].as_u64().ok_or_else(|| anyhow!("missing id"))?;
                 let option = args["option"].as_str().ok_or_else(|| anyhow!("missing option"))?;

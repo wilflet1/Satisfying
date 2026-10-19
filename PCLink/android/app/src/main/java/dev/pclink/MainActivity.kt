@@ -271,6 +271,7 @@ class MainActivity : Activity() {
         quick.addView(
             Ui.grid(this, listOf(
                 Ui.button(this, "📁 PC files") { startActivity(Intent(this, PcFilesActivity::class.java)) },
+                Ui.button(this, "🖥 View PC screen") { startActivity(Intent(this, ScreenActivity::class.java)) },
                 Ui.button(this, "🖱 Touchpad & keys") { startActivity(Intent(this, RemoteActivity::class.java)) },
                 Ui.button(this, "📋 Send clipboard") { startActivity(ClipSendActivity.intent(this)) },
                 Ui.button(this, "⬆ Send files") { pickFiles() },
