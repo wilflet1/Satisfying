@@ -9,7 +9,21 @@ adb install -r -g app/build/outputs/apk/debug/app-debug.apk
 
 shot() { sleep 2; adb exec-out screencap -p > "shots/$1.png"; echo "shot $1"; }
 ui() { adb shell uiautomator dump /sdcard/ui.xml > /dev/null; adb pull /sdcard/ui.xml ui.xml > /dev/null; }
-tap() { ui; python3 ci/tap.py "$1"; }
+# An emulator system app can freeze ("... isn't responding") and cover the
+# screen; dismiss that dialog with "Wait" and try again.
+tap() {
+  for _ in 1 2 3; do
+    ui
+    if grep -q "isn&apos;t responding\|isn't responding" ui.xml; then
+      python3 ci/tap.py "Wait" || true
+      sleep 2
+      continue
+    fi
+    python3 ci/tap.py "$1"
+    return
+  done
+  ui; python3 ci/tap.py "$1"
+}
 # Force-stop first so every screen starts from the top.
 start() { adb shell am force-stop $PKG; adb shell am start -W -n "$PKG/.MainActivity" > /dev/null; sleep 3; }
 scroll_down() { adb shell input swipe 540 1900 540 500 400; }
