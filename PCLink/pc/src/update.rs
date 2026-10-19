@@ -87,6 +87,8 @@ pub fn fetch_manifest() -> Result<Manifest> {
     let url = format!("{}/latest.json", base_url());
     let res = agent()
         .get(&url)
+        // Never accept a cached copy: it hides a build that was just released.
+        .set("Cache-Control", "no-cache")
         .call()
         .map_err(|e| anyhow!("checking for updates: {e}"))?;
     Ok(res.into_json()?)

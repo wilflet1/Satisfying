@@ -166,29 +166,48 @@ class ScreenActivity : Activity() {
                     size = w to h
                     runOnUiThread { view.setVideoSize(w, h) }
                     codec = MediaCodec.createDecoderByType("video/avc").apply {
-                        configure(MediaFormat.createVideoFormat("video/avc", w, h), surface, null, 0)
+                        val fmt = MediaFormat.createVideoFormat("video/avc", w, h).apply {
+                            // Show each frame as soon as it's decoded instead of
+                            // holding a few back (that froze still screens).
+                            setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
+                            setInteger("vendor.qti-ext-dec-low-latency.enable", 1)
+                        }
+                        configure(fmt, surface, null, 0)
                         start()
                     }
                     LinkService.current?.event("screen.key", JSONObject())
                 }
                 val c = codec!!
                 val bytes = Base64.decode(f.getString("data"), Base64.DEFAULT)
-                val idx = c.dequeueInputBuffer(50_000)
+                drain(c, info, 0)
+                val idx = c.dequeueInputBuffer(100_000)
                 if (idx >= 0) {
                     c.getInputBuffer(idx)!!.apply { clear(); put(bytes) }
                     c.queueInputBuffer(idx, 0, bytes.size, pts, 0)
                     pts += 33_333
+                } else {
+                    // Dropping a frame breaks the ones after it: resync.
+                    LinkService.current?.event("screen.key", JSONObject())
                 }
-                while (true) {
-                    val out = c.dequeueOutputBuffer(info, 0)
-                    if (out >= 0) c.releaseOutputBuffer(out, true) else break
-                }
+                // Give the decoder a moment so this frame shows now, not with the next one.
+                drain(c, info, 15_000)
             } catch (e: Exception) {
                 release()
                 LinkService.current?.event("screen.key", JSONObject())
             }
         }
         release()
+    }
+
+    /** Renders every decoded frame that's ready (waiting up to [timeoutUs] for the first). */
+    private fun drain(c: MediaCodec, info: MediaCodec.BufferInfo, timeoutUs: Long) {
+        var wait = timeoutUs
+        while (true) {
+            val out = c.dequeueOutputBuffer(info, wait)
+            if (out >= 0) c.releaseOutputBuffer(out, true)
+            else if (out != MediaCodec.INFO_OUTPUT_FORMAT_CHANGED && out != MediaCodec.INFO_OUTPUT_BUFFERS_CHANGED) break
+            wait = 0
+        }
     }
 
     private fun input(vararg pairs: Pair<String, Any?>) {

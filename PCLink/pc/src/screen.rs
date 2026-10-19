@@ -94,7 +94,7 @@ pub fn request_keyframe() {
 
 /// `{monitor, max_w, fps, bitrate}` -> `{w, h}`; replaces any running stream.
 pub fn start_video(link: Arc<crate::link::Link>, args: &Value) -> Result<Value> {
-    use openh264::encoder::{BitRate, Encoder, EncoderConfig, FrameRate, UsageType};
+    use openh264::encoder::{BitRate, Encoder, EncoderConfig, FrameRate, IntraFramePeriod, UsageType};
     stop_video();
     let m = monitor(args)?;
     let max_w = args["max_w"].as_u64().unwrap_or(1600).clamp(320, 3840) as i32;
@@ -108,6 +108,8 @@ pub fn start_video(link: Arc<crate::link::Link>, args: &Value) -> Result<Value> 
         .bitrate(BitRate::from_bps(bitrate))
         .max_frame_rate(FrameRate::from_hz(fps as f32))
         .usage_type(UsageType::ScreenContentRealTime)
+        // A full frame every few seconds heals any frame the phone lost.
+        .intra_frame_period(IntraFramePeriod::from_num_frames((fps * 4.0) as u32))
         .skip_frames(true);
     let mut enc = Encoder::with_api_config(openh264::OpenH264API::from_source(), config)?;
     let v = Arc::new(Video { stop: AtomicBool::new(false), acked: AtomicU64::new(0), keyframe: AtomicBool::new(false) });

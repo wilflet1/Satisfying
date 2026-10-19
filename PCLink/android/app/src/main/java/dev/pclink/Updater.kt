@@ -44,6 +44,9 @@ object Updater {
         c.connectTimeout = 10_000
         c.readTimeout = 60_000
         c.instanceFollowRedirects = true
+        // Never accept a cached copy: it hides a build that was just released.
+        c.useCaches = false
+        c.setRequestProperty("Cache-Control", "no-cache")
         if (c.responseCode != 200) throw IOException("HTTP ${c.responseCode} for $url")
         return c
     }
