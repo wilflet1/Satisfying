@@ -84,6 +84,8 @@ class Link private constructor(
     private val nextXfer = AtomicInteger(2)
     private val closed = AtomicBoolean(false)
     private val workers = Executors.newCachedThreadPool()
+    /** Events go out in order on their own thread: callers are often on the main thread. */
+    private val events = Executors.newSingleThreadExecutor()
     private var handler: Handler? = null
 
     val pcName: String get() = welcome.optString("pc_name", "PC")
@@ -115,10 +117,17 @@ class Link private constructor(
 
     fun sendJson(msg: JSONObject) = send(Wire.json(msg))
 
+    /** Sends an event without blocking; safe to call from any thread. */
     fun event(ev: String, data: JSONObject) {
+        if (closed.get()) return
         try {
-            sendJson(jsonOf("t" to "ev", "ev" to ev, "data" to data))
-        } catch (_: IOException) {
+            events.execute {
+                try {
+                    sendJson(jsonOf("t" to "ev", "ev" to ev, "data" to data))
+                } catch (_: Exception) {
+                }
+            }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
         }
     }
 
@@ -158,6 +167,7 @@ class Link private constructor(
 
     fun close(error: Throwable? = null) {
         if (!closed.compareAndSet(false, true)) return
+        events.shutdown()
         try {
             socket.close()
         } catch (_: IOException) {

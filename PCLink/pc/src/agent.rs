@@ -424,6 +424,17 @@ impl Agent {
                 self.log("speaker", "phone stopped playback");
                 self.changed();
             }
+            "crash" => {
+                let report = data["report"].as_str().unwrap_or("").to_string();
+                tracing::warn!("phone app crashed:\n{report}");
+                let first = report.lines().find(|l| l.contains("Exception") || l.contains("Error")).unwrap_or("");
+                self.log("phone", format!("the phone app crashed and restarted: {}", head(first, 160)));
+                let path = crate::config::home_dir().join("phone-crashes.log");
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                    use std::io::Write;
+                    let _ = writeln!(f, "{report}\n");
+                }
+            }
             other => tracing::debug!("unhandled event {other}"),
         }
     }

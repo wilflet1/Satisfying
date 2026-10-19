@@ -20,6 +20,15 @@ class NotifListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
+        // Other apps' notifications can hold anything; never let one take PCLink down.
+        try {
+            mirror(sbn)
+        } catch (e: Exception) {
+            android.util.Log.w("PCLink", "couldn't mirror a notification from ${sbn.packageName}", e)
+        }
+    }
+
+    private fun mirror(sbn: StatusBarNotification) {
         if (!Prefs(this).mirrorNotifications) return
         if (sbn.packageName == packageName) return
         val n = sbn.notification

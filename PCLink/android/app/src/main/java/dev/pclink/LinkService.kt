@@ -137,6 +137,7 @@ class LinkService : Service(), Link.Handler {
                     backoff = 1000L
                     setState(null)
                     link.event("status", ops.statusJson())
+                    CrashLog.take(this)?.let { link.event("crash", jsonOf("report" to it)) }
                     break
                 } catch (e: RemoteException) {
                     // The PC refused us (e.g. it forgot this phone).
