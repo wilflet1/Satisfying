@@ -2,11 +2,10 @@ package dev.pclink
 
 import android.app.Activity
 import android.content.Context
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Matrix
+import android.graphics.SurfaceTexture
+import android.media.MediaCodec
+import android.media.MediaFormat
 import android.os.Bundle
 import android.text.Editable
 import android.text.InputType
@@ -16,32 +15,33 @@ import android.view.GestureDetector
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ScaleGestureDetector
-import android.view.View
+import android.view.Surface
+import android.view.TextureView
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
+import org.json.JSONObject
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * Remote desktop: the PC's screen as a stream of JPEG frames, with
- * Chrome-Remote-Desktop-style touch: tap = click, double tap = double click,
- * long press = right click, long press then drag = drag, one finger = pan,
- * two fingers = pinch zoom and pan, two-finger vertical swipe = scroll.
+ * Remote desktop: the PC streams its screen as H.264 (decoded in hardware
+ * here), with Chrome-Remote-Desktop-style touch: tap = click, double tap =
+ * double click, long press = right click, long press then drag = drag, one
+ * finger = pan, two fingers = pinch zoom and pan, two-finger swipe = scroll.
  */
 class ScreenActivity : Activity() {
-    private companion object {
-        const val PIPELINE = 3
-    }
-
     private val sender = Executors.newSingleThreadExecutor()
+    private val frames = LinkedBlockingQueue<JSONObject>(30)
     @Volatile private var running = false
     private var monitor = 0
     private var monitors = 1
     private lateinit var view: ScreenView
     private lateinit var keys: EditText
-    private var lastFrame = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -79,7 +79,7 @@ class ScreenActivity : Activity() {
             })
         }
         root.addView(keys, LinearLayout.LayoutParams(1, 1))
-        val bar = Ui.grid(this, listOf(
+        root.addView(Ui.grid(this, listOf(
             Ui.button(this, "⌨") {
                 keys.requestFocus()
                 getSystemService(InputMethodManager::class.java).showSoftInput(keys, 0)
@@ -91,22 +91,24 @@ class ScreenActivity : Activity() {
             Ui.button(this, "🖥") {
                 monitor = (monitor + 1) % monitors.coerceAtLeast(1)
                 view.reset()
+                startStream()
             },
-        ), perRow = 6)
-        root.addView(bar)
+        ), perRow = 6))
         setContentView(root)
     }
 
     override fun onResume() {
         super.onResume()
+        current = this
         running = true
-        // Several requests in flight hide the round trip and let the PC
-        // capture and encode in parallel: this is what gets to 30+ fps.
-        repeat(PIPELINE) { thread(name = "pclink-screen-$it") { frameLoop() } }
+        thread(name = "pclink-video") { decodeLoop() }
+        startStream()
     }
 
     override fun onPause() {
+        current = null
         running = false
+        LinkService.current?.let { l -> sender.execute { l.post("screen.stop", JSONObject()) } }
         super.onPause()
     }
 
@@ -115,35 +117,78 @@ class ScreenActivity : Activity() {
         super.onDestroy()
     }
 
-    /** Asks for the next frame as soon as the last one arrives (natural backpressure). */
-    private fun frameLoop() {
-        while (running) {
+    private fun startStream() {
+        frames.clear()
+        Thread {
             try {
                 val link = LinkService.await(applicationContext)
-                // Zoomed in: ask for more pixels so text stays sharp.
                 val dm = resources.displayMetrics
-                val maxW = (maxOf(dm.widthPixels, dm.heightPixels) * view.scale).toInt().coerceIn(960, 2560)
-                val q = if (link.viaRelay) 35 else 50
-                val res = link.request("screen.frame", jsonOf("monitor" to monitor, "max_w" to maxW, "quality" to q), 15_000)
+                val maxW = maxOf(dm.widthPixels, dm.heightPixels).coerceIn(1280, 1920)
+                // The relay is slow (and runs on your web hosting): keep it light there.
+                val bitrate = if (link.viaRelay) 1_000_000 else 6_000_000
+                val fps = if (link.viaRelay) 15 else 30
+                val res = link.request("screen.start", jsonOf("monitor" to monitor, "max_w" to maxW, "fps" to fps, "bitrate" to bitrate), 15_000)
                 monitors = res.optInt("monitors", 1)
-                val t = res.optLong("t")
-                val bytes = Base64.decode(res.getString("jpeg"), Base64.DEFAULT)
-                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
-                // Pipelined replies can arrive out of order: keep the newest.
-                // (Checked on the UI thread, where frames are shown.)
-                runOnUiThread {
-                    if (t >= lastFrame) {
-                        lastFrame = t
-                        view.show(bmp)
-                    } else {
-                        bmp.recycle()
-                    }
-                }
             } catch (e: Exception) {
                 runOnUiThread { Ui.toast(this, e.message ?: "Screen unavailable") }
-                Thread.sleep(2000)
+            }
+        }.start()
+    }
+
+    /** Frames from the PC (link reader thread): queue for the decoder and ack. */
+    private fun onVideo(data: JSONObject) {
+        if (!frames.offer(data)) {
+            // Decoder fell behind: drop the backlog and restart from a keyframe.
+            frames.clear()
+            LinkService.current?.event("screen.key", JSONObject())
+        }
+        LinkService.current?.event("screen.ack", jsonOf("seq" to data.optLong("seq")))
+    }
+
+    private fun decodeLoop() {
+        var codec: MediaCodec? = null
+        var size = 0 to 0
+        var pts = 0L
+        val info = MediaCodec.BufferInfo()
+        fun release() {
+            try { codec?.stop() } catch (_: Exception) {}
+            try { codec?.release() } catch (_: Exception) {}
+            codec = null
+        }
+        while (running) {
+            val f = frames.poll(200, TimeUnit.MILLISECONDS) ?: continue
+            val surface = view.surface ?: continue
+            val w = f.optInt("w")
+            val h = f.optInt("h")
+            try {
+                if (codec == null || size != w to h) {
+                    release()
+                    size = w to h
+                    runOnUiThread { view.setVideoSize(w, h) }
+                    codec = MediaCodec.createDecoderByType("video/avc").apply {
+                        configure(MediaFormat.createVideoFormat("video/avc", w, h), surface, null, 0)
+                        start()
+                    }
+                    LinkService.current?.event("screen.key", JSONObject())
+                }
+                val c = codec!!
+                val bytes = Base64.decode(f.getString("data"), Base64.DEFAULT)
+                val idx = c.dequeueInputBuffer(50_000)
+                if (idx >= 0) {
+                    c.getInputBuffer(idx)!!.apply { clear(); put(bytes) }
+                    c.queueInputBuffer(idx, 0, bytes.size, pts, 0)
+                    pts += 33_333
+                }
+                while (true) {
+                    val out = c.dequeueOutputBuffer(info, 0)
+                    if (out >= 0) c.releaseOutputBuffer(out, true) else break
+                }
+            } catch (e: Exception) {
+                release()
+                LinkService.current?.event("screen.key", JSONObject())
             }
         }
+        release()
     }
 
     private fun input(vararg pairs: Pair<String, Any?>) {
@@ -161,60 +206,64 @@ class ScreenActivity : Activity() {
         sender.execute { link.post("screen.pointer", args) }
     }
 
-    /** Draws the latest frame with zoom/pan and turns touches into pointer actions. */
-    private inner class ScreenView(ctx: Context) : View(ctx) {
-        private var bmp: Bitmap? = null
-        private val m = Matrix()
-        /** Zoom relative to fit-to-view. */
-        var scale = 1f
+    /** Shows the video with zoom/pan and turns touches into pointer actions. */
+    private inner class ScreenView(ctx: Context) : FrameLayout(ctx) {
+        private val tex = TextureView(ctx)
+        @Volatile var surface: Surface? = null
             private set
+        private var vw = 0
+        private var vh = 0
+        private var scale = 1f
         private var tx = 0f
         private var ty = 0f
         private var dragging = false
+        private var moved = false
         private var scrollAcc = 0f
 
-        fun show(b: Bitmap) {
-            val old = bmp
-            bmp = b
-            if (old == null || old.width != b.width || old.height != b.height) clamp()
-            old?.recycle()
-            invalidate()
+        init {
+            addView(tex, LayoutParams(1, 1))
+            tex.pivotX = 0f
+            tex.pivotY = 0f
+            tex.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
+                override fun onSurfaceTextureAvailable(st: SurfaceTexture, w: Int, h: Int) { surface = Surface(st) }
+                override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, w: Int, h: Int) {}
+                override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean { surface?.release(); surface = null; return true }
+                override fun onSurfaceTextureUpdated(st: SurfaceTexture) {}
+            }
+        }
+
+        fun setVideoSize(w: Int, h: Int) {
+            vw = w; vh = h
+            tex.layoutParams = LayoutParams(w, h)
+            apply()
         }
 
         fun reset() {
             scale = 1f; tx = 0f; ty = 0f
-            invalidate()
+            apply()
         }
 
-        private fun fit(): Float {
-            val b = bmp ?: return 1f
-            return minOf(width / b.width.toFloat(), height / b.height.toFloat())
-        }
+        override fun onSizeChanged(w: Int, h: Int, ow: Int, oh: Int) = apply()
 
-        private fun clamp() {
-            val b = bmp ?: return
+        private fun fit() = if (vw == 0) 1f else minOf(width / vw.toFloat(), height / vh.toFloat())
+
+        private fun apply() {
+            if (vw == 0) return
             scale = scale.coerceIn(1f, 8f)
             val s = fit() * scale
-            val w = b.width * s
-            val h = b.height * s
+            val w = vw * s
+            val h = vh * s
             tx = if (w <= width) (width - w) / 2 else tx.coerceIn(width - w, 0f)
             ty = if (h <= height) (height - h) / 2 else ty.coerceIn(height - h, 0f)
+            tex.scaleX = s; tex.scaleY = s
+            tex.translationX = tx; tex.translationY = ty
         }
 
-        override fun onDraw(c: Canvas) {
-            val b = bmp ?: return
-            clamp()
-            val s = fit() * scale
-            m.setScale(s, s)
-            m.postTranslate(tx, ty)
-            c.drawBitmap(b, m, null)
-        }
-
-        /** Screen point -> frame fraction (0..1). */
+        /** View point -> screen fraction (0..1). */
         private fun frac(x: Float, y: Float): Pair<Float, Float>? {
-            val b = bmp ?: return null
+            if (vw == 0) return null
             val s = fit() * scale
-            return ((x - tx) / s / b.width).coerceIn(0f, 1f) to ((y - ty) / s / b.height).coerceIn(0f, 1f)
+            return ((x - tx) / s / vw).coerceIn(0f, 1f) to ((y - ty) / s / vh).coerceIn(0f, 1f)
         }
 
         private fun act(action: String, e: MotionEvent) {
@@ -228,7 +277,7 @@ class ScreenActivity : Activity() {
                 tx = d.focusX - (d.focusX - tx) * k
                 ty = d.focusY - (d.focusY - ty) * k
                 scale = ns
-                invalidate()
+                apply()
                 return true
             }
         })
@@ -254,12 +303,10 @@ class ScreenActivity : Activity() {
                     }
                 }
                 tx -= dx; ty -= dy
-                invalidate()
+                apply()
                 return true
             }
         })
-
-        private var moved = false
 
         override fun onTouchEvent(e: MotionEvent): Boolean {
             scaler.onTouchEvent(e)
@@ -268,7 +315,8 @@ class ScreenActivity : Activity() {
                 when (e.actionMasked) {
                     MotionEvent.ACTION_MOVE -> { moved = true; act("move", e) }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        if (moved) act("up", e) else { act("up", e); act("right", e) }
+                        act("up", e)
+                        if (!moved) act("right", e)
                         dragging = false
                         moved = false
                     }
@@ -276,6 +324,15 @@ class ScreenActivity : Activity() {
             }
             if (e.actionMasked == MotionEvent.ACTION_UP) scrollAcc = 0f
             return true
+        }
+    }
+
+    companion object {
+        @Volatile private var current: ScreenActivity? = null
+
+        /** `screen.video` events from the PC. */
+        fun dispatch(data: JSONObject) {
+            current?.onVideo(data)
         }
     }
 }

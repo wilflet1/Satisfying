@@ -465,6 +465,8 @@ impl Agent {
                 self.log("speaker", "phone stopped playback");
                 self.changed();
             }
+            "screen.ack" => crate::screen::ack(data["seq"].as_u64().unwrap_or(0)),
+            "screen.key" => crate::screen::request_keyframe(),
             "crash" => {
                 let report = data["report"].as_str().unwrap_or("").to_string();
                 tracing::warn!("phone app crashed:\n{report}");
@@ -627,6 +629,11 @@ impl Agent {
             "tasks.stop" => {
                 let id = args["id"].as_u64().ok_or_else(|| anyhow!("missing id"))?;
                 Ok(json!({"stopped": self.tasks.stop(id)}))
+            }
+            "screen.start" => crate::screen::start_video(link.clone(), &args),
+            "screen.stop" => {
+                crate::screen::stop_video();
+                Ok(json!({}))
             }
             "screen.frame" => tokio::task::spawn_blocking(move || crate::screen::frame(&args)).await?,
             "tasks.answer" => {

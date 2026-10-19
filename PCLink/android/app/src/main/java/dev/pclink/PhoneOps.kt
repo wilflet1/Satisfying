@@ -128,6 +128,7 @@ class PhoneOps(private val ctx: Context) {
         when (ev) {
             "clip.changed" -> if (prefs.syncClipboard) setClipboard(data.optString("text"))
             "task.event" -> ClaudeActivity.dispatch(data)
+            "screen.video" -> ScreenActivity.dispatch(data)
             // Answered elsewhere (the task chat or the PC dashboard).
             "ask.cancel" -> {
                 val task = data.optLong("task")
