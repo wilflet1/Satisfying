@@ -555,6 +555,49 @@ pub fn capture(x: i32, y: i32, w: i32, h: i32) -> Result<image::RgbaImage> {
     }
 }
 
+/// Captures a screen area scaled to `dw`x`dh` (GDI halftone stretch, much
+/// faster than scaling afterwards). Returns top-down BGRA pixels.
+pub fn capture_bgra(x: i32, y: i32, w: i32, h: i32, dw: i32, dh: i32) -> Result<Vec<u8>> {
+    use windows::Win32::Graphics::Gdi::*;
+    if w <= 0 || h <= 0 || dw <= 0 || dh <= 0 {
+        bail!("empty capture area");
+    }
+    unsafe {
+        let screen = GetDC(None);
+        let mem = CreateCompatibleDC(Some(screen));
+        let bmp = CreateCompatibleBitmap(screen, dw, dh);
+        let old = SelectObject(mem, bmp.into());
+        let ok = if (dw, dh) == (w, h) {
+            BitBlt(mem, 0, 0, w, h, Some(screen), x, y, SRCCOPY | CAPTUREBLT).is_ok()
+        } else {
+            SetStretchBltMode(mem, HALFTONE);
+            StretchBlt(mem, 0, 0, dw, dh, Some(screen), x, y, w, h, SRCCOPY | CAPTUREBLT).as_bool()
+        };
+        let mut info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: dw,
+                biHeight: -dh,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut buf = vec![0u8; (dw * dh * 4) as usize];
+        let lines = GetDIBits(mem, bmp, 0, dh as u32, Some(buf.as_mut_ptr() as *mut _), &mut info, DIB_RGB_COLORS);
+        SelectObject(mem, old);
+        let _ = DeleteObject(bmp.into());
+        let _ = DeleteDC(mem);
+        ReleaseDC(None, screen);
+        if !ok || lines == 0 {
+            bail!("could not capture the screen");
+        }
+        Ok(buf)
+    }
+}
+
 fn hwnd(id: u64) -> HWND {
     HWND(id as usize as *mut core::ffi::c_void)
 }

@@ -21,6 +21,7 @@ path = "src/bin/pclink.rs"
 anyhow = "1"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio"] }
 base64 = "0.22"
+jpeg-encoder = { version = "0.6", features = ["simd"] }
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 hex = "0.4"

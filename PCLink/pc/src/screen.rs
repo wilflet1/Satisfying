@@ -15,25 +15,22 @@ fn monitor(args: &Value) -> Result<platform::Monitor> {
         .ok_or_else(|| anyhow!("no monitors"))
 }
 
-/// `{monitor, max_w, quality}` -> `{jpeg (base64), w, h, monitors}`.
+/// `{monitor, max_w, quality}` -> `{jpeg (base64), w, h, t, monitors}`.
+/// Several can run at once (the phone pipelines requests); `t` orders them.
 pub fn frame(args: &Value) -> Result<Value> {
+    let t = crate::util::now_millis();
     let m = monitor(args)?;
-    let img = platform::capture(m.x, m.y, m.width, m.height)?;
-    let max_w = args["max_w"].as_u64().unwrap_or(1280).clamp(320, 3840) as u32;
-    let img = if img.width() > max_w {
-        let h = (img.height() as u64 * max_w as u64 / img.width() as u64) as u32;
-        image::imageops::resize(&img, max_w, h, image::imageops::FilterType::Triangle)
-    } else {
-        img
-    };
-    let rgb = image::DynamicImage::ImageRgba8(img).to_rgb8();
-    let mut jpeg = Vec::new();
-    let q = args["quality"].as_u64().unwrap_or(60).clamp(20, 95) as u8;
-    image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg, q).encode_image(&rgb)?;
+    let max_w = args["max_w"].as_u64().unwrap_or(1280).clamp(320, 3840) as i32;
+    let (dw, dh) = if m.width > max_w { (max_w, (m.height as i64 * max_w as i64 / m.width as i64) as i32) } else { (m.width, m.height) };
+    let bgra = platform::capture_bgra(m.x, m.y, m.width, m.height, dw, dh)?;
+    let q = args["quality"].as_u64().unwrap_or(50).clamp(20, 95) as u8;
+    let mut jpeg = Vec::with_capacity(256 * 1024);
+    jpeg_encoder::Encoder::new(&mut jpeg, q).encode(&bgra, dw as u16, dh as u16, jpeg_encoder::ColorType::Bgra)?;
     Ok(json!({
         "jpeg": base64::engine::general_purpose::STANDARD.encode(jpeg),
-        "w": rgb.width(),
-        "h": rgb.height(),
+        "w": dw,
+        "h": dh,
+        "t": t,
         "monitors": platform::monitors().len(),
     }))
 }
@@ -57,4 +54,18 @@ pub fn pointer(args: &Value) -> Result<Value> {
         other => Err(anyhow!("unknown pointer action {other}")),
     }?;
     Ok(json!({}))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn encodes_a_frame_quickly() {
+        let (w, h) = (1600u16, 900u16);
+        let bgra: Vec<u8> = (0..w as usize * h as usize * 4).map(|i| ((i / 7) ^ (i / 3001)) as u8).collect();
+        let t = std::time::Instant::now();
+        let mut jpeg = Vec::new();
+        jpeg_encoder::Encoder::new(&mut jpeg, 50).encode(&bgra, w, h, jpeg_encoder::ColorType::Bgra).unwrap();
+        eprintln!("1600x900 JPEG: {} KB in {:?}", jpeg.len() / 1024, t.elapsed());
+        assert!(jpeg.starts_with(&[0xFF, 0xD8]));
+    }
 }

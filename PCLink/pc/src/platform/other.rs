@@ -111,6 +111,10 @@ pub fn capture(_x: i32, _y: i32, _w: i32, _h: i32) -> Result<image::RgbaImage> {
     windows_only()
 }
 
+pub fn capture_bgra(_x: i32, _y: i32, _w: i32, _h: i32, _dw: i32, _dh: i32) -> Result<Vec<u8>> {
+    windows_only()
+}
+
 pub fn list_windows() -> Vec<WindowInfo> {
     vec![]
 }

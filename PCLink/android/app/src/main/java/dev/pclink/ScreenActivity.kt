@@ -31,12 +31,17 @@ import kotlin.concurrent.thread
  * two fingers = pinch zoom and pan, two-finger vertical swipe = scroll.
  */
 class ScreenActivity : Activity() {
+    private companion object {
+        const val PIPELINE = 3
+    }
+
     private val sender = Executors.newSingleThreadExecutor()
     @Volatile private var running = false
     private var monitor = 0
     private var monitors = 1
     private lateinit var view: ScreenView
     private lateinit var keys: EditText
+    private var lastFrame = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -95,7 +100,9 @@ class ScreenActivity : Activity() {
     override fun onResume() {
         super.onResume()
         running = true
-        thread(name = "pclink-screen") { frameLoop() }
+        // Several requests in flight hide the round trip and let the PC
+        // capture and encode in parallel: this is what gets to 30+ fps.
+        repeat(PIPELINE) { thread(name = "pclink-screen-$it") { frameLoop() } }
     }
 
     override fun onPause() {
@@ -113,12 +120,25 @@ class ScreenActivity : Activity() {
         while (running) {
             try {
                 val link = LinkService.await(applicationContext)
-                val maxW = (resources.displayMetrics.widthPixels * view.scale).toInt().coerceIn(960, 2560)
-                val res = link.request("screen.frame", jsonOf("monitor" to monitor, "max_w" to maxW, "quality" to 55), 15_000)
+                // Zoomed in: ask for more pixels so text stays sharp.
+                val dm = resources.displayMetrics
+                val maxW = (maxOf(dm.widthPixels, dm.heightPixels) * view.scale).toInt().coerceIn(960, 2560)
+                val q = if (link.viaRelay) 35 else 50
+                val res = link.request("screen.frame", jsonOf("monitor" to monitor, "max_w" to maxW, "quality" to q), 15_000)
                 monitors = res.optInt("monitors", 1)
+                val t = res.optLong("t")
                 val bytes = Base64.decode(res.getString("jpeg"), Base64.DEFAULT)
                 val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: continue
-                runOnUiThread { view.show(bmp) }
+                // Pipelined replies can arrive out of order: keep the newest.
+                // (Checked on the UI thread, where frames are shown.)
+                runOnUiThread {
+                    if (t >= lastFrame) {
+                        lastFrame = t
+                        view.show(bmp)
+                    } else {
+                        bmp.recycle()
+                    }
+                }
             } catch (e: Exception) {
                 runOnUiThread { Ui.toast(this, e.message ?: "Screen unavailable") }
                 Thread.sleep(2000)
