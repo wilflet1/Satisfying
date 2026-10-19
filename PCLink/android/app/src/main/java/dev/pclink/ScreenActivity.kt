@@ -236,7 +236,19 @@ class ScreenActivity : Activity() {
         private var tx = 0f
         private var ty = 0f
         private var dragging = false
-        private var moved = false
+        /** Left button held on the PC (the hold turned into a drag). */
+        private var pressed = false
+        private var rightDone = false
+        private var holdX = 0f
+        private var holdY = 0f
+        private val slop = android.view.ViewConfiguration.get(ctx).scaledTouchSlop
+        private val rightClick = Runnable {
+            if (dragging && !pressed) {
+                frac(holdX, holdY)?.let { (fx, fy) -> pointer("right", fx, fy) }
+                rightDone = true
+                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            }
+        }
         private var scrollAcc = 0f
 
         init {
@@ -305,10 +317,13 @@ class ScreenActivity : Activity() {
             override fun onSingleTapConfirmed(e: MotionEvent): Boolean { act("click", e); return true }
             override fun onDoubleTap(e: MotionEvent): Boolean { act("double", e); return true }
             override fun onLongPress(e: MotionEvent) {
-                // Long press starts a drag; releasing without moving is a right click.
+                // Hold: keep still for 2 s for a right click, or move to drag.
                 dragging = true
-                act("down", e)
-                performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+                pressed = false
+                rightDone = false
+                holdX = e.x; holdY = e.y
+                performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                postDelayed(rightClick, 2000L - android.view.ViewConfiguration.getLongPressTimeout())
             }
             override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
                 if (dragging) return true
@@ -332,12 +347,24 @@ class ScreenActivity : Activity() {
             gestures.onTouchEvent(e)
             if (dragging) {
                 when (e.actionMasked) {
-                    MotionEvent.ACTION_MOVE -> { moved = true; act("move", e) }
+                    MotionEvent.ACTION_MOVE -> {
+                        if (!pressed && !rightDone && kotlin.math.hypot(e.x - holdX, e.y - holdY) > slop) {
+                            // Moved before the right click: drag from where the hold began.
+                            removeCallbacks(rightClick)
+                            pressed = true
+                            frac(holdX, holdY)?.let { (fx, fy) -> pointer("down", fx, fy) }
+                        }
+                        if (pressed) act("move", e)
+                    }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        act("up", e)
-                        if (!moved) act("right", e)
+                        removeCallbacks(rightClick)
+                        when {
+                            pressed -> act("up", e)
+                            // Let go before 2 s without moving: an ordinary click.
+                            !rightDone && e.actionMasked == MotionEvent.ACTION_UP -> act("click", e)
+                        }
                         dragging = false
-                        moved = false
+                        pressed = false
                     }
                 }
             }
