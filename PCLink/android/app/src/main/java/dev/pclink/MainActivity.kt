@@ -219,6 +219,16 @@ class MainActivity : Activity() {
             else pair(listOf(host), 47810, null, codeField.text.toString())
         })
         root.addView(card)
+        // An out-of-date app may not be able to pair with a newer PC, so
+        // updating must work before pairing too.
+        val about = Ui.card(this)
+        about.addView(Ui.text(this, "Version ${Updater.versionName(this)} (build ${Updater.currentBuild(this)})", 13f, muted = true))
+        about.addView(Ui.button(this, "Check for updates") {
+            val app = applicationContext
+            Ui.toast(this, "Checking for updates…")
+            Ui.background(app) { Updater.checkAndInstall(app, manual = true) }
+        })
+        root.addView(about)
     }
 
     private fun renderHome() {
