@@ -109,6 +109,13 @@ class LinkService : Service(), Link.Handler {
             }
             val existing = current
             if (existing != null && existing.isOpen) {
+                // Back on the PC's network: switch to the direct link (faster,
+                // and the speaker and mic need it).
+                val seen = discovery.found[prefs.pcId]?.seenAt ?: 0L
+                if (existing.viaRelay && System.currentTimeMillis() - seen < 10_000) {
+                    existing.close()
+                    continue
+                }
                 sleep(30_000)
                 continue
             }
@@ -117,8 +124,10 @@ class LinkService : Service(), Link.Handler {
                 discovery.found[prefs.pcId]?.let { add(it.host) }
                 addAll(prefs.hosts)
             }.distinct()
+            // Away from home the direct addresses fail; then try the relay.
+            val useRelay = prefs.relayUrl.isNotEmpty() && prefs.relayRoom.isNotEmpty()
             var connected = false
-            for (host in candidates) {
+            for (host in candidates + if (useRelay) listOf(RELAY) else emptyList()) {
                 try {
                     val hello = jsonOf(
                         "t" to "hello",
@@ -127,8 +136,15 @@ class LinkService : Service(), Link.Handler {
                         "token" to prefs.token,
                         "protocol" to 1,
                     )
-                    val (link, welcome, _) = Link.open(host, prefs.port, prefs.fingerprint, hello)
-                    prefs.rememberHost(host)
+                    val (link, welcome, _) = if (host == RELAY) {
+                        Link.open(Relay.LOCAL_HOST, Relay.open(prefs.relayUrl, prefs.relayRoom), prefs.fingerprint, hello)
+                    } else {
+                        Link.open(host, prefs.port, prefs.fingerprint, hello).also { prefs.rememberHost(host) }
+                    }
+                    welcome.optJSONObject("relay").let { r ->
+                        prefs.relayUrl = r?.optString("url") ?: ""
+                        prefs.relayRoom = r?.optString("room") ?: ""
+                    }
                     welcome.str("pc_name")?.let { prefs.pcName = it }
                     welcome.str("mac")?.let { prefs.mac = it }
                     current = link
@@ -184,7 +200,11 @@ class LinkService : Service(), Link.Handler {
 
     internal fun buildNotification(): Notification {
         val link = current
-        val title = if (link != null) "Connected to ${link.pcName}" else "PCLink"
+        val title = when {
+            link == null -> "PCLink"
+            link.viaRelay -> "Connected to ${link.pcName} (via relay)"
+            else -> "Connected to ${link.pcName}"
+        }
         val text = stateText ?: if (link != null) "Tap for controls" else "Not connected"
         val open = PendingIntent.getActivity(
             this, 0, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE,
@@ -215,6 +235,7 @@ class LinkService : Service(), Link.Handler {
         const val NOTIF_ID = 1
         const val ACTION_STOP = "dev.pclink.STOP"
         const val ACTION_RECONNECT = "dev.pclink.RECONNECT"
+        private const val RELAY = "relay"
 
         @Volatile var current: Link? = null
             private set

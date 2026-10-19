@@ -90,6 +90,8 @@ class Link private constructor(
 
     val pcName: String get() = welcome.optString("pc_name", "PC")
     val isOpen: Boolean get() = !closed.get()
+    /** Connected through the internet relay rather than directly. */
+    val viaRelay: Boolean get() = host == Relay.LOCAL_HOST
 
     fun start(h: Handler) {
         handler = h

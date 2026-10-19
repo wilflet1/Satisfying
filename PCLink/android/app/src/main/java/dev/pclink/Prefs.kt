@@ -39,6 +39,14 @@ class Prefs(context: Context) {
         get() = sp.getString("mac", "") ?: ""
         set(v) = sp.edit().putString("mac", v).apply()
 
+    /** Relay to reach the PC from anywhere (sent by the PC when connected). */
+    var relayUrl: String
+        get() = sp.getString("relay_url", "") ?: ""
+        set(v) = sp.edit().putString("relay_url", v).apply()
+    var relayRoom: String
+        get() = sp.getString("relay_room", "") ?: ""
+        set(v) = sp.edit().putString("relay_room", v).apply()
+
     var syncClipboard: Boolean
         get() = sp.getBoolean("sync_clip", true)
         set(v) = sp.edit().putBoolean("sync_clip", v).apply()
@@ -53,6 +61,7 @@ class Prefs(context: Context) {
     }
 
     fun forget() {
-        sp.edit().remove("pc_id").remove("pc_name").remove("hosts").remove("fp").remove("token").remove("mac").apply()
+        sp.edit().remove("pc_id").remove("pc_name").remove("hosts").remove("fp").remove("token").remove("mac")
+            .remove("relay_url").remove("relay_room").apply()
     }
 }

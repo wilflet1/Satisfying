@@ -62,7 +62,9 @@ class Discovery(private val context: Context) {
                             o.optString("fp"),
                             System.currentTimeMillis(),
                         )
-                        val isNew = found.put(pc.id, pc)?.host != pc.host
+                        val prev = found.put(pc.id, pc)
+                        // New address, or back in range after a while (e.g. home again).
+                        val isNew = prev?.host != pc.host || pc.seenAt - prev.seenAt > 10_000
                         if (isNew) onFound?.invoke(pc)
                     } catch (_: Exception) {
                     }
