@@ -9,7 +9,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncWriteExt, BufReader};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpListener;
 use tokio::sync::mpsc;
 use tokio_rustls::TlsAcceptor;
 
@@ -32,12 +32,17 @@ pub async fn run(agent: Arc<Agent>, listener: TcpListener) -> Result<()> {
     }
 }
 
-async fn handle_conn(
-    agent: Arc<Agent>,
-    acceptor: TlsAcceptor,
-    tcp: TcpStream,
-    peer: SocketAddr,
-) -> Result<()> {
+/// A phone connection that came through the relay (see relay.rs). The
+/// address is left unspecified: UDP audio can't take this path.
+pub async fn handle_relayed(agent: Arc<Agent>, stream: tokio::io::DuplexStream) -> Result<()> {
+    let acceptor = TlsAcceptor::from(agent.identity.server_config()?);
+    handle_conn(agent, acceptor, stream, SocketAddr::from(([0, 0, 0, 0], 0))).await
+}
+
+async fn handle_conn<S>(agent: Arc<Agent>, acceptor: TlsAcceptor, tcp: S, peer: SocketAddr) -> Result<()>
+where
+    S: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
     let tls = tokio::time::timeout(HANDSHAKE_TIMEOUT, acceptor.accept(tcp))
         .await
         .context("TLS handshake timed out")??;

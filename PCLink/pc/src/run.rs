@@ -61,6 +61,7 @@ pub async fn start_with(cfg: Config, background_tasks: bool) -> Result<Running> 
     });
     if background_tasks {
         tokio::spawn(crate::server::beacon(agent.clone()));
+        tokio::spawn(crate::relay::run(agent.clone()));
         agent.spawn_clipboard_watch();
     }
     tracing::info!(

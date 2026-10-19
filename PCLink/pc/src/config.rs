@@ -45,6 +45,10 @@ pub struct Config {
     pub notification_blocklist: Vec<String>,
     /// Check GitHub for a newer build at launch and install it.
     pub auto_update: bool,
+    /// WebSocket relay (relay/server.js) the phone uses when it can't reach
+    /// this PC directly, e.g. on mobile data. Empty turns it off. The relay
+    /// only passes along the phone's end-to-end encrypted connection.
+    pub relay: String,
     pub speaker: SpeakerConfig,
     pub mic: MicConfig,
     pub claude: ClaudeConfig,
@@ -172,6 +176,7 @@ impl Default for Config {
             mirror_notifications: true,
             notification_blocklist: vec![],
             auto_update: true,
+            relay: DEFAULT_RELAY.into(),
             speaker: SpeakerConfig::default(),
             mic: MicConfig::default(),
             claude: ClaudeConfig::default(),
@@ -205,6 +210,8 @@ pub fn hostname() -> String {
         })
         .unwrap_or_else(|| "My PC".into())
 }
+
+pub const DEFAULT_RELAY: &str = "wss://agentrelay.arketek.co.za";
 
 impl Config {
     pub fn path() -> PathBuf {
@@ -249,6 +256,9 @@ pub struct PairedDevice {
 pub struct State {
     pub pc_id: String,
     pub devices: Vec<PairedDevice>,
+    /// Secret room id on the relay; only this PC and its paired phones know it.
+    #[serde(default)]
+    pub relay_room: String,
 }
 
 impl State {
@@ -260,11 +270,17 @@ impl State {
         let path = Self::path();
         if path.exists() {
             let text = std::fs::read_to_string(&path)?;
-            return Ok(serde_json::from_str(&text)?);
+            let mut state: State = serde_json::from_str(&text)?;
+            if state.relay_room.len() != 64 {
+                state.relay_room = crate::util::random_hex(32);
+                state.save()?;
+            }
+            return Ok(state);
         }
         let state = State {
             pc_id: crate::util::random_hex(8),
             devices: vec![],
+            relay_room: crate::util::random_hex(32),
         };
         state.save()?;
         Ok(state)

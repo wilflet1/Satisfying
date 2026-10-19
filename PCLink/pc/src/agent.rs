@@ -95,6 +95,10 @@ async fn peak_over(stats: &audio::SendStats, ms: u64) -> u32 {
     stats.peak.load(Ordering::Relaxed)
 }
 
+/// Audio streams go straight over UDP, which the relay can't carry.
+pub const NEEDS_LAN: &str =
+    "The phone is connected through the relay. Phone speaker and mic need the phone on the same Wi-Fi as the PC.";
+
 pub struct Agent {
     pub cfg: Config,
     pub fs: SharedFs,
@@ -110,6 +114,8 @@ pub struct Agent {
     pub mic: Mutex<Option<crate::mic::MicSession>>,
     /// Set when muting the PC turned out to silence the capture too.
     mute_breaks_capture: AtomicBool,
+    /// Whether the relay socket is up, and what happened last.
+    relay_status: Mutex<(bool, String)>,
     /// Last clipboard text we set or sent, to avoid echoing it back.
     pub clip_last: Mutex<String>,
     pub mac: Option<String>,
@@ -140,6 +146,7 @@ impl Agent {
             speaker: Mutex::new(None),
             mic: Mutex::new(None),
             mute_breaks_capture: AtomicBool::new(false),
+            relay_status: Mutex::new((false, "Not connected yet".into())),
             clip_last: Mutex::new(String::new()),
             mac,
             job_counter: AtomicU64::new(1),
@@ -341,7 +348,35 @@ impl Agent {
             "build": crate::update::BUILD,
             "protocol": crate::proto::PROTOCOL_VERSION,
             "features": features(),
+            "relay": self.relay_info(),
         })
+    }
+
+    /// Where the phone can find this PC when it isn't on the same network.
+    pub fn relay_info(&self) -> Value {
+        let url = self.cfg.relay.trim();
+        if url.is_empty() {
+            return Value::Null;
+        }
+        json!({"url": url, "room": self.state.lock().unwrap().relay_room})
+    }
+
+    pub fn set_relay_status(&self, ok: bool, text: &str) {
+        let changed = {
+            let mut s = self.relay_status.lock().unwrap();
+            let changed = s.0 != ok;
+            *s = (ok, text.to_string());
+            changed
+        };
+        if changed {
+            self.log("relay", if ok { "connected to the relay".to_string() } else { format!("relay unavailable: {text}") });
+            self.changed();
+        }
+    }
+
+    /// True if the phone is connected through the relay.
+    pub fn relayed(link: &Link) -> bool {
+        link.peer.ip().is_unspecified()
     }
 
     // ------------------------------------------------------------------
@@ -351,7 +386,8 @@ impl Agent {
         if let Some(old) = self.link.write().unwrap().replace(link.clone()) {
             old.close();
         }
-        self.log("link", format!("{} connected from {}", link.device_name, link.peer.ip()));
+        let via = if Self::relayed(&link) { "through the relay".to_string() } else { format!("from {}", link.peer.ip()) };
+        self.log("link", format!("{} connected {via}", link.device_name));
         self.changed();
     }
 
@@ -701,6 +737,9 @@ impl Agent {
             self.changed();
             return Ok(false);
         }
+        if self.current_link().is_some_and(|l| Self::relayed(&l)) {
+            bail!("{}", NEEDS_LAN);
+        }
         if self.speaker_on() {
             return Ok(true);
         }
@@ -887,6 +926,7 @@ impl Agent {
                 "id": l.device_id,
                 "name": l.device_name,
                 "ip": l.peer.ip().to_string(),
+                "relayed": Self::relayed(l),
                 "status": self.phone_status.lock().unwrap().clone(),
             })),
             "devices": st.devices,
@@ -901,6 +941,11 @@ impl Agent {
             "idle_secs": platform::idle_secs(),
             "mic": self.mic_status(),
             "cable_present": crate::mic::cable_present(),
+            "relay": {
+                "url": self.cfg.relay,
+                "ok": self.relay_status.lock().unwrap().0,
+                "status": self.relay_status.lock().unwrap().1,
+            },
             "claude": self.cfg.claude,
             "pairing_active": pairing.as_ref().map(|p| p.expires > Instant::now()).unwrap_or(false),
             "inbox": crate::files::display(&self.cfg.inbox),

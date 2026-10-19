@@ -140,7 +140,9 @@ impl Agent {
     /// stream to us: UDP port, key and format.
     pub async fn open_mic(self: &Arc<Self>) -> Result<Value> {
         *self.mic.lock().unwrap() = None;
-        self.phone()?;
+        if Agent::relayed(&*self.phone()?) {
+            bail!("{}", crate::agent::NEEDS_LAN);
+        }
         // Tests (PCLINK_TEST_TONE) use a null output instead of a real device.
         let test_mode = std::env::var_os("PCLINK_TEST_TONE").is_some();
         let device = if test_mode {

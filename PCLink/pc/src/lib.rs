@@ -17,3 +17,4 @@ pub mod update;
 pub mod tasks;
 pub mod mic;
 pub mod cable;
+pub mod relay;
