@@ -158,3 +158,13 @@ jobs:
           gh release create pclink-latest out/* --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" \
             --title "PCLink build $PCLINK_BUILD" \
             --notes "Built from ${GITHUB_SHA::7} on ${GITHUB_REF_NAME}. PC: PCLink-windows.zip (or the two .exe files). Phone: PCLink.apk (Android 11+). Both update themselves to newer builds."
+          # A draft release is invisible to the apps' update check; make sure
+          # it's published and its manifest downloads without credentials.
+          gh release edit pclink-latest --repo "$GITHUB_REPOSITORY" --draft=false --prerelease
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/pclink-latest/latest.json"
+          for i in 1 2 3 4 5 6; do
+            if curl -fsSL "$url" | grep -q "\"build\": $PCLINK_BUILD"; then echo "published: $url"; exit 0; fi
+            sleep 10
+          done
+          echo "::error::latest.json for build $PCLINK_BUILD isn't publicly downloadable"
+          exit 1

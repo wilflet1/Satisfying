@@ -41,6 +41,8 @@ fn http() -> &'static ureq::Agent {
             .timeout_read(Duration::from_secs(45))
             .timeout_write(Duration::from_secs(60))
             .user_agent(&format!("PCLink/{}", crate::agent::VERSION))
+            // Networks that only allow the web through a proxy.
+            .try_proxy_from_env(true)
             .build()
     })
 }
@@ -60,7 +62,15 @@ fn status_error(e: ureq::Error) -> anyhow::Error {
             let msg = serde_json::from_str::<Value>(&body)
                 .ok()
                 .and_then(|v| v["error"].as_str().map(str::to_string))
-                .unwrap_or(body);
+                .unwrap_or_else(|| {
+                    // A web page instead of the relay's JSON: the host's firewall
+                    // or bot protection answered, not relay.php.
+                    if body.trim_start().starts_with('<') {
+                        "the web host's firewall blocked the request (not the relay itself)".into()
+                    } else {
+                        crate::agent::head(body.trim(), 200)
+                    }
+                });
             anyhow::anyhow!("relay answered {code}: {}", msg.trim())
         }
         other => anyhow::anyhow!("can't reach the relay: {other}"),
