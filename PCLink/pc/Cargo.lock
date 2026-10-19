@@ -1906,7 +1906,6 @@ dependencies = [
  "tracing-subscriber",
  "tray-icon",
  "ureq",
- "webpki-roots 0.26.11",
  "windows 0.61.3",
  "windows-core 0.61.2",
 ]

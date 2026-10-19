@@ -1,280 +1,215 @@
-//! Reaching the phone from anywhere through a WebSocket relay
-//! (`relay/server.js`).
+//! Reaching the phone from anywhere through the HTTPS relay
+//! (`relay/relay.php`, which runs on ordinary PHP hosting).
 //!
-//! The PC keeps one WebSocket open to the relay in its secret room. When a
-//! phone joins, the relay sends a text "open" and from then on pipes bytes
-//! between the two. That socket then carries the normal phone connection
-//! (TLS pinned to this PC's certificate, then the usual protocol), and the PC
-//! opens a fresh socket for the next phone. The relay sees only ciphertext.
+//! The PC long-polls the relay in its secret room. When a phone opens a
+//! session, the PC turns that session into a byte pipe made of HTTP requests
+//! (POST to send, long-polled GET to receive) and runs the normal phone
+//! connection over it: TLS pinned to this PC's certificate, then the usual
+//! protocol. The relay only stores and forwards ciphertext.
 
 use crate::agent::Agent;
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
+use serde_json::Value;
+use std::io::Read;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::sync::mpsc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-/// The relay pings every 25 s; nothing for this long means the socket died.
-const READ_TIMEOUT: Duration = Duration::from_secs(80);
-const MAX_FRAME: usize = 4 * 1024 * 1024;
+/// Bytes sent per request (the relay accepts up to 2 MB).
+const SEND_MAX: usize = 512 * 1024;
+const LEGACY_DEFAULT: &str = "wss://agentrelay.arketek.co.za";
 
-trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
-impl<T: AsyncRead + AsyncWrite + Unpin + Send> Io for T {}
-
-/// Address of `room` on the relay at `base` ("wss://host[/path]").
-pub fn room_url(base: &str, room: &str, role: &str) -> String {
-    format!("{}/{room}?role={role}", base.trim_end_matches('/'))
+/// The relay endpoint to use, or None if the relay is off.
+pub fn endpoint(configured: &str) -> Option<String> {
+    let url = configured.trim();
+    if url.is_empty() {
+        return None;
+    }
+    // Early builds wrote the WebSocket address of the default relay.
+    if url.trim_end_matches('/') == LEGACY_DEFAULT {
+        return Some(crate::config::DEFAULT_RELAY.to_string());
+    }
+    Some(url.to_string())
 }
 
-/// Keeps a socket waiting on the relay and hands each phone that joins to
-/// the normal connection handler.
-pub async fn run(agent: Arc<Agent>) {
-    let base = agent.cfg.relay.trim().to_string();
-    if base.is_empty() {
-        return;
-    }
-    let room = agent.state.lock().unwrap().relay_room.clone();
-    let url = room_url(&base, &room, "pc");
-    let mut backoff = Duration::from_secs(2);
-    let mut was_ok = false;
-    loop {
-        let res = async {
-            let ws = WsConn::connect(&url).await?;
-            agent.set_relay_status(true, "Waiting on the relay");
-            was_ok = true;
-            ws.wait_for_open().await
+fn http() -> &'static ureq::Agent {
+    static AGENT: std::sync::OnceLock<ureq::Agent> = std::sync::OnceLock::new();
+    AGENT.get_or_init(|| {
+        ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(15))
+            // Long polls last 20 s on the relay.
+            .timeout_read(Duration::from_secs(45))
+            .timeout_write(Duration::from_secs(60))
+            .user_agent(&format!("PCLink/{}", crate::agent::VERSION))
+            .build()
+    })
+}
+
+fn url(base: &str, query: &str) -> String {
+    format!("{base}?{query}")
+}
+
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+    tokio::task::spawn_blocking(f).await.context("relay worker")?
+}
+
+fn status_error(e: ureq::Error) -> anyhow::Error {
+    match e {
+        ureq::Error::Status(code, resp) => {
+            let body = resp.into_string().unwrap_or_default();
+            let msg = serde_json::from_str::<Value>(&body)
+                .ok()
+                .and_then(|v| v["error"].as_str().map(str::to_string))
+                .unwrap_or(body);
+            anyhow::anyhow!("relay answered {code}: {}", msg.trim())
         }
-        .await;
-        match res {
-            Ok(ws) => {
+        other => anyhow::anyhow!("can't reach the relay: {other}"),
+    }
+}
+
+/// Long-polls for a phone; Some(session) when one opened a session.
+fn wait(base: &str, room: &str) -> Result<Option<String>> {
+    let resp = http()
+        .post(&url(base, &format!("a=wait&room={room}")))
+        .send_bytes(&[])
+        .map_err(status_error)?;
+    if resp.status() == 204 {
+        return Ok(None);
+    }
+    let v: Value = resp.into_json().context("relay reply")?;
+    match v["session"].as_str() {
+        Some(s) if s.len() == 32 && s.bytes().all(|b| b.is_ascii_hexdigit()) => Ok(Some(s.to_string())),
+        _ => bail!("relay sent no session"),
+    }
+}
+
+fn send(base: &str, session: &str, data: &[u8]) -> Result<()> {
+    let u = url(base, &format!("a=send&s={session}&d=down"));
+    loop {
+        match http().post(&u).send_bytes(data) {
+            Ok(_) => return Ok(()),
+            // The phone is behind; nothing was stored, so try again.
+            Err(ureq::Error::Status(429, _)) => std::thread::sleep(Duration::from_millis(250)),
+            Err(e) => return Err(status_error(e)),
+        }
+    }
+}
+
+enum Recv {
+    Data(Vec<u8>, u64),
+    Empty(u64),
+    Closed,
+}
+
+fn recv(base: &str, session: &str, from: u64) -> Result<Recv> {
+    let resp = match http().get(&url(base, &format!("a=recv&s={session}&d=up&from={from}"))).call() {
+        Ok(r) => r,
+        Err(ureq::Error::Status(410, _)) => return Ok(Recv::Closed),
+        Err(e) => return Err(status_error(e)),
+    };
+    let next = resp.header("X-Next").and_then(|v| v.parse().ok()).unwrap_or(from);
+    if resp.status() == 204 {
+        return Ok(Recv::Empty(next));
+    }
+    let mut body = Vec::new();
+    resp.into_reader().take(4 * 1024 * 1024).read_to_end(&mut body)?;
+    Ok(Recv::Data(body, next))
+}
+
+fn close(base: &str, session: &str) {
+    let _ = http().post(&url(base, &format!("a=close&s={session}"))).send_bytes(&[]);
+}
+
+/// Keeps a long poll waiting on the relay and hands each phone that opens a
+/// session to the normal connection handler.
+pub async fn run(agent: Arc<Agent>) {
+    let Some(base) = endpoint(&agent.cfg.relay) else { return };
+    let room = agent.state.lock().unwrap().relay_room.clone();
+    let mut backoff = Duration::from_secs(2);
+    loop {
+        let (b, r) = (base.clone(), room.clone());
+        match blocking(move || wait(&b, &r)).await {
+            Ok(found) => {
                 backoff = Duration::from_secs(2);
-                let agent = agent.clone();
-                tokio::spawn(async move {
-                    let stream = ws.into_stream();
-                    if let Err(e) = crate::server::handle_relayed(agent, stream).await {
-                        tracing::info!("relayed connection: {e:#}");
-                    }
-                });
+                agent.set_relay_status(true, "Waiting on the relay");
+                if let Some(session) = found {
+                    let stream = tunnel(base.clone(), session);
+                    let agent = agent.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = crate::server::handle_relayed(agent, stream).await {
+                            tracing::info!("relayed connection: {e:#}");
+                        }
+                    });
+                }
             }
             Err(e) => {
-                if was_ok {
-                    tracing::info!("relay: {e:#}");
-                } else {
-                    tracing::debug!("relay: {e:#}");
-                }
+                tracing::debug!("relay: {e:#}");
                 agent.set_relay_status(false, &format!("{e:#}"));
-                // A socket that worked for a while and then dropped is
-                // normal (proxies time out); come back quickly.
-                let wait = if was_ok { Duration::from_secs(1) } else { backoff };
-                was_ok = false;
-                tokio::time::sleep(wait).await;
+                tokio::time::sleep(backoff).await;
                 backoff = (backoff * 2).min(Duration::from_secs(60));
             }
         }
     }
 }
 
-/// A minimal WebSocket client: enough of RFC 6455 to pipe bytes.
-pub struct WsConn {
-    io: Box<dyn Io>,
-}
-
-impl WsConn {
-    pub async fn connect(url: &str) -> Result<WsConn> {
-        let (tls, rest) = if let Some(r) = url.strip_prefix("wss://") {
-            (true, r)
-        } else if let Some(r) = url.strip_prefix("ws://") {
-            (false, r)
-        } else {
-            bail!("relay address must start with wss:// or ws://");
-        };
-        let (authority, path) = match rest.find('/') {
-            Some(i) => (&rest[..i], &rest[i..]),
-            None => (rest, "/"),
-        };
-        let (host, port) = match authority.rsplit_once(':') {
-            Some((h, p)) if p.parse::<u16>().is_ok() => (h.to_string(), p.parse::<u16>()?),
-            _ => (authority.to_string(), if tls { 443 } else { 80 }),
-        };
-        let tcp = tokio::time::timeout(Duration::from_secs(15), tokio::net::TcpStream::connect((host.as_str(), port)))
-            .await
-            .context("relay connect timed out")?
-            .with_context(|| format!("can't reach relay {host}:{port}"))?;
-        let _ = tcp.set_nodelay(true);
-        let mut io: Box<dyn Io> = if tls {
-            let mut roots = rustls::RootCertStore::empty();
-            roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-            let cfg = rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
-                .with_safe_default_protocol_versions()?
-                .with_root_certificates(roots)
-                .with_no_client_auth();
-            let name = rustls::pki_types::ServerName::try_from(host.clone())?;
-            let stream = tokio_rustls::TlsConnector::from(Arc::new(cfg))
-                .connect(name, tcp)
-                .await
-                .context("relay TLS")?;
-            Box::new(stream)
-        } else {
-            Box::new(tcp)
-        };
-        use base64::Engine;
-        let key = base64::engine::general_purpose::STANDARD.encode(crate::util::random_bytes::<16>());
-        let host_header = if (tls && port == 443) || (!tls && port == 80) { host.clone() } else { format!("{host}:{port}") };
-        let req = format!(
-            "GET {path} HTTP/1.1\r\nHost: {host_header}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\
-             Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\nUser-Agent: PCLink/{}\r\n\r\n",
-            crate::agent::VERSION
-        );
-        io.write_all(req.as_bytes()).await?;
-        io.flush().await?;
-        // Read the response head byte by byte so nothing after it is lost.
-        let mut head = Vec::new();
-        let read_head = async {
-            while !head.ends_with(b"\r\n\r\n") {
-                if head.len() > 16 * 1024 {
-                    bail!("relay sent an oversized response");
-                }
-                let b = io.read_u8().await.context("relay closed during handshake")?;
-                head.push(b);
-            }
-            Ok(())
-        };
-        tokio::time::timeout(Duration::from_secs(15), read_head).await.context("relay handshake timed out")??;
-        let head = String::from_utf8_lossy(&head);
-        let status = head.lines().next().unwrap_or("");
-        if !status.contains(" 101") {
-            bail!("relay refused the connection: {}", status.trim());
-        }
-        Ok(WsConn { io })
-    }
-
-    /// Waits (answering pings) until the relay says a phone joined.
-    async fn wait_for_open(mut self) -> Result<WsConn> {
+/// Turns a relay session into a byte stream for the connection handler.
+fn tunnel(base: String, session: String) -> tokio::io::DuplexStream {
+    let (ours, theirs) = tokio::io::duplex(SEND_MAX);
+    let (mut pipe_r, mut pipe_w) = tokio::io::split(ours);
+    let (b, s) = (base.clone(), session.clone());
+    // Handler -> relay. While one request is in flight the next batch
+    // collects in the pipe, so busy transfers go out in big requests.
+    tokio::spawn(async move {
+        let mut buf = vec![0u8; SEND_MAX];
         loop {
-            let (op, payload) = tokio::time::timeout(READ_TIMEOUT, read_frame(&mut self.io))
-                .await
-                .map_err(|_| anyhow!("relay went quiet"))??;
-            match op {
-                0x1 if payload == b"open" => return Ok(self),
-                0x8 => bail!("relay closed: {}", close_reason(&payload)),
-                0x9 => write_frame(&mut self.io, 0xA, &payload).await?,
-                _ => {}
+            let n = match pipe_r.read(&mut buf).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => n,
+            };
+            let data = buf[..n].to_vec();
+            let (b2, s2) = (b.clone(), s.clone());
+            if let Err(e) = blocking(move || send(&b2, &s2, &data)).await {
+                tracing::info!("relay send: {e:#}");
+                break;
             }
         }
-    }
-
-    /// Turns the socket into a byte stream (the other end of a duplex pipe).
-    fn into_stream(self) -> tokio::io::DuplexStream {
-        let (ours, theirs) = tokio::io::duplex(256 * 1024);
-        let (mut ws_r, mut ws_w) = tokio::io::split(self.io);
-        let (mut pipe_r, mut pipe_w) = tokio::io::split(ours);
-        let (tx, mut rx) = mpsc::channel::<(u8, Vec<u8>)>(64);
-        // Writer: everything to the relay goes through here.
-        tokio::spawn(async move {
-            while let Some((op, data)) = rx.recv().await {
-                if write_frame(&mut ws_w, op, &data).await.is_err() || op == 0x8 {
-                    break;
-                }
-            }
-            let _ = ws_w.shutdown().await;
-        });
-        // Pipe -> relay.
-        let tx2 = tx.clone();
-        tokio::spawn(async move {
-            let mut buf = vec![0u8; 64 * 1024];
-            loop {
-                match pipe_r.read(&mut buf).await {
-                    Ok(0) | Err(_) => {
-                        let _ = tx2.send((0x8, 1000u16.to_be_bytes().to_vec())).await;
+        let _ = blocking(move || {
+            close(&b, &s);
+            Ok(())
+        })
+        .await;
+    });
+    // Relay -> handler.
+    tokio::spawn(async move {
+        let mut next = 0u64;
+        let mut failures = 0;
+        loop {
+            let (b, s) = (base.clone(), session.clone());
+            match blocking(move || recv(&b, &s, next)).await {
+                Ok(Recv::Data(bytes, n)) => {
+                    failures = 0;
+                    next = n;
+                    if pipe_w.write_all(&bytes).await.is_err() {
                         break;
                     }
-                    Ok(n) => {
-                        if tx2.send((0x2, buf[..n].to_vec())).await.is_err() {
-                            break;
-                        }
-                    }
                 }
-            }
-        });
-        // Relay -> pipe.
-        tokio::spawn(async move {
-            loop {
-                let frame = tokio::time::timeout(READ_TIMEOUT, read_frame(&mut ws_r)).await;
-                let Ok(Ok((op, payload))) = frame else { break };
-                match op {
-                    0x0..=0x2 => {
-                        if pipe_w.write_all(&payload).await.is_err() {
-                            break;
-                        }
-                    }
-                    0x8 => break,
-                    0x9 => {
-                        let _ = tx.send((0xA, payload)).await;
-                    }
-                    _ => {}
+                Ok(Recv::Empty(n)) => {
+                    failures = 0;
+                    next = n;
                 }
+                Ok(Recv::Closed) => break,
+                // Receiving is idempotent: retry a flaky network a few times.
+                Err(e) if failures < 3 => {
+                    failures += 1;
+                    tracing::debug!("relay recv: {e:#}");
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                }
+                Err(_) => break,
             }
-            let _ = pipe_w.shutdown().await;
-        });
-        theirs
-    }
-}
-
-fn close_reason(payload: &[u8]) -> String {
-    if payload.len() > 2 {
-        String::from_utf8_lossy(&payload[2..]).into_owned()
-    } else {
-        "no reason given".into()
-    }
-}
-
-async fn read_frame<R: AsyncRead + Unpin>(r: &mut R) -> Result<(u8, Vec<u8>)> {
-    let mut h = [0u8; 2];
-    r.read_exact(&mut h).await?;
-    let op = h[0] & 0x0F;
-    let masked = h[1] & 0x80 != 0;
-    let len = match h[1] & 0x7F {
-        126 => r.read_u16().await? as usize,
-        127 => r.read_u64().await? as usize,
-        n => n as usize,
-    };
-    if len > MAX_FRAME {
-        bail!("relay frame too big");
-    }
-    let mut mask = [0u8; 4];
-    if masked {
-        r.read_exact(&mut mask).await?;
-    }
-    let mut payload = vec![0u8; len];
-    r.read_exact(&mut payload).await?;
-    if masked {
-        for (i, b) in payload.iter_mut().enumerate() {
-            *b ^= mask[i & 3];
         }
-    }
-    Ok((op, payload))
-}
-
-/// Client frames must be masked.
-async fn write_frame<W: AsyncWrite + Unpin>(w: &mut W, op: u8, payload: &[u8]) -> Result<()> {
-    let mut out = Vec::with_capacity(payload.len() + 14);
-    out.push(0x80 | op);
-    let n = payload.len();
-    if n < 126 {
-        out.push(0x80 | n as u8);
-    } else if n < 65536 {
-        out.push(0x80 | 126);
-        out.extend_from_slice(&(n as u16).to_be_bytes());
-    } else {
-        out.push(0x80 | 127);
-        out.extend_from_slice(&(n as u64).to_be_bytes());
-    }
-    let mask = crate::util::random_bytes::<4>();
-    out.extend_from_slice(&mask);
-    out.extend(payload.iter().enumerate().map(|(i, b)| b ^ mask[i & 3]));
-    w.write_all(&out).await?;
-    w.flush().await?;
-    Ok(())
+        let _ = pipe_w.shutdown().await;
+    });
+    theirs
 }
 
 #[cfg(test)]
@@ -282,20 +217,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn urls() {
-        assert_eq!(room_url("wss://r.example/", "ab", "pc"), "wss://r.example/ab?role=pc");
-        assert_eq!(room_url("wss://r.example/relay", "ab", "phone"), "wss://r.example/relay/ab?role=phone");
-    }
-
-    #[tokio::test]
-    async fn frames_round_trip() {
-        let (mut a, mut b) = tokio::io::duplex(1 << 20);
-        for len in [0usize, 5, 125, 126, 300, 70_000] {
-            let data: Vec<u8> = (0..len).map(|i| i as u8).collect();
-            write_frame(&mut a, 0x2, &data).await.unwrap();
-            let (op, got) = read_frame(&mut b).await.unwrap();
-            assert_eq!(op, 0x2);
-            assert_eq!(got, data);
-        }
+    fn endpoints() {
+        assert_eq!(endpoint(""), None);
+        assert_eq!(endpoint("wss://agentrelay.arketek.co.za/").as_deref(), Some(crate::config::DEFAULT_RELAY));
+        assert_eq!(endpoint(" https://r.example/relay.php ").as_deref(), Some("https://r.example/relay.php"));
     }
 }

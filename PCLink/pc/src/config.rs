@@ -45,7 +45,7 @@ pub struct Config {
     pub notification_blocklist: Vec<String>,
     /// Check GitHub for a newer build at launch and install it.
     pub auto_update: bool,
-    /// WebSocket relay (relay/server.js) the phone uses when it can't reach
+    /// HTTPS relay (relay/relay.php) the phone uses when it can't reach
     /// this PC directly, e.g. on mobile data. Empty turns it off. The relay
     /// only passes along the phone's end-to-end encrypted connection.
     pub relay: String,
@@ -211,7 +211,7 @@ pub fn hostname() -> String {
         .unwrap_or_else(|| "My PC".into())
 }
 
-pub const DEFAULT_RELAY: &str = "wss://agentrelay.arketek.co.za";
+pub const DEFAULT_RELAY: &str = "https://agentrelay.arketek.co.za/relay.php";
 
 impl Config {
     pub fn path() -> PathBuf {

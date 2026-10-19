@@ -354,10 +354,9 @@ impl Agent {
 
     /// Where the phone can find this PC when it isn't on the same network.
     pub fn relay_info(&self) -> Value {
-        let url = self.cfg.relay.trim();
-        if url.is_empty() {
+        let Some(url) = crate::relay::endpoint(&self.cfg.relay) else {
             return Value::Null;
-        }
+        };
         json!({"url": url, "room": self.state.lock().unwrap().relay_room})
     }
 

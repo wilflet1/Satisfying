@@ -205,7 +205,12 @@ icon = "🧪"
   *Forget* it on the dashboard's Settings page if the phone is lost.
 - Pairing **by IP address** trusts whichever certificate answers (trust on first use);
   prefer the QR code or the discovered-PC list.
-- Away from home: put both devices on Tailscale/WireGuard and pair using the PC's tailnet IP.
+- Away from home the phone goes through the relay (`relay/relay.php`, default
+  `https://agentrelay.arketek.co.za/relay.php`, setting `relay` in config.toml; empty turns
+  it off). The PC waits in a secret random room that only paired phones learn, and the
+  phone's TLS link to the PC (still pinned to its certificate) runs through the relay, so
+  the relay sees only ciphertext. Speaker and mic need the same network (they use UDP).
+  To host your own relay, upload `relay.php` and `.htaccess` to any PHP 7.4+ site.
 
 ## Layout
 
@@ -219,6 +224,7 @@ PCLink/
     src/claude.rs     Claude Code hooks and installer; src/mcp.rs MCP server
     src/platform/     Windows: toasts, input, power, audio capture, default-device switching
   android/            Kotlin app, no third-party dependencies
+  relay/relay.php     internet relay (plain PHP, any web host)
   docs/PROTOCOL.md    wire protocol
 ```
 

@@ -1,96 +1,67 @@
 package dev.pclink
 
-import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
-import java.io.DataInputStream
+import org.json.JSONObject
 import java.io.IOException
-import java.io.InputStream
-import java.io.OutputStream
+import java.net.HttpURLConnection
 import java.net.InetAddress
-import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
-import java.net.URI
-import java.util.Base64
-import java.util.concurrent.ThreadLocalRandom
-import javax.net.ssl.HttpsURLConnection
-import javax.net.ssl.SSLSocket
-import javax.net.ssl.SSLSocketFactory
+import java.net.URL
 import kotlin.concurrent.thread
 
 /**
- * Reaching the PC from anywhere: a WebSocket to the PCLink relay
- * (relay/server.js), joined to the PC's secret room. The relay only pipes
- * bytes; the usual TLS link to the PC (pinned to its certificate) runs
- * through it. To reuse [Link.open] unchanged, the WebSocket is exposed as a
+ * Reaching the PC from anywhere through the PCLink relay (relay/relay.php,
+ * plain HTTPS so it runs on ordinary web hosting). The PC waits in a secret
+ * room; the phone opens a session there and both sides turn it into a byte
+ * pipe: POST to send, long-polled GET to receive. The usual TLS link to the
+ * PC (pinned to its certificate) runs through it, so the relay only sees
+ * ciphertext. To reuse [Link.open] unchanged, the pipe is exposed as a
  * one-shot local port on 127.0.0.1.
  */
 object Relay {
     const val LOCAL_HOST = "127.0.0.1"
+    private const val SEND_MAX = 512 * 1024
 
-    /** Connects to the relay and returns the local port that leads to the PC. */
+    private class Reply(val status: Int, val body: ByteArray, val next: Long?)
+
+    private fun call(url: String, method: String, body: ByteArray? = null, readTimeout: Int = 45_000): Reply {
+        val c = URL(url).openConnection() as HttpURLConnection
+        try {
+            c.requestMethod = method
+            c.connectTimeout = 15_000
+            c.readTimeout = readTimeout
+            c.useCaches = false
+            c.setRequestProperty("User-Agent", "PCLink")
+            if (method == "POST") {
+                val data = body ?: ByteArray(0)
+                c.doOutput = true
+                c.setFixedLengthStreamingMode(data.size)
+                c.setRequestProperty("Content-Type", "application/octet-stream")
+                c.outputStream.use { it.write(data) }
+            }
+            val status = c.responseCode
+            val stream = if (status >= 400) c.errorStream else c.inputStream
+            val bytes = stream?.use { it.readBytes() } ?: ByteArray(0)
+            return Reply(status, bytes, c.getHeaderField("X-Next")?.toLongOrNull())
+        } finally {
+            c.disconnect()
+        }
+    }
+
+    private fun errorOf(r: Reply): String =
+        try {
+            JSONObject(String(r.body)).optString("error", "relay error ${r.status}")
+        } catch (_: Exception) {
+            "relay error ${r.status}"
+        }
+
+    /** Opens a session to the PC and returns the local port that leads to it. */
     fun open(base: String, room: String): Int {
-        val uri = URI(base.trimEnd('/') + "/" + room + "?role=phone")
-        val tls = when (uri.scheme) {
-            "wss" -> true
-            "ws" -> false
-            else -> throw IOException("Relay address must start with wss://")
-        }
-        val host = uri.host ?: throw IOException("Bad relay address")
-        val port = if (uri.port > 0) uri.port else if (tls) 443 else 80
-        val raw = Socket()
-        val sock: Socket
-        try {
-            raw.tcpNoDelay = true
-            raw.connect(InetSocketAddress(host, port), 8000)
-            sock = if (tls) {
-                val ssl = (SSLSocketFactory.getDefault() as SSLSocketFactory).createSocket(raw, host, port, true) as SSLSocket
-                ssl.soTimeout = 15_000
-                ssl.startHandshake()
-                if (!HttpsURLConnection.getDefaultHostnameVerifier().verify(host, ssl.session)) {
-                    ssl.close()
-                    throw IOException("Relay certificate doesn't match $host")
-                }
-                ssl
-            } else {
-                raw.soTimeout = 15_000
-                raw
-            }
-        } catch (e: Exception) {
-            try {
-                raw.close()
-            } catch (_: IOException) {
-            }
-            throw e
-        }
-
-        val out = BufferedOutputStream(sock.getOutputStream(), 64 * 1024)
-        val input = DataInputStream(BufferedInputStream(sock.getInputStream(), 64 * 1024))
-        try {
-            val key = Base64.getEncoder().encodeToString(ByteArray(16).also { ThreadLocalRandom.current().nextBytes(it) })
-            val path = uri.rawPath.ifEmpty { "/" } + (uri.rawQuery?.let { "?$it" } ?: "")
-            val hostHeader = if (uri.port > 0) "$host:${uri.port}" else host
-            out.write(
-                ("GET $path HTTP/1.1\r\nHost: $hostHeader\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n" +
-                    "Sec-WebSocket-Key: $key\r\nSec-WebSocket-Version: 13\r\nUser-Agent: PCLink\r\n\r\n").toByteArray(),
-            )
-            out.flush()
-            val head = StringBuilder()
-            while (!head.endsWith("\r\n\r\n")) {
-                if (head.length > 16_384) throw IOException("Relay sent an oversized response")
-                val b = input.read()
-                if (b < 0) throw IOException("Relay closed the connection")
-                head.append(b.toChar())
-            }
-            val status = head.lineSequence().first()
-            if (!status.contains(" 101")) throw IOException("Relay refused: ${status.trim()}")
-            // The tunnel has its own keepalive (the link pings every 20 s,
-            // the relay every 25 s), so no read timeout from here on.
-            sock.soTimeout = 0
-        } catch (e: Exception) {
-            sock.close()
-            throw e
-        }
+        if (!base.startsWith("https://") && !base.startsWith("http://")) throw IOException("Unsupported relay address")
+        val r = call("$base?a=open&room=$room", "POST", readTimeout = 30_000)
+        if (r.status != 200) throw IOException(errorOf(r))
+        val session = JSONObject(String(r.body)).getString("session")
+        if (!session.matches(Regex("^[0-9a-f]{32}$"))) throw IOException("Bad relay session")
 
         val server = ServerSocket(0, 1, InetAddress.getByName(LOCAL_HOST))
         server.soTimeout = 15_000
@@ -98,97 +69,81 @@ object Relay {
             val local = try {
                 server.accept()
             } catch (e: IOException) {
-                sock.close()
+                call("$base?a=close&s=$session", "POST")
                 return@thread
             } finally {
                 server.close()
             }
             local.tcpNoDelay = true
-            pipe(local, sock, input, out)
+            pipe(base, session, local)
         }
         return server.localPort
     }
 
-    private fun pipe(local: Socket, sock: Socket, wsIn: DataInputStream, wsOut: OutputStream) {
-        val closeAll = {
+    private fun pipe(base: String, session: String, local: Socket) {
+        val closeLocal = {
             try {
                 local.close()
             } catch (_: IOException) {
             }
-            try {
-                sock.close()
-            } catch (_: IOException) {
-            }
         }
-        // Local -> relay.
+        // Local -> relay. While one request is in flight, more bytes collect
+        // in the socket buffer and go out together in the next one.
         thread(name = "pclink-relay-up") {
-            val buf = ByteArray(64 * 1024)
-            val src: InputStream = local.getInputStream()
+            val buf = ByteArray(SEND_MAX)
+            val src = local.getInputStream()
             try {
                 while (true) {
-                    val n = src.read(buf)
+                    var n = src.read(buf)
                     if (n < 0) break
-                    writeFrame(wsOut, 0x2, buf, n)
+                    while (n < buf.size && src.available() > 0) {
+                        val m = src.read(buf, n, minOf(src.available(), buf.size - n))
+                        if (m <= 0) break
+                        n += m
+                    }
+                    val chunk = buf.copyOf(n)
+                    while (true) {
+                        val r = call("$base?a=send&s=$session&d=up", "POST", chunk)
+                        if (r.status == 200) break
+                        // The PC is behind; nothing was stored, so try again.
+                        if (r.status == 429) Thread.sleep(250) else throw IOException(errorOf(r))
+                    }
                 }
-                writeFrame(wsOut, 0x8, byteArrayOf(0x03, 0xE8.toByte()), 2)
-            } catch (_: IOException) {
+            } catch (_: Exception) {
             }
-            closeAll()
+            try {
+                call("$base?a=close&s=$session", "POST")
+            } catch (_: Exception) {
+            }
+            closeLocal()
         }
         // Relay -> local.
         val dst = local.getOutputStream()
+        var next = 0L
+        var failures = 0
         try {
-            while (true) {
-                val b0 = wsIn.readUnsignedByte()
-                val b1 = wsIn.readUnsignedByte()
-                val op = b0 and 0x0F
-                var len = (b1 and 0x7F).toLong()
-                if (len == 126L) len = wsIn.readUnsignedShort().toLong() else if (len == 127L) len = wsIn.readLong()
-                if (len < 0 || len > 4L * 1024 * 1024) throw IOException("relay frame too big")
-                val mask = if (b1 and 0x80 != 0) ByteArray(4).also { wsIn.readFully(it) } else null
-                val payload = ByteArray(len.toInt())
-                wsIn.readFully(payload)
-                if (mask != null) for (i in payload.indices) payload[i] = (payload[i].toInt() xor mask[i and 3].toInt()).toByte()
-                when (op) {
-                    0x0, 0x1, 0x2 -> {
-                        dst.write(payload)
+            while (!local.isClosed) {
+                val r = try {
+                    call("$base?a=recv&s=$session&d=down&from=$next", "GET")
+                } catch (e: IOException) {
+                    // Receiving is idempotent: ride out a flaky mobile network.
+                    if (++failures > 3) throw e
+                    Thread.sleep(1000)
+                    continue
+                }
+                failures = 0
+                when (r.status) {
+                    200 -> {
+                        dst.write(r.body)
                         dst.flush()
+                        next = r.next ?: next
                     }
-                    0x8 -> break
-                    0x9 -> writeFrame(wsOut, 0xA, payload, payload.size)
+                    204 -> next = r.next ?: next
+                    else -> break
                 }
             }
-        } catch (_: IOException) {
+        } catch (_: Exception) {
         }
-        closeAll()
-    }
-
-    /** Client frames must be masked. */
-    private fun writeFrame(out: OutputStream, op: Int, data: ByteArray, n: Int) {
-        val head = ByteArray(14)
-        var h = 0
-        head[h++] = (0x80 or op).toByte()
-        when {
-            n < 126 -> head[h++] = (0x80 or n).toByte()
-            n < 65536 -> {
-                head[h++] = (0x80 or 126).toByte()
-                head[h++] = (n shr 8).toByte()
-                head[h++] = n.toByte()
-            }
-            else -> {
-                head[h++] = (0x80 or 127).toByte()
-                for (i in 7 downTo 0) head[h++] = (n.toLong() shr (8 * i)).toByte()
-            }
-        }
-        val mask = ByteArray(4).also { ThreadLocalRandom.current().nextBytes(it) }
-        System.arraycopy(mask, 0, head, h, 4)
-        h += 4
-        val body = ByteArray(n)
-        for (i in 0 until n) body[i] = (data[i].toInt() xor mask[i and 3].toInt()).toByte()
-        synchronized(out) {
-            out.write(head, 0, h)
-            out.write(body)
-            out.flush()
-        }
+        closeLocal()
     }
 }
