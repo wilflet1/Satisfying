@@ -378,7 +378,8 @@ async function newCode() {
   $("pairOut").hidden = false;
   $("qr").innerHTML = r.svg;
   $("code").textContent = r.code;
-  $("pairHosts").textContent = `PC address: ${r.hosts.join(", ") || "unknown"} port ${r.port}`;
+  $("pairHosts").textContent = `PC address: ${r.hosts.join(", ") || "unknown"} port ${r.port}` +
+    (r.relay ? " · This QR code also works away from home (through the relay)." : "");
 }
 $("newCode").onclick = newCode;
 $("updateBtn").onclick = async () => {

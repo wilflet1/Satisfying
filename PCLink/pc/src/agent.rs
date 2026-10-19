@@ -248,7 +248,7 @@ impl Agent {
             expires: Instant::now() + PAIRING_TTL,
         });
         let hosts: Vec<String> = util::local_ipv4s().iter().map(|ip| ip.to_string()).collect();
-        let url = format!(
+        let mut url = format!(
             "pclink://pair?h={}&p={}&fp={}&c={}&n={}&id={}",
             hosts.join(","),
             self.cfg.port,
@@ -257,6 +257,11 @@ impl Agent {
             url_encode(&self.cfg.pc_name),
             self.state.lock().unwrap().pc_id,
         );
+        // With the relay in the code, a phone can pair from anywhere.
+        let relay = crate::relay::endpoint(&self.cfg.relay);
+        if let Some(r) = &relay {
+            url.push_str(&format!("&r={}&room={}", url_encode(r), self.state.lock().unwrap().relay_room));
+        }
         let svg = qrcode::QrCode::new(url.as_bytes())
             .map(|q| {
                 q.render::<qrcode::render::svg::Color>()
@@ -273,6 +278,7 @@ impl Agent {
             "hosts": hosts,
             "port": self.cfg.port,
             "fingerprint": self.identity.fingerprint,
+            "relay": relay.is_some(),
             "expires_in": PAIRING_TTL.as_secs(),
         })
     }

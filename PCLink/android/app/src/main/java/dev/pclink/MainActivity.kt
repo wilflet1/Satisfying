@@ -107,15 +107,22 @@ class MainActivity : Activity() {
         val port = uri.getQueryParameter("p")?.toIntOrNull() ?: 47810
         val fp = uri.getQueryParameter("fp") ?: return
         val code = uri.getQueryParameter("c") ?: return
-        // The beacon may know a fresher address than the QR code.
-        pair(hosts, port, fp, code)
+        val relay = uri.getQueryParameter("r")?.takeIf { it.startsWith("https://") }
+        val room = uri.getQueryParameter("room")?.takeIf { it.matches(Regex("^[0-9a-f]{64}$")) }
+        pair(hosts, port, fp, code, if (relay != null && room != null) relay to room else null)
     }
 
-    private fun pair(hosts: List<String>, port: Int, fingerprint: String?, code: String) {
+    /**
+     * Pairs directly on the same network, or (when the QR code carries it)
+     * through the relay from anywhere. The relay route needs the certificate
+     * fingerprint from the QR code, so the PC is still verified end to end.
+     */
+    private fun pair(hosts: List<String>, port: Int, fingerprint: String?, code: String, relay: Pair<String, String>? = null) {
         Ui.toast(this, "Pairing…")
         Ui.background(this) {
             var lastError: Exception? = null
-            for (host in hosts) {
+            val routes = hosts + if (relay != null && !fingerprint.isNullOrEmpty()) listOf(RELAY_ROUTE) else emptyList()
+            for (host in routes) {
                 try {
                     val msg = jsonOf(
                         "t" to "pair",
@@ -123,14 +130,26 @@ class MainActivity : Activity() {
                         "device_id" to prefs.deviceId,
                         "device_name" to prefs.deviceName,
                     )
-                    val (link, reply, seenFp) = Link.open(host, port, fingerprint, msg)
+                    val (link, reply, seenFp) = if (host == RELAY_ROUTE) {
+                        Link.open(Relay.LOCAL_HOST, Relay.open(relay!!.first, relay.second), fingerprint, msg)
+                    } else {
+                        Link.open(host, port, fingerprint, msg)
+                    }
                     link.close()
                     prefs.pcId = reply.optString("pc_id")
                     prefs.pcName = reply.optString("pc_name", "PC")
                     prefs.port = port
                     prefs.fingerprint = fingerprint ?: seenFp
                     prefs.mac = reply.optString("mac", "")
-                    prefs.rememberHost(host)
+                    if (host != RELAY_ROUTE) prefs.rememberHost(host)
+                    val advertised = reply.optJSONObject("relay")
+                    if (advertised != null) {
+                        prefs.relayUrl = advertised.optString("url")
+                        prefs.relayRoom = advertised.optString("room")
+                    } else if (relay != null) {
+                        prefs.relayUrl = relay.first
+                        prefs.relayRoom = relay.second
+                    }
                     prefs.token = reply.getString("token")
                     runOnUiThread {
                         LinkService.start(this)
@@ -466,6 +485,7 @@ class MainActivity : Activity() {
     }
 
     companion object {
+        private const val RELAY_ROUTE = "relay"
         private const val PICK_FILES = 10
         private const val MIC_PERMISSION = 11
         @Volatile var visible = false
