@@ -134,6 +134,13 @@ class ClaudeActivity : Activity() {
         })
         root.addView(card)
 
+        // One tap, no approval prompts: these run start to finish on their own.
+        val quick = Ui.card(this, "One tap")
+        quick.addView(Ui.button(this, "🎮  Tarkov: collect flea sales", primary = true) {
+            start(TARKOV_FLEA, null, ask = false)
+        })
+        root.addView(quick)
+
         val examples = Ui.card(this, "Try")
         for (ex in EXAMPLES) {
             examples.addView(Ui.listRow(this, ex, null) {
@@ -177,7 +184,7 @@ class ClaudeActivity : Activity() {
         }.start()
     }
 
-    private fun start(prompt: String, resume: Long?) {
+    private fun start(prompt: String, resume: Long?, ask: Boolean = this.ask) {
         Ui.toast(this, "Sending to your PC…")
         Thread {
             try {
@@ -393,6 +400,13 @@ class ClaudeActivity : Activity() {
             "Open Blender and set up the Blender MCP server so you can control it",
             "Free up disk space: list the biggest folders in Downloads and tell me what's safe to delete",
         )
+
+        const val TARKOV_FLEA = """Collect my Escape from Tarkov flea market sales.
+1. If Escape from Tarkov is already running, focus it and skip to step 4.
+2. Open the Battlestate Games Launcher ("C:\Battlestate Games\BsgLauncher\BsgLauncher.exe") and wait for it to load. If it needs an update or a login, stop and tell me.
+3. Make sure Escape from Tarkov is selected in its regular online PvP mode (NOT PvE, NOT Arena), then press Play. Wait for the game to reach the main menu (this can take a few minutes), dismissing any news pop-ups.
+4. Open the Messenger, go through every chat with unreceived items (flea market sales arrive from the "Flea Market" sender) and use "Receive all" / take the roubles and items into my stash. Don't buy, sell, list or move anything else.
+5. Leave the game open at the main menu and tell me how many sales you collected and the total roubles, if visible. Use notify_phone when done."""
 
         fun statusLabel(status: String) = when (status) {
             "running" -> "⏳ Working"
