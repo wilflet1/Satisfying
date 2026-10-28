@@ -360,7 +360,10 @@ class ClaudeActivity : Activity() {
         setPadding(p, Ui.dp(this@ClaudeActivity, 10), p, Ui.dp(this@ClaudeActivity, 10))
         background = GradientDrawable().apply {
             cornerRadius = Ui.dp(this@ClaudeActivity, 14).toFloat()
-            setColor(if (you) Ui.accent(this@ClaudeActivity) else Ui.cardColor(this@ClaudeActivity))
+            if (you) {
+                orientation = GradientDrawable.Orientation.LEFT_RIGHT
+                colors = Ui.candy(this@ClaudeActivity)
+            } else setColor(Ui.cardColor(this@ClaudeActivity))
         }
         if (you) setTextColor(Color.WHITE)
         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {

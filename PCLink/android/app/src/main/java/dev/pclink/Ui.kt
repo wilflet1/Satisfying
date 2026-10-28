@@ -29,10 +29,13 @@ object Ui {
     fun isDark(ctx: Context): Boolean =
         ctx.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
 
-    fun accent(ctx: Context) = if (isDark(ctx)) Color.rgb(91, 140, 255) else Color.rgb(47, 111, 237)
-    fun cardColor(ctx: Context) = if (isDark(ctx)) Color.rgb(32, 37, 44) else Color.WHITE
-    fun bgColor(ctx: Context) = if (isDark(ctx)) Color.rgb(17, 20, 24) else Color.rgb(244, 246, 249)
-    fun muted(ctx: Context) = if (isDark(ctx)) Color.rgb(152, 163, 177) else Color.rgb(95, 107, 122)
+    // A bright, playful palette: grape/lavender surfaces, pink-violet-sky "candy" gradient on primary buttons.
+    fun accent(ctx: Context) = if (isDark(ctx)) Color.rgb(178, 107, 255) else Color.rgb(124, 77, 255)
+    fun cardColor(ctx: Context) = if (isDark(ctx)) Color.rgb(42, 27, 82) else Color.WHITE
+    fun bgColor(ctx: Context) = if (isDark(ctx)) Color.rgb(27, 16, 53) else Color.rgb(246, 241, 255)
+    fun muted(ctx: Context) = if (isDark(ctx)) Color.rgb(185, 172, 223) else Color.rgb(110, 100, 136)
+    fun candy(ctx: Context) = if (isDark(ctx)) intArrayOf(Color.rgb(255, 95, 162), Color.rgb(178, 107, 255), Color.rgb(92, 200, 255))
+        else intArrayOf(Color.rgb(255, 77, 148), Color.rgb(124, 77, 255), Color.rgb(47, 160, 245))
 
     /**
      * Android 15 draws apps edge to edge, under the status and navigation
@@ -90,7 +93,10 @@ object Ui {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             bottomMargin = dp(ctx, 12)
         }
-        if (title != null) addView(text(ctx, title, 17f, bold = true).apply { setPadding(0, 0, 0, dp(ctx, 6)) })
+        if (title != null) addView(text(ctx, title, 17f, bold = true).apply {
+            setTextColor(accent(ctx))
+            setPadding(0, 0, 0, dp(ctx, 6))
+        })
     }
 
     fun text(ctx: Context, s: String, size: Float = 15f, bold: Boolean = false, muted: Boolean = false) = TextView(ctx).apply {
@@ -100,13 +106,16 @@ object Ui {
         if (muted) setTextColor(muted(ctx))
     }
 
-    private fun chipColor(ctx: Context) = if (isDark(ctx)) Color.rgb(44, 51, 61) else Color.rgb(234, 239, 246)
-    private fun textColor(ctx: Context) = if (isDark(ctx)) Color.rgb(231, 235, 240) else Color.rgb(27, 31, 36)
+    fun chipColor(ctx: Context) = if (isDark(ctx)) Color.rgb(58, 40, 112) else Color.rgb(236, 227, 255)
+    private fun textColor(ctx: Context) = if (isDark(ctx)) Color.rgb(247, 242, 255) else Color.rgb(34, 22, 63)
 
-    private fun rounded(ctx: Context, color: Int, radius: Int) = RippleDrawable(
+    private fun rounded(ctx: Context, color: Int, radius: Int, gradient: IntArray? = null) = RippleDrawable(
         ColorStateList.valueOf(if (isDark(ctx)) 0x33FFFFFF else 0x22000000),
         GradientDrawable().apply {
-            setColor(color)
+            if (gradient != null) {
+                orientation = GradientDrawable.Orientation.LEFT_RIGHT
+                colors = gradient
+            } else setColor(color)
             cornerRadius = dp(ctx, radius).toFloat()
         },
         null,
@@ -133,10 +142,10 @@ object Ui {
         if (primary) {
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
-            background = rounded(ctx, accent(ctx), 14)
+            background = rounded(ctx, accent(ctx), 18, candy(ctx))
         } else {
             setTextColor(textColor(ctx))
-            background = rounded(ctx, chipColor(ctx), 12)
+            background = rounded(ctx, chipColor(ctx), 16)
         }
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
             topMargin = dp(ctx, 4)

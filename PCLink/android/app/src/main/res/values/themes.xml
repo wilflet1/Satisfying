@@ -11,5 +11,5 @@
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowBackground">@color/pclink_bg</item>
     </style>
-    <color name="pclink_bg">#F4F6F9</color>
+    <color name="pclink_bg">#F6F1FF</color>
 </resources>

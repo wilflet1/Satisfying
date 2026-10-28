@@ -89,7 +89,7 @@ class RemoteActivity : Activity() {
         // Touchpad: drag to move, tap to click, two-finger drag to scroll.
         val pad = View(this).apply {
             background = GradientDrawable().apply {
-                setColor(if (Ui.isDark(this@RemoteActivity)) Color.rgb(40, 46, 54) else Color.rgb(225, 230, 237))
+                setColor(Ui.chipColor(this@RemoteActivity))
                 cornerRadius = Ui.dp(this@RemoteActivity, 16).toFloat()
             }
             setOnTouchListener(TouchpadListener())
